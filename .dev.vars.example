@@ -1,0 +1,15 @@
+# Copier ce fichier en .dev.vars (ignoré par git) puis remplir les valeurs.
+# Aucune valeur réelle ici : ce fichier est versionné.
+# BASE_URL est dans wrangler.jsonc ; FAKE_GATEWAYS ne passe que par `dev:e2e`.
+OWNER_EMAIL=owner@example.test
+FROM_EMAIL=reservations@example.test
+ACCESS_AUD=local-dev
+TURNSTILE_SECRET=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+RESEND_API_KEY=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_CHAT_IDS=
+CALENDAR_TOKEN=
+IP_HASH_SALT=
