@@ -15,4 +15,6 @@ export interface Env {
   CALENDAR_TOKEN: string;
   IP_HASH_SALT: string;
   FAKE_GATEWAYS?: string;
+  /** `simulated` : paiement factice, sans Stripe. Toute autre valeur, ou aucune : le vrai paiement. */
+  PAYMENT_MODE?: string;
 }

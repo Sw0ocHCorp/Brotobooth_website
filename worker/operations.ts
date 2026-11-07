@@ -196,7 +196,7 @@ export async function createRequest(deps: Deps, input: unknown, ip: string | nul
   return winner ? { kind: "already_requested", booking: winner } : { kind: "date_taken" };
 }
 
-export type Actor = "owner" | "system" | "stripe";
+export type Actor = "client" | "owner" | "system" | "stripe";
 
 export type OpResult =
   | { ok: true; booking: Booking }
@@ -278,15 +278,15 @@ const stay = async (
   b: Booking,
   now: Date,
   event: string,
-  extra: Pick<Transition, "patch" | "notifications">,
+  extra: Pick<Transition, "patch" | "notifications"> & { actor?: Actor },
 ): Promise<OpResult> =>
   applied(
     await applyTransition(deps.env.DB, {
+      actor: "owner",
       ...extra,
       id: b.id,
       from: b.status,
       to: b.status,
-      actor: "owner",
       event,
       nowIso: now.toISOString(),
     }),
@@ -345,6 +345,30 @@ export const resendPaymentLink = (deps: Deps, id: string): Promise<OpResult> =>
       .filter((n) => n.template === "client_deposit_link")
       .map((n) => ({ ...n, dedupe_key: `${n.dedupe_key}:${now.toISOString()}` }));
     return stay(deps, b, now, "payment_link_resent", { notifications });
+  });
+
+const MINUTE_MS = 60_000;
+/** La date reste tenue ce temps après la fin d'une session : de quoi recevoir un paiement fait à la dernière minute. */
+const SESSION_GRACE_MS = 5 * MINUTE_MS;
+
+/**
+ * Retient la session de paiement que le client vient d'ouvrir. La date est tenue jusqu'à 5 minutes après sa
+ * fin si l'échéance tombait avant, jamais moins longtemps qu'avant. Rien n'est écrit si la réservation a
+ * quitté `awaiting_deposit` : `stale`, et la session est à fermer.
+ */
+export const attachSession = (deps: Deps, id: string, session: StripeSession): Promise<OpResult> =>
+  withBooking(deps, id, (b) => {
+    if (b.status !== "awaiting_deposit") return STALE;
+    const expiresAt = session.expiresAt * 1000;
+    const heldUntil = new Date(expiresAt + SESSION_GRACE_MS).toISOString();
+    return stay(deps, b, deps.now(), "payment_session_opened", {
+      actor: "client",
+      patch: {
+        stripe_session: session.id,
+        stripe_session_expires: new Date(expiresAt).toISOString(),
+        hold_until: b.hold_until !== null && b.hold_until > heldUntil ? b.hold_until : heldUntil,
+      },
+    });
   });
 
 export const markBalancePaid = (deps: Deps, id: string): Promise<OpResult> =>

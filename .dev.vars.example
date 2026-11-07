@@ -1,6 +1,10 @@
 # Copier ce fichier en .dev.vars (ignoré par git) puis remplir les valeurs.
 # Aucune valeur réelle ici : ce fichier est versionné.
 # BASE_URL est dans wrangler.jsonc ; FAKE_GATEWAYS ne passe que par `dev:e2e`.
+# Les formulaires de /acompte refusent une autre origine que BASE_URL : pour un essai avec `wrangler dev`,
+# ajouter `--var BASE_URL:http://localhost:8787` (ou le port utilisé).
+# PAYMENT_MODE=simulated : paiement factice de l'acompte, sans Stripe ni argent. À retirer pour le vrai paiement.
+PAYMENT_MODE=simulated
 OWNER_EMAIL=owner@example.test
 FROM_EMAIL=reservations@example.test
 ACCESS_AUD=local-dev

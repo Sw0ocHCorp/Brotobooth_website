@@ -1,4 +1,5 @@
 import type { Env } from "./env";
+import { simulatedGateway } from "./simulated-payment";
 
 export type EmailMessage = { to: string; subject: string; text: string; html: string };
 
@@ -51,17 +52,24 @@ const notWired = (method: string) => async (): Promise<never> => {
   throw new Error(`${method} : passerelle pas encore branchée`);
 };
 
-/** Les dépendances réelles. Stripe (tâche 7), les messages et Turnstile (tâche 9) et l'accès propriétaire (tâche 12) les remplacent. */
+/**
+ * Les dépendances réelles. Le vrai Stripe (tâche 20), les messages et Turnstile (tâche 9) et l'accès propriétaire
+ * (tâche 12) les remplacent. D'ici là, seul `PAYMENT_MODE=simulated` branche un paiement, factice.
+ */
 export function makeDeps(env: Env): Deps {
+  const now = () => new Date();
   return {
     env,
-    now: () => new Date(),
-    stripe: {
-      createSession: notWired("stripe.createSession"),
-      retrieveSession: notWired("stripe.retrieveSession"),
-      expireSession: notWired("stripe.expireSession"),
-      verifyWebhook: notWired("stripe.verifyWebhook"),
-    },
+    now,
+    stripe:
+      env.PAYMENT_MODE === "simulated"
+        ? simulatedGateway(env, now)
+        : {
+            createSession: notWired("stripe.createSession"),
+            retrieveSession: notWired("stripe.retrieveSession"),
+            expireSession: notWired("stripe.expireSession"),
+            verifyWebhook: notWired("stripe.verifyWebhook"),
+          },
     email: { send: notWired("email.send") },
     telegram: {
       send: notWired("telegram.send"),

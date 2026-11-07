@@ -1,5 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { Button, Deps, EmailMessage, StripeGateway, StripeSession } from "../worker/deps";
+import { plan } from "../worker/notifications";
+import { validateBooking } from "../worker/operations";
 import {
   insertBooking,
   type Booking,
@@ -45,6 +47,22 @@ export async function insert(nb: NewBooking): Promise<{ booking: Booking }> {
   const result = await insertBooking(env.DB, nb, [], T0);
   if (!result.ok) throw new Error(`insert: ${result.reason}`);
   return { booking: result.booking };
+}
+
+/** Une demande du site telle que `createRequest` la laisse à `T0` : à valider, avec ses alertes en file. */
+export async function request(over: Partial<NewBooking> = {}): Promise<Booking> {
+  const nb = newBooking(over);
+  const specs = plan("requested", { ...nb, created_at: T0, updated_at: T0 }, new Date(T0));
+  const inserted = await insertBooking(env.DB, nb, specs, T0);
+  if (!inserted.ok) throw new Error(`request: ${inserted.reason}`);
+  return inserted.booking;
+}
+
+/** Une demande que le propriétaire vient de valider : en attente d'acompte, la date tenue 72 h depuis `deps.now()`. */
+export async function validatedBooking(deps: Deps, over: Partial<NewBooking> = {}): Promise<Booking> {
+  const result = await validateBooking(deps, (await request(over)).id, "owner");
+  if (!result.ok) throw new Error(`validatedBooking: ${result.reason}`);
+  return result.booking;
 }
 
 /** Un e-mail au propriétaire, dû à `T0`. */
