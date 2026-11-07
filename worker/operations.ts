@@ -1,14 +1,17 @@
-import { checkDate, depositCents } from "./bookings";
-import type { Deps } from "./deps";
-import { plan } from "./notifications";
+import { checkDate, depositCents, isValidDate, nextStatus, type BookingAction, type BookingStatus } from "./bookings";
+import type { Deps, StripeGateway, StripeSession } from "./deps";
+import { plan, type PlanEvent } from "./notifications";
 import { offer, planById } from "./offer";
 import {
+  applyTransition,
   countActiveByEmail,
   countRecentByIp,
   findActiveByDateAndEmail,
+  getBooking,
   insertBooking,
   type Booking,
   type NewBooking,
+  type Transition,
 } from "./repository";
 
 export type RequestInput = {
@@ -43,6 +46,39 @@ const randomToken = (): string => toHex(crypto.getRandomValues(new Uint8Array(32
 /** L'empreinte salée d'une adresse IP : de quoi la compter, pas de quoi la retrouver. */
 const hashIp = async (salt: string, ip: string): Promise<string> =>
   toHex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + ip))));
+
+/** L'échéance, en UTC, `hours` heures après `now`. */
+const holdUntil = (now: Date, hours: number): string => new Date(now.getTime() + hours * HOUR_MS).toISOString();
+
+/** Une réservation sans client ni paiement : chaque colonne est nulle, sauf celles que l'appelant fixe. */
+const blankBooking = (
+  base: Pick<NewBooking, "event_date" | "status" | "source">,
+  fields: Partial<NewBooking> = {},
+): NewBooking => ({
+  id: crypto.randomUUID(),
+  token: randomToken(),
+  plan: null,
+  price_cents: null,
+  deposit_cents: null,
+  client_name: null,
+  client_email: null,
+  client_phone: null,
+  event_type: null,
+  venue: null,
+  event_hours: null,
+  message: null,
+  ip_hash: null,
+  terms_version: null,
+  hold_until: null,
+  stripe_session: null,
+  stripe_session_expires: null,
+  deposit_paid_at: null,
+  balance_paid_at: null,
+  notes: null,
+  anonymized_at: null,
+  ...base,
+  ...fields,
+});
 
 /** Le texte rogné s'il est une chaîne qui passe `ok`, sinon `null`. */
 const accept =
@@ -133,32 +169,24 @@ export async function createRequest(deps: Deps, input: unknown, ip: string | nul
 
   const chosen = planById(request.plan)!; // validé par parseRequest
   const nowIso = now.toISOString();
-  const booking: NewBooking = {
-    id: crypto.randomUUID(),
-    token: randomToken(),
-    event_date: request.date,
-    status: "pending_review",
-    source: "site",
-    plan: chosen.id,
-    price_cents: chosen.priceCents,
-    deposit_cents: depositCents(chosen.priceCents, offer.depositPercent),
-    client_name: request.name,
-    client_email: request.email,
-    client_phone: request.phone,
-    event_type: request.event_type,
-    venue: request.venue,
-    event_hours: request.event_hours,
-    message: request.message || null,
-    ip_hash: ipHash,
-    terms_version: offer.termsVersion,
-    hold_until: new Date(now.getTime() + offer.reviewHours * HOUR_MS).toISOString(),
-    stripe_session: null,
-    stripe_session_expires: null,
-    deposit_paid_at: null,
-    balance_paid_at: null,
-    notes: null,
-    anonymized_at: null,
-  };
+  const booking = blankBooking(
+    { event_date: request.date, status: "pending_review", source: "site" },
+    {
+      plan: chosen.id,
+      price_cents: chosen.priceCents,
+      deposit_cents: depositCents(chosen.priceCents, offer.depositPercent),
+      client_name: request.name,
+      client_email: request.email,
+      client_phone: request.phone,
+      event_type: request.event_type,
+      venue: request.venue,
+      event_hours: request.event_hours,
+      message: request.message || null,
+      ip_hash: ipHash,
+      terms_version: offer.termsVersion,
+      hold_until: holdUntil(now, offer.reviewHours),
+    },
+  );
   const specs = plan("requested", { ...booking, created_at: nowIso, updated_at: nowIso }, now);
 
   const inserted = await insertBooking(db, booking, specs, nowIso);
@@ -167,3 +195,210 @@ export async function createRequest(deps: Deps, input: unknown, ip: string | nul
   const winner = await findTwin();
   return winner ? { kind: "already_requested", booking: winner } : { kind: "date_taken" };
 }
+
+export type Actor = "owner" | "system" | "stripe";
+
+export type OpResult =
+  | { ok: true; booking: Booking }
+  | { ok: false; reason: "not_found" | "stale" | "date_taken" | "invalid" };
+
+const NOT_FOUND: OpResult = { ok: false, reason: "not_found" };
+/** L'état de la réservation n'autorise plus l'opération, ou a changé depuis la lecture : rien n'a été écrit. */
+const STALE: OpResult = { ok: false, reason: "stale" };
+
+const applied = (booking: Booking | null): OpResult => (booking ? { ok: true, booking } : STALE);
+
+/** Lit la réservation puis lui applique `run`. */
+async function withBooking(deps: Deps, id: string, run: (b: Booking) => OpResult | Promise<OpResult>): Promise<OpResult> {
+  const b = await getBooking(deps.env.DB, id);
+  return b ? run(b) : NOT_FOUND;
+}
+
+type Step = { event: PlanEvent; patch: (now: Date) => Partial<Booking> };
+
+const release = (): Partial<Booking> => ({ hold_until: null });
+
+/** Ce que chaque action écrit et annonce. L'événement nomme à la fois les messages à planifier et la ligne d'historique. */
+const STEPS: Record<BookingAction, Step> = {
+  validate: { event: "validated", patch: (now) => ({ hold_until: holdUntil(now, offer.paymentHours) }) },
+  refuse: { event: "refused", patch: release },
+  pay: { event: "paid", patch: (now) => ({ hold_until: null, deposit_paid_at: now.toISOString() }) },
+  expire: { event: "released", patch: release },
+  cancel: { event: "cancelled", patch: release },
+};
+
+/**
+ * Fait passer `b` à l'état que la machine prévoit pour `action`. Les messages encore en file sont annulés
+ * avant ceux de l'événement : aucun message périmé ne part. `stale` si l'action est interdite depuis cet
+ * état, ou si `b` n'y est plus au moment de l'écriture.
+ */
+async function transition(deps: Deps, b: Booking, actor: Actor, action: BookingAction): Promise<OpResult> {
+  const to = nextStatus(b.status, action);
+  if (to === null) return STALE;
+  const { event, patch } = STEPS[action];
+  const now = deps.now();
+  const fields = patch(now);
+  // `cancelled` lit la réservation d'avant (une date bloquée ne prévient personne) ; les autres, celle d'après.
+  const planned = event === "cancelled" ? b : { ...b, ...fields, status: to };
+  return applied(
+    await applyTransition(deps.env.DB, {
+      id: b.id,
+      from: b.status,
+      to,
+      patch: fields,
+      actor,
+      event,
+      cancelPending: true,
+      notifications: plan(event, planned, now),
+      nowIso: now.toISOString(),
+    }),
+  );
+}
+
+const act =
+  (action: BookingAction) =>
+  (deps: Deps, id: string, actor: Actor): Promise<OpResult> =>
+    withBooking(deps, id, (b) => transition(deps, b, actor, action));
+
+export const validateBooking = act("validate");
+export const refuseBooking = act("refuse");
+export const cancelBooking = act("cancel");
+export const confirmDeposit = act("pay");
+
+/** Libère une demande dont l'échéance est passée. Les vérifications Stripe se font avant l'appel. */
+export const expireHold = (deps: Deps, b: Booking): Promise<OpResult> => transition(deps, b, "system", "expire");
+
+/**
+ * Change des champs ou met des messages en file sans changer l'état, ni annuler ceux déjà prévus. C'est
+ * `applyTransition` de l'état à lui-même : à la différence de `patchBooking`, il n'écrit rien si la
+ * réservation a changé d'état depuis la lecture.
+ */
+const stay = async (
+  deps: Deps,
+  b: Booking,
+  now: Date,
+  event: string,
+  extra: Pick<Transition, "patch" | "notifications">,
+): Promise<OpResult> =>
+  applied(
+    await applyTransition(deps.env.DB, {
+      ...extra,
+      id: b.id,
+      from: b.status,
+      to: b.status,
+      actor: "owner",
+      event,
+      nowIso: now.toISOString(),
+    }),
+  );
+
+/**
+ * Ferme la session d'acompte, ou dit qu'elle est payée. Stripe refuse d'expirer une session qui n'est plus
+ * ouverte : on la lit d'abord, et si elle se ferme ou se paie entre la lecture et l'appel, on relit.
+ */
+async function closeSession(stripe: StripeGateway, id: string): Promise<"closed" | "paid"> {
+  const outcome = (session: StripeSession): "closed" | "paid" => (session.paymentStatus === "paid" ? "paid" : "closed");
+  const session = await stripe.retrieveSession(id);
+  if (session.status !== "open") return outcome(session);
+  try {
+    await stripe.expireSession(id);
+    return "closed";
+  } catch (error) {
+    const after = await stripe.retrieveSession(id);
+    if (after.status === "open") throw error; // vraie panne : la réservation reste intacte
+    return outcome(after);
+  }
+}
+
+/** Le prix se règle tant que l'acompte n'est pas payé. */
+const PRICE_EDITABLE: readonly BookingStatus[] = ["pending_review", "awaiting_deposit"];
+
+/**
+ * Fixe le prix, et l'acompte à la main ou d'après `offer.depositPercent`. Une session ouverte est expirée et
+ * oubliée : le client en rouvre une au même montant que le nouveau prix. Une session déjà payée donne `stale`.
+ * Une panne de Stripe lève, sans rien modifier.
+ */
+export const adjustPrice = (
+  deps: Deps,
+  id: string,
+  a: { priceCents: number; depositCents?: number },
+): Promise<OpResult> =>
+  withBooking(deps, id, async (b) => {
+    if (!PRICE_EDITABLE.includes(b.status)) return STALE;
+    if (b.stripe_session && (await closeSession(deps.stripe, b.stripe_session)) === "paid") return STALE;
+    return stay(deps, b, deps.now(), "price_adjusted", {
+      patch: {
+        price_cents: a.priceCents,
+        deposit_cents: a.depositCents ?? depositCents(a.priceCents, offer.depositPercent),
+        stripe_session: null,
+        stripe_session_expires: null,
+      },
+    });
+  });
+
+/** Renvoie le lien de paiement, sans prolonger l'échéance. La clé de dédoublonnage porte l'heure : chaque renvoi part. */
+export const resendPaymentLink = (deps: Deps, id: string): Promise<OpResult> =>
+  withBooking(deps, id, (b) => {
+    if (b.status !== "awaiting_deposit") return STALE;
+    const now = deps.now();
+    const notifications = plan("validated", b, now)
+      .filter((n) => n.template === "client_deposit_link")
+      .map((n) => ({ ...n, dedupe_key: `${n.dedupe_key}:${now.toISOString()}` }));
+    return stay(deps, b, now, "payment_link_resent", { notifications });
+  });
+
+export const markBalancePaid = (deps: Deps, id: string): Promise<OpResult> =>
+  withBooking(deps, id, (b) => {
+    if (b.status !== "confirmed") return STALE;
+    const now = deps.now();
+    return stay(deps, b, now, "balance_paid", { patch: { balance_paid_at: now.toISOString() } });
+  });
+
+/**
+ * Enregistre une réservation du propriétaire. Le délai minimum ne s'applique pas, mais la date doit exister.
+ * `plan` ne prévient personne pour une date bloquée.
+ */
+async function insertOwnerBooking(
+  deps: Deps,
+  status: "confirmed" | "blocked",
+  date: string,
+  fields: Partial<NewBooking>,
+): Promise<OpResult> {
+  if (!isValidDate(date)) return { ok: false, reason: "invalid" };
+  const now = deps.now();
+  const nowIso = now.toISOString();
+  const booking = blankBooking({ event_date: date, status, source: "manual" }, fields);
+  const specs = plan("manual_confirmed", { ...booking, created_at: nowIso, updated_at: nowIso }, now);
+  return insertBooking(deps.env.DB, booking, specs, nowIso);
+}
+
+export type ManualInput = {
+  date: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  eventType?: string;
+  venue?: string;
+  hours?: string;
+  priceCents: number;
+  depositCents: number;
+  notes?: string;
+};
+
+/** Une prestation confirmée pour un client qui appelle : acompte saisi à la main, pas encore encaissé en ligne. */
+export const createManual = (deps: Deps, a: ManualInput): Promise<OpResult> =>
+  insertOwnerBooking(deps, "confirmed", a.date, {
+    client_name: a.name,
+    client_phone: a.phone ?? null,
+    client_email: a.email ?? null,
+    event_type: a.eventType ?? null,
+    venue: a.venue ?? null,
+    event_hours: a.hours ?? null,
+    price_cents: a.priceCents,
+    deposit_cents: a.depositCents,
+    notes: a.notes ?? null,
+  });
+
+/** Réserve une date pour le propriétaire (congés, par exemple). Elle se retire avec `cancelBooking`. */
+export const blockDate = (deps: Deps, date: string, notes?: string): Promise<OpResult> =>
+  insertOwnerBooking(deps, "blocked", date, { notes: notes ?? null });
