@@ -120,12 +120,6 @@ const rows = async <T>(stmt: D1PreparedStatement): Promise<T[]> => (await stmt.a
 
 const count = async (stmt: D1PreparedStatement): Promise<number> => (await stmt.first<{ n: number }>())!.n;
 
-/** Vrai si la ligne existe dans l'état que cet appel vient d'écrire (`updated_at` vaut `nowIso`). */
-const justWritten = (id: string, nowIso: string, status?: BookingStatus): Sql => ({
-  sql: `id = ? AND updated_at = ?${status ? " AND status = ?" : ""}`,
-  params: status ? [id, nowIso, status] : [id, nowIso],
-});
-
 const selectWhere = (db: D1Database, where: Sql) =>
   db.prepare(`SELECT * FROM bookings WHERE ${where.sql}`).bind(...where.params);
 
@@ -159,18 +153,18 @@ const historyStmt = (
   actor: string,
   event: string,
   detail: string | undefined,
-  written: Sql,
+  onlyIf: Sql,
 ) =>
   db
     .prepare(
       `INSERT INTO booking_history (booking_id, at, actor, event, detail)
-       SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM bookings WHERE ${written.sql})`,
+       SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM bookings WHERE ${onlyIf.sql})`,
     )
-    .bind(bookingId, at, actor, event, detail ?? null, ...written.params);
+    .bind(bookingId, at, actor, event, detail ?? null, ...onlyIf.params);
 
-/** Une clé déjà connue est ignorée. Avec `written`, rien n'est écrit sans cette ligne. */
-const notificationStmt = (db: D1Database, n: NotificationSpec, written?: Sql) => {
-  const guard = written ? `EXISTS (SELECT 1 FROM bookings WHERE ${written.sql})` : "1";
+/** Une clé déjà connue est ignorée. Avec `onlyIf`, rien n'est écrit si aucune réservation n'y répond. */
+const notificationStmt = (db: D1Database, n: NotificationSpec, onlyIf?: Sql) => {
+  const guard = onlyIf ? `EXISTS (SELECT 1 FROM bookings WHERE ${onlyIf.sql})` : "1";
   return db
     .prepare(
       `INSERT OR IGNORE INTO notifications (booking_id, dedupe_key, channel, recipient, template, due_at)
@@ -178,17 +172,22 @@ const notificationStmt = (db: D1Database, n: NotificationSpec, written?: Sql) =>
     )
     .bind(
       ...[n.booking_id, n.dedupe_key, n.channel, n.recipient, n.template, n.due_at],
-      ...(written?.params ?? []),
+      ...(onlyIf?.params ?? []),
     );
 };
 
-/** Les écritures puis la lecture de la ligne, dans une seule transaction D1. */
+/**
+ * Les écritures puis la lecture de la ligne, dans une seule transaction D1. La ligne n'est rendue que si
+ * l'écriture n°`deciding` a modifié exactement une ligne : sinon l'appel n'a rien appliqué, et c'est `null`.
+ */
 async function writeThenRead(
   db: D1Database,
   writes: D1PreparedStatement[],
+  deciding: number,
   read: D1PreparedStatement,
 ): Promise<Booking | null> {
   const results = await db.batch<Booking>([...writes, read]);
+  if (results[deciding]?.meta.changes !== 1) return null;
   return results.at(-1)?.results[0] ?? null;
 }
 
@@ -214,6 +213,7 @@ export async function insertBooking(
     const booking = await writeThenRead(
       db,
       [insert, ...specs.map((spec) => notificationStmt(db, spec))],
+      0,
       selectWhere(db, { sql: "id = ?", params: [b.id] }),
     );
     return { ok: true, booking: booking! }; // écrite dans la même transaction
@@ -225,32 +225,26 @@ export async function insertBooking(
 
 /**
  * Change l'état de `from` à `to`, ou renvoie `null` si la réservation n'est plus dans `from`.
- * Le `UPDATE` ne touche que la ligne dans l'état attendu ; chaque instruction suivante ne s'exécute que
- * si ce `UPDATE` vient d'avoir lieu, de sorte qu'un état périmé n'écrit rien.
+ * Chaque écriture annexe ne s'exécute que si la réservation est encore dans `from`, et le `UPDATE` qui
+ * change l'état vient en dernier : il décide du résultat, d'après le nombre de lignes qu'il a modifiées.
  */
 export async function applyTransition(db: D1Database, t: Transition): Promise<Booking | null> {
-  const written = justWritten(t.id, t.nowIso, t.to);
+  const stillFrom: Sql = { sql: "id = ? AND status = ?", params: [t.id, t.from] };
   const cancelPending = db
     .prepare(
       `UPDATE notifications SET cancelled_at = ?
        WHERE booking_id = ? AND sent_at IS NULL AND cancelled_at IS NULL
-         AND EXISTS (SELECT 1 FROM bookings WHERE ${written.sql})`,
+         AND EXISTS (SELECT 1 FROM bookings WHERE ${stillFrom.sql})`,
     )
-    .bind(t.nowIso, t.id, ...written.params);
-  return writeThenRead(
-    db,
-    [
-      updateBooking(db, t.nowIso, [["status", t.to], ...patchAssignments(t.patch)], {
-        sql: "id = ? AND status = ?",
-        params: [t.id, t.from],
-      }),
-      historyStmt(db, t.id, t.nowIso, t.actor, t.event, t.detail, written),
-      // Avant les nouvelles notifications, pour ne pas annuler celles que cette transition planifie.
-      ...(t.cancelPending ? [cancelPending] : []),
-      ...(t.notifications ?? []).map((n) => notificationStmt(db, n, written)),
-    ],
-    selectWhere(db, written),
-  );
+    .bind(t.nowIso, t.id, ...stillFrom.params);
+  const writes = [
+    historyStmt(db, t.id, t.nowIso, t.actor, t.event, t.detail, stillFrom),
+    // Avant les nouvelles notifications, pour ne pas annuler celles que cette transition planifie.
+    ...(t.cancelPending ? [cancelPending] : []),
+    ...(t.notifications ?? []).map((n) => notificationStmt(db, n, stillFrom)),
+    updateBooking(db, t.nowIso, [["status", t.to], ...patchAssignments(t.patch)], stillFrom),
+  ];
+  return writeThenRead(db, writes, writes.length - 1, selectWhere(db, { sql: "id = ?", params: [t.id] }));
 }
 
 /** Modifie des champs sans changer l'état. `null` si la réservation n'existe pas. */
@@ -262,15 +256,12 @@ export async function patchBooking(
   event: string,
   nowIso: string,
 ): Promise<Booking | null> {
-  const written = justWritten(id, nowIso);
-  return writeThenRead(
-    db,
-    [
-      updateBooking(db, nowIso, patchAssignments(patch), { sql: "id = ?", params: [id] }),
-      historyStmt(db, id, nowIso, actor, event, undefined, written),
-    ],
-    selectWhere(db, written),
-  );
+  const exists: Sql = { sql: "id = ?", params: [id] };
+  const writes = [
+    historyStmt(db, id, nowIso, actor, event, undefined, exists),
+    updateBooking(db, nowIso, patchAssignments(patch), exists),
+  ];
+  return writeThenRead(db, writes, writes.length - 1, selectWhere(db, exists));
 }
 
 export const getBooking = (db: D1Database, id: string): Promise<Booking | null> =>
@@ -366,8 +357,9 @@ export const getHistory = (db: D1Database, id: string): Promise<HistoryRow[]> =>
   rows<HistoryRow>(db.prepare("SELECT * FROM booking_history WHERE booking_id = ? ORDER BY id").bind(id));
 
 /**
- * Efface les données personnelles des refus et expirations modifiés avant `beforeIso`, une seule fois
- * par ligne, et date l'opération à `nowIso`. Renvoie le nombre de lignes anonymisées.
+ * Efface les données personnelles des refus et expirations créés avant `beforeIso`, une seule fois par
+ * ligne, et date l'opération à `nowIso`. Le délai court depuis la création : modifier une demande ne
+ * prolonge pas la conservation. Renvoie le nombre de lignes anonymisées.
  */
 export async function anonymizeOld(db: D1Database, beforeIso: string, nowIso: string): Promise<number> {
   const erase = PERSONAL_COLUMNS.map((column) => `${column} = NULL`).join(", ");
@@ -375,7 +367,7 @@ export async function anonymizeOld(db: D1Database, beforeIso: string, nowIso: st
   const result = await db
     .prepare(
       `UPDATE bookings SET ${erase}, anonymized_at = ?
-       WHERE status IN ${statuses.sql} AND updated_at < ? AND anonymized_at IS NULL`,
+       WHERE status IN ${statuses.sql} AND created_at < ? AND anonymized_at IS NULL`,
     )
     .bind(nowIso, ...statuses.params, beforeIso)
     .run();

@@ -151,23 +151,33 @@ describe("insertBooking", () => {
 });
 
 describe("applyTransition", () => {
-  it("une transition sur un état périmé ne change rien et n'écrit rien", async () => {
-    const { booking } = await insert(newBooking({ status: "confirmed" }));
+  // Deux états périmés : la ligne a changé avant, ou elle est déjà dans l'état visé et datée de l'instant de
+  // l'appel (le cas qui trompait une condition fondée sur `status = to AND updated_at = nowIso`).
+  it.each([
+    ["la ligne a changé avant", { from: "pending_review", to: "refused", nowIso: "2026-11-08T10:00:00.000Z" }],
+    ["la ligne est déjà dans l'état visé, au même instant", { from: "awaiting_deposit", to: "confirmed", nowIso: T0 }],
+  ] as const)("une transition sur un état périmé ne change rien et n'écrit rien (%s)", async (_case, step) => {
+    const nb = newBooking({ status: "confirmed" });
+    await insertBooking(env.DB, nb, [spec("en-attente", nb.id)], T0);
+    const before = await getBooking(env.DB, nb.id);
+
     const r = await applyTransition(env.DB, {
-      id: booking.id,
-      from: "pending_review",
-      to: "refused",
+      id: nb.id,
+      ...step,
       patch: { notes: "ne doit pas être écrit" },
       actor: "owner",
       event: "refused",
-      notifications: [spec("k1")],
       cancelPending: true,
-      nowIso: "2026-11-08T10:00:00.000Z",
+      notifications: [spec("k1", nb.id)],
     });
+
     expect(r).toBeNull();
-    expect(await getBooking(env.DB, booking.id)).toEqual(booking);
-    expect(await getHistory(env.DB, booking.id)).toHaveLength(0);
-    expect(await listDueNotifications(env.DB, T0, 10)).toHaveLength(0);
+    expect(await getBooking(env.DB, nb.id)).toEqual(before);
+    expect(await getHistory(env.DB, nb.id)).toHaveLength(0);
+    // L'envoi en attente reste dû, non annulé ; la notification de la transition n'est pas écrite.
+    expect(await dueKeys()).toEqual(["en-attente"]);
+    const stored = await env.DB.prepare("SELECT dedupe_key, cancelled_at FROM notifications").all();
+    expect(stored.results).toEqual([{ dedupe_key: "en-attente", cancelled_at: null }]);
   });
 
   it("une transition sur une réservation inconnue renvoie null", async () => {
@@ -295,6 +305,23 @@ describe("applyTransition", () => {
     expect(r.filter((x) => x !== null)).toHaveLength(1);
     expect(await getHistory(env.DB, booking.id)).toHaveLength(1);
     expect(await dueKeys()).toHaveLength(1);
+  });
+
+  it("deux décisions identiques au même instant : une seule passe", async () => {
+    const { booking } = await insert(newBooking());
+    const refuse = () =>
+      applyTransition(env.DB, {
+        id: booking.id,
+        from: "pending_review",
+        to: "refused",
+        actor: "owner",
+        event: "refused",
+        notifications: [spec("k-refused", booking.id)],
+        nowIso: T0,
+      });
+    const r = await Promise.all([refuse(), refuse()]);
+    expect(r.filter((x) => x !== null)).toHaveLength(1);
+    expect(await getHistory(env.DB, booking.id)).toHaveLength(1);
   });
 
   it.each(["id", "token", "status", "created_at", "updated_at"] as const)(
@@ -629,6 +656,16 @@ describe("anonymizeOld", () => {
     for (const before of [recent, cancelled, pending, edge]) {
       expect(await getBooking(env.DB, before.id)).toEqual(before);
     }
+  });
+
+  it("compte les 12 mois depuis la création : modifier une demande ne prolonge pas la conservation", async () => {
+    const refused = await seed("refused", "2026-12-01");
+    await patchBooking(env.DB, refused.id, { notes: "Rappelée." }, "owner", "noted", T0);
+    expect((await getBooking(env.DB, refused.id))!.updated_at).toBe(T0);
+
+    expect(await anonymizeOld(env.DB, CUTOFF, T0)).toBe(1);
+
+    expect(await getBooking(env.DB, refused.id)).toMatchObject({ ...PERSONAL, anonymized_at: T0, updated_at: T0 });
   });
 
   it("ne repasse pas sur une ligne déjà anonymisée", async () => {
