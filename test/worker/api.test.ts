@@ -189,6 +189,20 @@ describe("POST /api/requests : limites", () => {
     expect((await stored()).every((b) => b.ip_hash === null)).toBe(true);
   });
 
+  it.each([["vide", ""], ["absent", undefined]])(
+    "avec un sel %s, ne garde aucune empreinte et n'applique pas la limite par adresse",
+    async (_label, salt) => {
+      const d = fakeDeps({ env: { ...env, IP_HASH_SALT: salt as string } });
+      for (let i = 0; i < 6; i++) {
+        const r = await post(body({ date: `2026-12-${19 + i}`, email: `client${i}@example.test` }), d);
+        expect(r.status).toBe(201);
+      }
+      const rows = await stored();
+      expect(rows).toHaveLength(6);
+      expect(rows.every((b) => b.ip_hash === null)).toBe(true);
+    },
+  );
+
   it("conserve seulement une empreinte salée de l'adresse IP", async () => {
     await post(body());
     const [b] = await listRange(env.DB, "2026-12-19", "2026-12-19");
@@ -300,11 +314,46 @@ describe("POST /api/requests : Turnstile", () => {
     expect((await post(body(), fakeDeps({ verifyTurnstile: async () => "unavailable" }))).status).toBe(201);
   });
 
-  it("accepte la demande si la vérification Turnstile lève une erreur", async () => {
-    const verifyTurnstile = async (): Promise<never> => {
-      throw new Error("panne");
-    };
-    expect((await post(body(), fakeDeps({ verifyTurnstile }))).status).toBe(201);
+  it("accepte la demande si la vérification Turnstile lève une erreur, et le consigne sans donnée personnelle", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const verifyTurnstile = async (): Promise<never> => {
+        throw new Error("panne");
+      };
+      expect((await post(body({ turnstile_token: "jeton-secret-123" }), fakeDeps({ verifyTurnstile }))).status).toBe(201);
+      expect(await stored()).toHaveLength(1);
+
+      expect(log).toHaveBeenCalledOnce();
+      const logged = log.mock.calls[0].map(String).join(" ");
+      expect(logged).toContain("Turnstile");
+      expect(logged).toContain("panne");
+      for (const personal of ["jeton-secret-123", "Camille", "camille@example.test", IP]) {
+        expect(logged).not.toContain(personal);
+      }
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("répond que la demande est faite à qui renvoie la sienne avec un jeton déjà dépensé", async () => {
+    await post(body());
+    const r = await post(body({ turnstile_token: "deja-utilise" }), fakeDeps({ verifyTurnstile: async () => "fail" }));
+    expect(r.status).toBe(200);
+    expect(await reply(r)).toEqual({ status: "already_requested" });
+    expect(await stored()).toHaveLength(1);
+  });
+
+  it("ne consulte pas Turnstile pour une demande déjà enregistrée", async () => {
+    await post(body());
+    const verifyTurnstile = vi.fn(async () => "pass" as const);
+    expect((await post(body(), fakeDeps({ verifyTurnstile }))).status).toBe(200);
+    expect(verifyTurnstile).not.toHaveBeenCalled();
+  });
+
+  it("refuse toujours un robot qui envoie une autre demande", async () => {
+    await post(body());
+    const r = await post(body({ date: "2026-12-20" }), fakeDeps({ verifyTurnstile: async () => "fail" }));
+    expect(r.status).toBe(403);
     expect(await stored()).toHaveLength(1);
   });
 });

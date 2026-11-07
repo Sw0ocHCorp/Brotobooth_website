@@ -89,17 +89,21 @@ function parseRequest(input: unknown, now: Date): { ok: true; value: RequestInpu
   return fields.length > 0 ? { ok: false, fields } : { ok: true, value: value as RequestInput };
 }
 
-/** Une panne du service anti-robots, annoncée ou non, ne coûte jamais une demande. */
+/**
+ * Une panne du service anti-robots, annoncée ou non, ne coûte jamais une demande. Une exception est
+ * consignée (message seulement, ni jeton ni adresse) : sans trace, un secret erroné couperait la protection en silence.
+ */
 async function checkTurnstile(deps: Deps, token: string, ip: string | null) {
   try {
     return await deps.verifyTurnstile(token, ip);
-  } catch {
+  } catch (error) {
+    console.error(`Turnstile : ${error instanceof Error ? error.message : "erreur inconnue"}`);
     return "unavailable";
   }
 }
 
 /**
- * Enregistre la demande d'un client : champs, Turnstile, doublon, limites, puis insertion qui tient la date.
+ * Enregistre la demande d'un client : champs, doublon, Turnstile, limites, puis insertion qui tient la date.
  * Un même envoi répété donne `already_requested`, y compris quand deux envois se croisent.
  */
 export async function createRequest(deps: Deps, input: unknown, ip: string | null): Promise<CreateRequestResult> {
@@ -109,13 +113,16 @@ export async function createRequest(deps: Deps, input: unknown, ip: string | nul
   const request = parsed.value;
   const db = deps.env.DB;
 
-  if ((await checkTurnstile(deps, request.turnstile_token, ip)) === "fail") return { kind: "bot" };
-
+  // Avant Turnstile : un jeton ne sert qu'une fois, un second envoi (double clic) arrive avec un jeton dépensé.
   const findTwin = () => findActiveByDateAndEmail(db, request.date, request.email);
   const twin = await findTwin();
   if (twin) return { kind: "already_requested", booking: twin };
 
-  const ipHash = ip === null ? null : await hashIp(deps.env.IP_HASH_SALT, ip);
+  if ((await checkTurnstile(deps, request.turnstile_token, ip)) === "fail") return { kind: "bot" };
+
+  // Sans sel, une empreinte se retrouverait par essais : mieux vaut n'en garder aucune, et sauter la limite par adresse.
+  const salt = deps.env.IP_HASH_SALT;
+  const ipHash = ip && salt ? await hashIp(salt, ip) : null;
   const dayAgo = new Date(now.getTime() - 24 * HOUR_MS).toISOString();
   if (
     (await countActiveByEmail(db, request.email)) >= offer.maxActivePerEmail ||
