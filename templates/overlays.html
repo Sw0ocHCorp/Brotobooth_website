@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0f">
+<title>Overlays — BrotoBooth</title>
+<style>
+{% include "_theme.css" %}
+
+/* ---------- page ---------- */
+
+body {
+  max-width: 720px; margin: 0 auto;
+  padding: 20px 16px calc(32px + env(safe-area-inset-bottom));
+}
+.msg {
+  border-radius: 12px; padding: 10px 14px;
+  font-size: .9rem; margin-bottom: 16px;
+}
+
+.panel { padding: 20px 16px; margin-bottom: 18px; }
+.panel p { color: var(--text-soft); font-size: .85rem; margin-top: 8px; }
+input[type="password"], input[type="file"] {
+  width: 100%; padding: 12px;
+  font-size: 1.05rem;
+}
+.panel .btn { width: 100%; min-height: 48px; margin-top: 10px; }
+
+.grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.item { border-radius: 16px; overflow: hidden; }
+/* What the booth will do with the file: offered on which photos, or
+   rejected and why — the verdict the printing screen used to keep to
+   its journal. */
+.verdict { font-size: .75rem; padding: 0 10px 8px; color: var(--text-soft); }
+.verdict.warn { color: var(--danger, #ef4444); }
+.item .thumb {
+  aspect-ratio: 3/2; display: flex; align-items: center;
+  justify-content: center;
+  /* Damier : un overlay est transparent, il faut que ça se voie. */
+  background: repeating-conic-gradient(var(--checker-a) 0% 25%,
+                                       var(--checker-b) 0% 50%)
+              0 0 / 20px 20px;
+}
+.item img { max-width: 100%; max-height: 100%; }
+.item .row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; padding: 7px 9px;
+}
+.item .name {
+  font-size: .72rem; color: var(--text-soft); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.item button {
+  border: 0; background: none; color: var(--danger);
+  font-size: 1rem; cursor: pointer; padding: 2px 4px;
+}
+.item .cloud { color: var(--text-faint); font-size: 1rem; }
+.legend { color: var(--text-faint); font-size: .8rem; margin-top: 12px; }
+.empty { color: var(--text-soft); padding: 20px 0 8px; text-align: center; }
+</style>
+</head>
+<body>
+{% include "_brand.html" %}
+<h1>Overlays de la borne</h1>
+
+{% if not enabled %}
+<p class="sub">Cette page est désactivée&nbsp;: aucun code n'est défini.
+Renseigner <code>BROTOBOOTH_ADMIN_PIN</code> dans
+<code>/etc/brotobooth/gallery.env</code> (modèle&nbsp;:
+<code>deploy/gallery.env.example</code>) pour l'activer.</p>
+
+{% elif not authed %}
+<p class="sub">Réservé à l'organisateur de la soirée.</p>
+{% if msg %}<div class="msg glass">{{ msg }}</div>{% endif %}
+<form class="panel glass" method="post" action="/overlays/login">
+  <input class="field" type="password" name="pin" inputmode="numeric"
+         placeholder="Code d'accès" autofocus autocomplete="off">
+  <button class="btn primary" type="submit">Entrer</button>
+  <p>Le code vous a été communiqué avec la borne.</p>
+</form>
+
+{% else %}
+<p class="sub">Un overlay est une image à fond transparent (cadre,
+monogramme, logo…) posée sur la photo au moment de l'impression. Sa
+forme dit pour quelles photos il sert : plus large que haut, il est
+proposé sur les photos en paysage ; plus haut que large, sur celles en
+portrait. Pour couvrir les deux, déposez ses deux versions sous le même
+nom suivi de <code>_paysage</code> et <code>_portrait</code>
+(<code>cadre_dore_paysage.png</code>, <code>cadre_dore_portrait.png</code>) :
+la borne les apparie, et sur une feuille 2×&nbsp;10×15 chaque photo
+reçoit la version de son orientation.</p>
+<p class="sub">Il est étiré sur toute la photo imprimée : dessinez-le à la
+forme du tirage — <strong>3:2</strong> pour un 10×15 (par exemple
+1800×1200&nbsp;px), 4:3 pour un 15×20 — sans quoi il sera étiré avec
+elle.</p>
+{% if msg %}<div class="msg glass">{{ msg }}</div>{% endif %}
+
+<ol class="steps glass">
+  <li>Choisissez vos fichiers <strong>PNG, WebP ou TIFF à fond
+      transparent</strong> (15&nbsp;Mo maximum), puis envoyez-les.</li>
+  <li>Ils sont proposés sur la borne dès le prochain affichage de
+      l'écran d'impression.</li>
+  <li>Retirez un fichier avec ✕ — ceux marqués d'un nuage viennent du
+      cloud et se retirent depuis la page d'envoi à distance.</li>
+</ol>
+
+<form class="panel glass" method="post" action="/overlays/upload"
+      enctype="multipart/form-data">
+  <input class="field" type="file" name="files" multiple required
+         accept=".png,.webp,.tif,.tiff,image/png,image/webp,image/tiff">
+  <button class="btn primary" type="submit">Envoyer sur la borne</button>
+</form>
+
+{% if overlays %}
+<div class="grid">
+  {% for overlay in overlays %}
+  <div class="item glass">
+    <div class="thumb">
+      <img src="/overlays/file/{{ overlay.name }}" alt="" loading="lazy">
+    </div>
+    <div class="row">
+      <span class="name" title="{{ overlay.name }}">
+        {{ overlay.name }} · {{ overlay.size_mb }}&nbsp;Mo</span>
+      {% if overlay.cloud %}
+      <span class="cloud" title="Déposé via le cloud : se retire depuis la
+page d'envoi à distance, pas d'ici."><svg class="icon" viewBox="0 0 24 24"
+        aria-label="cloud"><path d="M19.35 10.04A7.49 7.49 0 0 0 4.9 8.36
+        5.994 5.994 0 0 0 6 20h13a5 5 0 0 0 .35-9.96z"/></svg></span>
+      {% else %}
+      <form method="post" action="/overlays/delete"
+            onsubmit="return confirm('Supprimer {{ overlay.name }} ?');">
+        <input type="hidden" name="name" value="{{ overlay.name }}">
+        <button type="submit" title="Supprimer">✕</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if overlay.problem %}
+    <div class="verdict warn">Écarté par la borne : {{ overlay.problem }}</div>
+    {% elif overlay.orientation %}
+    <div class="verdict">Proposé sur les photos en {{ overlay.orientation }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% if overlays | selectattr("cloud") | first %}
+<p class="legend"><svg class="icon" viewBox="0 0 24 24"
+  aria-hidden="true"><path d="M19.35 10.04A7.49 7.49 0 0 0 4.9 8.36
+  5.994 5.994 0 0 0 6 20h13a5 5 0 0 0 .35-9.96z"/></svg>&nbsp;: overlay
+synchronisé depuis le cloud — il se retire depuis la page d'envoi à
+distance (ou le tableau de bord Supabase), la borne suit toute seule.</p>
+{% endif %}
+{% else %}
+<div class="empty">Aucun overlay sur la borne pour le moment.</div>
+{% endif %}
+{% endif %}
+</body>
+</html>

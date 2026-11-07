@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Brotobooth · maquette de la page</title>
+<style>
+@font-face{font-family:Outfit;font-weight:400;font-display:swap;src:url(/files/Outfit-latin-400.ttf) format("truetype")}
+@font-face{font-family:Outfit;font-weight:600;font-display:swap;src:url(/files/Outfit-latin-600.ttf) format("truetype")}
+@font-face{font-family:Unbounded;font-weight:700;font-display:swap;src:url(/files/Unbounded-latin-700.ttf) format("truetype")}
+@font-face{font-family:Unbounded;font-weight:800;font-display:swap;src:url(/files/Unbounded-latin-800.ttf) format("truetype")}
+:root{--bg-a:#0b0b0f;--bg-b:#14141b;--text:#fff;--soft:rgba(255,255,255,.67);--faint:rgba(255,255,255,.42);
+  --glass-line:rgba(255,255,255,.16);--glass-soft:rgba(255,255,255,.09);--row:rgba(255,255,255,.06);--field:rgba(11,11,15,.63);
+  --accent:#f2559b;--select:#ff8a3d;--btn-line:rgba(255,255,255,.35);
+  --card:rgba(22,22,29,.66);--card-top:rgba(44,44,54,.66);--card-line:rgba(255,255,255,.15);
+  --gutter:clamp(16px,5vw,72px);--bar:clamp(62px,7vw,96px)}
+*{box-sizing:border-box}
+html{scroll-padding-top:var(--bar)}
+@media (prefers-reduced-motion:no-preference){html.ready{scroll-behavior:smooth}}
+html,body{margin:0;background:var(--bg-a);color:var(--text);font:400 clamp(16px,1.15vw,18px)/1.5 Outfit,system-ui,sans-serif}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;cursor:pointer}
+h2{font:800 clamp(28px,4.4vw,62px)/1.1 Unbounded;letter-spacing:-.01em;margin:0 0 .5em}
+.over{display:block;font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--soft);margin-bottom:.8em}
+.btn,.btn2{display:inline-block;padding:.85em 1.4em;border-radius:1.05em;line-height:1.1;min-height:44px;border:0;background:none}
+.btn{background:var(--accent);color:#fff;font-family:Unbounded;font-weight:700}
+.btn[disabled]{opacity:.35;cursor:default}
+.btn2{border:1px solid var(--btn-line);font-weight:600;background:rgba(11,11,15,.35)}
+.todo{outline:1px dashed var(--btn-line);outline-offset:3px;border-radius:4px;color:var(--soft)}
+
+/* Top bar */
+.bar{position:fixed;inset:0 0 auto 0;height:var(--bar);z-index:40;display:flex;align-items:center;justify-content:flex-end;
+  padding:0 var(--gutter);gap:clamp(14px,2.4vw,34px);font-weight:600;transition:background .25s}
+.bar.solid{background:rgba(11,11,15,.74);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+#logo{position:fixed;overflow:visible;z-index:50;pointer-events:none}
+.home{position:fixed;left:0;top:0;width:clamp(100px,16vw,210px);height:var(--bar);z-index:51}
+
+/* Opening: the wall */
+.hero{position:relative;height:100svh;min-height:560px;overflow:hidden;display:flex;align-items:center;justify-content:center;
+  text-align:center;padding:var(--gutter);container-type:inline-size}
+#wall{position:absolute;inset:0;isolation:isolate;z-index:0}
+.print{position:absolute;background:#fff;padding:1.3% 1.3% 2.6%;box-shadow:0 6px 24px rgba(0,0,0,.35);width:var(--w);will-change:transform}
+.print img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover}
+.veil{position:absolute;inset:0;z-index:1;background:radial-gradient(ellipse 62% 62% at 50% 52%,rgba(11,11,15,.9) 0,rgba(11,11,15,.74) 55%,rgba(11,11,15,.42) 100%)}
+.hero-copy{position:relative;z-index:2;max-width:880px}
+.hero-copy h1{font:800 clamp(32px,5.4vw,78px)/1.08 Unbounded;letter-spacing:-.01em;margin:0 0 .45em}
+.hero-copy p{margin:0 auto 1.5em;max-width:40em;color:rgba(255,255,255,.88);font-size:clamp(16px,1.35vw,20px)}
+.cta{display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
+.reveal{opacity:0}
+@media (max-width:760px){.veil{background:radial-gradient(ellipse 96% 46% at 50% 52%,rgba(11,11,15,.92) 0,rgba(11,11,15,.78) 62%,rgba(11,11,15,.42) 100%)}}
+
+/* Steps */
+main{overflow-x:clip}
+section.block{padding:clamp(56px,9vw,130px) var(--gutter)}
+.step{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:clamp(24px,5vw,80px);align-items:center;max-width:1320px;margin:0 auto clamp(48px,8vw,110px)}
+.step:nth-child(even){grid-template-columns:minmax(0,1fr) minmax(0,1.35fr)}
+.step:nth-child(even) figure{order:2}
+.step:last-child{margin-bottom:0}
+.step h3{font:800 clamp(24px,3.2vw,44px)/1.12 Unbounded;margin:0 0 .45em}
+.step p{margin:0;color:var(--soft);max-width:30em}
+figure{margin:0}
+.shot{background:#fff;padding:1.3% 1.3% 3.4%;box-shadow:0 10px 36px rgba(0,0,0,.45);transform:rotate(var(--r,-2deg))}
+.shot img{display:block;width:100%;height:auto}
+.js .toss{visibility:hidden}
+.js .toss.in{visibility:visible}
+@media (max-width:760px){.step,.step:nth-child(even){grid-template-columns:1fr}.step:nth-child(even) figure{order:0}}
+
+/* The handset */
+.phone{background:var(--bg-b)}
+.phone-in{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:clamp(24px,5vw,80px);align-items:center;max-width:1320px;margin:auto}
+.phone p{color:var(--soft);margin:0 0 1em;max-width:32em}
+.also{list-style:none;margin:1.6em 0 0;padding:0;border-top:1px solid var(--glass-soft)}
+.also li{padding:.8em 0;border-bottom:1px solid var(--glass-soft);display:flex;justify-content:space-between;gap:16px}
+.also b{font-weight:600}
+.also span{color:var(--soft);text-align:right}
+@media (max-width:760px){.phone-in{grid-template-columns:1fr}.also li{display:block}.also span{display:block;text-align:left}}
+
+/* Plans */
+.plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(12px,1.6vw,22px);max-width:1320px;margin:auto}
+.head{max-width:1320px;margin:0 auto 1.6em}
+.plan{background:var(--row);border-radius:18px;padding:clamp(20px,2.2vw,32px);display:flex;flex-direction:column;gap:.6em}
+.plan h3{font:700 clamp(18px,1.6vw,22px)/1.2 Unbounded;margin:0}
+.plan .price{font:800 clamp(28px,3vw,42px)/1.1 Unbounded}
+.plan p{color:var(--soft);margin:0 0 .8em;flex:1}
+.plan .btn2{align-self:flex-start}
+@media (max-width:860px){.plans{grid-template-columns:1fr}}
+
+/* Us */
+.us{background:var(--bg-b);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:clamp(24px,5vw,80px);align-items:center}
+.us blockquote{margin:0 0 .6em;font:800 clamp(26px,3.6vw,52px)/1.14 Unbounded}
+@media (max-width:760px){.us{grid-template-columns:1fr}}
+.end{text-align:center}
+.end p{color:var(--soft);margin:-.4em 0 1.4em}
+.us p{color:var(--soft);margin:0;max-width:32em}
+.swatch{display:inline-block;width:14px;height:14px;border-radius:4px;background:rgba(255,255,255,.16);margin-right:6px;vertical-align:-2px}
+footer{padding:clamp(32px,4vw,56px) var(--gutter);display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px 40px;border-top:1px solid var(--glass-soft);color:var(--soft);font-size:15px}
+footer nav{display:flex;flex-wrap:wrap;gap:8px 22px}
+
+/* Reservation: the booth on film behind a frosted card */
+#res{display:none;position:fixed;inset:0;z-index:30;overflow:auto;background:var(--bg-a)}
+.reserve #res{display:block}
+.reserve main,.reserve footer{display:none}
+#res video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
+.res-veil{position:fixed;inset:0;background:linear-gradient(to right,rgba(11,11,15,.1) 0,rgba(11,11,15,.3) 45%,rgba(11,11,15,.72) 100%),linear-gradient(to bottom,rgba(11,11,15,.6) 0,rgba(11,11,15,0) 24%)}
+.res-in{position:relative;min-height:100%;display:flex;justify-content:flex-end;align-items:center;padding:calc(var(--bar) + 8px) var(--gutter) 28px}
+.card{width:min(500px,100%);background:linear-gradient(to bottom,var(--card-top),var(--card));border:1px solid var(--card-line);border-radius:22px;
+  padding:clamp(18px,2.2vw,28px);-webkit-backdrop-filter:blur(18px) saturate(1.2);backdrop-filter:blur(18px) saturate(1.2)}
+.card h2{font-size:clamp(22px,2.1vw,30px);margin:0 0 .25em}
+.steps{display:flex;gap:8px 16px;flex-wrap:wrap;margin:0 0 1em;padding:0;list-style:none;font-size:14px;color:var(--faint);font-weight:600}
+.steps .now{color:#fff}
+.month{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-weight:600}
+.month button{background:none;border:1px solid var(--glass-soft);border-radius:10px;width:44px;height:44px}
+.month button[disabled]{opacity:.3;cursor:default}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center}
+.grid small{color:var(--faint);font-size:12px;padding:4px 0}
+.day{background:none;border:0;border-radius:11px;height:clamp(40px,5.4vh,48px);font-weight:600}
+.day:not([disabled]){background:var(--row)}
+.day[disabled]{color:var(--faint);cursor:default;font-weight:400}
+.day.busy{text-decoration:line-through}
+.day[aria-pressed=true]{outline:2px solid var(--select);outline-offset:-2px}
+.legend{display:flex;gap:16px;font-size:13px;color:var(--soft);margin:10px 0 2px}
+.res-note{font-size:14px;color:var(--soft);margin:10px 0 14px}
+.res-foot{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.res-foot span{font-weight:600}
+.pane{display:none}.pane.on{display:block}
+.choice{display:block;width:100%;text-align:left;background:var(--row);border:0;border-radius:14px;padding:14px 16px;margin-bottom:8px}
+.choice b{display:block;font-weight:600}
+.choice span{color:var(--soft);font-size:14px}
+.choice[aria-pressed=true]{outline:2px solid var(--select);outline-offset:-2px}
+label{display:block;font-size:14px;color:var(--soft);margin-bottom:8px}
+input,select,textarea{display:block;width:100%;margin-top:3px;padding:10px 12px;background:var(--field);border:1px solid var(--glass-soft);border-radius:10px;color:#fff;font:inherit;min-height:44px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{display:flex;gap:8px;align-items:flex-start;color:var(--soft)}
+.check input{width:20px;height:20px;min-height:0;margin:2px 0 0;flex:none}
+.link{background:none;border:0;color:var(--soft);padding:10px 4px;min-height:44px}
+.credit{position:fixed;left:var(--gutter);bottom:20px;font-size:13px;color:rgba(255,255,255,.8)}
+@media (max-width:760px){.res-in{justify-content:center;align-items:flex-end;padding-top:calc(var(--bar) + 110px)}.credit{display:none}
+  .res-veil{background:linear-gradient(to bottom,rgba(11,11,15,.55) 0,rgba(11,11,15,.1) 24%,rgba(11,11,15,.7) 100%)}}
+</style>
+</head>
+<body>
+<a class="home" href="#" aria-label="Accueil"></a>
+<svg id="logo" viewBox="44 -767 4425 1684" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Brotobooth"></svg>
+<header class="bar reveal" id="bar">
+  <a href="#borne" class="onhome">La borne</a><a href="#formules" class="onhome">Formules</a><a href="#reserver" class="onhome">Réserver</a><a href="#" class="onres">Accueil</a>
+</header>
+
+<main>
+  <div class="hero" id="hero">
+    <div id="wall"></div>
+    <div class="veil"></div>
+    <div class="hero-copy reveal">
+      <h1>Réservez votre photobooth</h1>
+      <p>Vos invités se prennent en photo, repartent avec leur tirage et se laissent des messages au combiné.</p>
+      <div class="cta"><a class="btn" href="#reserver">Choisir une date</a><a class="btn2" href="#borne">Voir la borne</a></div>
+    </div>
+  </div>
+
+  <section class="block" id="borne">
+    <div class="head"><h2>Ce que vivent vos invités</h2></div>
+    <div class="steps-list">
+      <article class="step">
+        <figure class="shot toss" data-from="-1" style="--r:-2deg"><img alt="L'écran de la borne pendant le compte à rebours" src="/files/ecran-pose-4.jpg"></figure>
+        <div><span class="over">La prise de vue</span><h3>Ils prennent la pose</h3><p>Un compte à rebours à l'écran leur laisse le temps de se placer, seuls ou en groupe.</p></div>
+      </article>
+      <article class="step">
+        <figure class="shot toss" data-from="1" style="--r:1.6deg"><img alt="Les trois photos proposées par la borne" src="/files/ecran-3photos-2.jpg"></figure>
+        <div><span class="over">La prise de vue</span><h3>Clic, clic, clic</h3><p>Trois photos à la suite pour ne pas rater le bon moment. Ils gardent leur préférée.</p></div>
+      </article>
+      <article class="step">
+        <figure class="shot toss" data-from="-1" style="--r:-1.2deg"><img alt="Le choix du format d'impression sur la borne" src="/files/ecran-format-2.jpg"></figure>
+        <div><span class="over">L'impression</span><h3>Ils choisissent leur format</h3><p>10×15 ou 15×20, avec un filtre ou un dessin s'ils en ont envie.</p></div>
+      </article>
+      <article class="step">
+        <figure class="shot toss" data-from="1" style="--r:2.2deg"><img alt="Deux tirages tenus devant la borne" src="/files/gros-tirages.jpg"></figure>
+        <div><span class="over">Le tirage</span><h3>Ils repartent avec</h3><p>Le tirage sort de la borne, prêt à emporter. Ils retrouvent aussi leur photo sur leur téléphone.</p></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="block phone">
+    <div class="phone-in">
+      <div>
+        <h2>Un combiné sur le côté&nbsp;?</h2>
+        <p>Vos invités décrochent et se laissent des messages audio-vidéo, à écouter directement à la borne.</p>
+        <ul class="also">
+          <li><b>Un cadre à votre image</b><span>Préparez-le avant le jour J, il apparaît sur les tirages</span></li>
+          <li><b>Filtres et dessin</b><span>Vos invités personnalisent leur photo à l'écran</span></li>
+          <li><b>Boîte à questions</b><span>Bientôt : vos invités répondront en vidéo aux questions de la soirée</span></li>
+        </ul>
+      </div>
+      <figure class="shot toss" data-from="1" style="--r:-1.6deg"><img alt="Le combiné et le bac d'impression sur le côté de la borne" src="/files/gros-combine.jpg"></figure>
+    </div>
+  </section>
+
+  <section class="block" id="formules">
+    <div class="head"><h2>Les formules</h2></div>
+    <div class="plans">
+      <div class="plan"><h3 class="todo">[Formule 1]</h3><div class="price todo">[prix] €</div><p class="todo">[ce qui est inclus]</p><a class="btn2" href="#reserver">Choisir</a></div>
+      <div class="plan"><h3 class="todo">[Formule 2]</h3><div class="price todo">[prix] €</div><p class="todo">[ce qui est inclus]</p><a class="btn2" href="#reserver">Choisir</a></div>
+      <div class="plan"><h3 class="todo">[Formule 3]</h3><div class="price todo">[prix] €</div><p class="todo">[ce qui est inclus]</p><a class="btn2" href="#reserver">Choisir</a></div>
+    </div>
+  </section>
+
+  <section class="block us">
+    <figure class="shot toss" data-from="-1" style="--r:-2.4deg"><img alt="Les deux fondateurs dos à dos, photographiés par la borne" src="/files/tirage-1.jpg"></figure>
+    <div>
+      <blockquote>On lance notre premier photobooth&nbsp;!</blockquote>
+      <p>Nous avons construit cette borne nous-mêmes, du meuble en bois au logiciel. C'est notre première, et nous venons l'installer chez vous.</p>
+    </div>
+  </section>
+
+  <section class="block end">
+    <h2>Une date en tête&nbsp;?</h2>
+    <p>Vérifiez tout de suite si elle est libre.</p>
+    <a class="btn" href="#reserver">Choisir une date</a>
+  </section>
+</main>
+
+<footer>
+  <div class="todo">[téléphone] · [e-mail] · [réseaux]</div>
+  <nav><a>Mentions légales</a><a>CGV</a><a>Confidentialité</a></nav>
+</footer>
+
+<div id="res">
+  <video id="film" muted loop playsinline preload="none" src="/files/boucle-borne.mp4"></video>
+  <div class="res-veil"></div>
+  <div class="res-in">
+    <div class="card">
+      <ol class="steps" id="crumbs"><li class="now">1 · Date</li><li>2 · Formule</li><li>3 · Coordonnées</li></ol>
+
+      <div class="pane on" id="p1">
+        <h2>Choisissez votre date</h2>
+        <div class="month"><button id="prev" aria-label="Mois précédent">←</button><span id="monthName"></span><button id="next" aria-label="Mois suivant">→</button></div>
+        <div class="grid" id="days"></div>
+        <div class="legend"><span><i class="swatch"></i>Libre</span><span><s>12</s> Déjà réservée</span></div>
+        <p class="res-note">Rien à payer maintenant. Nous gardons cette date pour vous et vous répondons sous 72 h. Si tout est bon, vous recevrez un lien pour régler l'acompte.</p>
+        <div class="res-foot"><span id="picked">Aucune date choisie</span><button class="btn" id="go1" disabled>Continuer</button></div>
+      </div>
+
+      <div class="pane" id="p2">
+        <h2>Choisissez votre formule</h2>
+        <button class="choice" data-plan="1"><b class="todo">[Formule 1]</b><span>[prix] €</span></button>
+        <button class="choice" data-plan="2"><b class="todo">[Formule 2]</b><span>[prix] €</span></button>
+        <button class="choice" data-plan="3"><b class="todo">[Formule 3]</b><span>[prix] €</span></button>
+        <div class="res-foot"><button class="link" data-back="p1">← Retour</button><button class="btn" id="go2" disabled>Continuer</button></div>
+      </div>
+
+      <form class="pane" id="p3">
+        <h2>Vos coordonnées</h2>
+        <div class="two">
+          <label>Événement<select><option>Mariage</option><option>Anniversaire</option><option>Entreprise</option><option>Autre</option></select></label>
+          <label>Horaires<input placeholder="19 h - 1 h"></label>
+        </div>
+        <label>Lieu<input placeholder="Adresse de l'événement"></label>
+        <div class="two">
+          <label>Nom<input autocomplete="name"></label>
+          <label>Téléphone<input type="tel" autocomplete="tel"></label>
+        </div>
+        <label>E-mail<input type="email" autocomplete="email"></label>
+        <label class="check"><input type="checkbox"><span>J'accepte les conditions générales de vente.</span></label>
+        <div class="res-foot"><button class="link" type="button" data-back="p2">← Retour</button><button class="btn">Envoyer ma demande</button></div>
+      </form>
+
+      <div class="pane" id="p4">
+        <h2>Demande envoyée</h2>
+        <p class="res-note" id="done"></p>
+        <a class="btn2" href="#">Retour à l'accueil</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.documentElement.classList.add("js");
+const $ = id => document.getElementById(id);
+const logo = $("logo"), wall = $("wall"), hero = $("hero");
+const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// The booth's welcome, from ui/widgets/BrandLogo.py and ui/styles/Logo.py.
+const INTRO = 2, HOLD = .3, IMPACT = .8, PEAK = .875, REB_END = .95, B_FULL = 1.05, B_GONE = 1.3, TRAVEL = 1.4, BTN = 1.6;
+const OPENING = 300, REBOUND = 20, RELIEF = 35, B_IN = 90, B_OUT = 215, B_FAN = 34, B_W = 46, SLIT = 24;
+const BOX = {w: 4425, h: 1684};
+const prog = (t, a, b) => Math.min(Math.max((t - a) / (b - a), 0), 1);
+const inCubic = p => p ** 3, outQuad = p => 1 - (1 - p) ** 2, inQuad = p => p * p, outCubic = p => 1 - (1 - p) ** 3;
+const inOutCubic = p => p < .5 ? 4 * p ** 3 : 1 - (-2 * p + 2) ** 3 / 2;
+let P = {};
+
+function intro(t) {
+  t = Math.min(Math.max(t, 0), INTRO);
+  let opening;
+  if (t < IMPACT) opening = OPENING * (1 - inCubic(prog(t, HOLD, IMPACT)));
+  else if (t < PEAK) opening = REBOUND * outQuad(prog(t, IMPACT, PEAK));
+  else opening = REBOUND * (1 - inQuad(prog(t, PEAK, REB_END)));
+  const travel = inOutCubic(prog(t, TRAVEL, INTRO));
+  return {t, opening, travel, relief: 1 - travel, opacity: 1 - .1 * travel,
+    burstOuter: B_IN + (B_OUT - B_IN) * outCubic(prog(t, IMPACT, B_FULL)),
+    burstOpacity: t < IMPACT ? 0 : 1 - prog(t, B_FULL, B_GONE),
+    reveal: prog(t, BTN, INTRO)};
+}
+const fit = (bw, bh) => { const s = Math.min(bw / BOX.w, bh / BOX.h); return [BOX.w * s, BOX.h * s]; };
+function place(travel) {
+  const W = innerWidth, H = innerHeight;
+  const [bw, bh] = fit(.7 * W, .45 * H);
+  const bar = parseFloat(getComputedStyle($("bar")).height);
+  const [sw, sh] = fit(Math.max(92, Math.min(170, W * .13)), bar * .72);
+  const mix = (a, b) => a * (1 - travel) + b * travel;
+  logo.style.left = mix((W - bw) / 2, Math.max(16, W * .05 > 72 ? 72 : W * .05)) + "px";
+  logo.style.top = mix((H - bh) / 2, (bar - sh) / 2) + "px";
+  logo.style.width = mix(bw, sw) + "px";
+  logo.style.height = mix(bh, sh) + "px";
+}
+function draw(f) {
+  place(f.travel);
+  logo.style.opacity = f.opacity;
+  const shift = RELIEF * f.relief;
+  [[P.reliefOrange, 2], [P.reliefRose, 1]].forEach(([g, rank]) => {
+    g.style.display = f.relief > 0 ? "" : "none";
+    const s = rank * shift;
+    g.children[0].setAttribute("transform", `translate(${s} ${s})`);
+    g.children[1].setAttribute("transform", `translate(${s - f.opening} ${s})`);
+    g.children[2].setAttribute("transform", `translate(${s + f.opening} ${s})`);
+  });
+  P.L.setAttribute("transform", `translate(${-f.opening} 0)`);
+  P.R.setAttribute("transform", `translate(${f.opening} 0)`);
+  P.burst.style.opacity = f.burstOpacity;
+  const width = Math.min(B_W, f.burstOuter - B_IN);
+  [SLIT + 180 + B_FAN, SLIT + 180, SLIT + 180 - B_FAN].forEach((deg, i) => {
+    const a = deg * Math.PI / 180, wx = Math.sin(a), wy = -Math.cos(a), l = P.lines[i];
+    l.setAttribute("x1", P.tip[0] + wx * B_IN); l.setAttribute("y1", P.tip[1] + wy * B_IN);
+    l.setAttribute("x2", P.tip[0] + wx * f.burstOuter); l.setAttribute("y2", P.tip[1] + wy * f.burstOuter);
+    l.setAttribute("stroke-width", Math.max(width, .01));
+  });
+  document.querySelectorAll(".reveal").forEach(el => el.style.opacity = f.reveal);
+  if (f.t >= TRAVEL) startWall();
+}
+async function buildLogo() {
+  const parts = await (await fetch("/files/logo-parts.json")).json();
+  P.tip = parts.tip;
+  const path = (d, fill) => `<path d="${d}" fill="${fill}" fill-rule="evenodd"/>`;
+  const relief = c => `<g>${path(parts.broto, c)}${path(parts.left, c)}${path(parts.right, c)}</g>`;
+  logo.innerHTML = relief("#FF8A3D") + relief("#F2559B") + path(parts.broto, "#fff")
+    + `<g>${path(parts.left, "#fff")}${path(parts.rose, "#F2559B")}</g>`
+    + `<g>${path(parts.orange, "#FF8A3D")}${path(parts.right, "#fff")}</g>`
+    + `<g fill="none" stroke-linecap="round"><line stroke="#F2559B"/><line stroke="#fff"/><line stroke="#FF8A3D"/></g>`;
+  const g = logo.children;
+  P.reliefOrange = g[0]; P.reliefRose = g[1]; P.L = g[3]; P.R = g[4]; P.burst = g[5]; P.lines = [...g[5].children];
+}
+
+// The photo wall, tuned like ui/widgets/PhotoWall.py: no fading, only motion.
+const FLY_IN = 560, FLY_OUT = 640, MAX_TILT = 14, TICK = 280, RENEW = 2800;
+const SPOTS = {wide: [[12, 24], [36, 12], [65, 16], [90, 28], [8, 72], [32, 86], [62, 84], [90, 74], [50, 50]],
+               tall: [[20, 12], [80, 18], [12, 36], [88, 44], [18, 70], [82, 66], [30, 90], [75, 90]]};
+let wallStarted = false, photo = 0;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const tall = () => innerWidth < 760;
+function outside(el) {
+  const far = Math.max(innerWidth, innerHeight), cx = +el.dataset.cx, cy = +el.dataset.cy, side = Math.random() < .7;
+  const dx = side ? (cx < 50 ? -1 : 1) * far : rnd(-.1, .1) * innerWidth;
+  const dy = side ? rnd(-.1, .1) * innerHeight : (cy < 50 ? -1 : 1) * far;
+  return `translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px)) rotate(${+el.dataset.rot + rnd(-16, 16)}deg)`;
+}
+function throwPrint([cx, cy], z, still) {
+  const el = document.createElement("div");
+  el.className = "print";
+  el.style.setProperty("--w", (tall() ? rnd(52, 62) : rnd(26, 32)) + "cqw");
+  el.style.left = cx + "%"; el.style.top = cy + "%"; el.style.zIndex = z;
+  el.innerHTML = `<img alt="" src="/files/tirage-${(photo++ % 8) + 1}.jpg">`;
+  el.dataset.cx = cx; el.dataset.cy = cy; el.dataset.rot = rnd(-MAX_TILT, MAX_TILT);
+  wall.append(el);
+  const rest = `translate(-50%,-50%) rotate(${el.dataset.rot}deg)`;
+  el.style.transform = rest;
+  if (!still) el.animate([{transform: outside(el)}, {transform: rest}], {duration: FLY_IN, easing: "cubic-bezier(.34,1.34,.64,1)"});
+}
+function startWall() {
+  if (wallStarted) return;
+  wallStarted = true;
+  const spots = tall() ? SPOTS.tall : SPOTS.wide;
+  if (calm) { spots.forEach((s, i) => throwPrint(s, i + 1, true)); return; }
+  spots.forEach((s, i) => setTimeout(() => throwPrint(s, i + 1), i * TICK));
+  setTimeout(() => setInterval(() => {
+    if (scrollY > innerHeight * .8 || document.body.classList.contains("reserve")) return;
+    const prints = [...wall.children];
+    const old = prints[Math.floor(Math.random() * prints.length)];
+    old.animate([{transform: old.style.transform}, {transform: outside(old)}],
+                {duration: FLY_OUT, easing: "cubic-bezier(.6,-.2,.74,.05)", fill: "forwards"}).onfinish = () => old.remove();
+    throwPrint([+old.dataset.cx + rnd(-1.5, 1.5), +old.dataset.cy + rnd(-1.5, 1.5)], old.style.zIndex);
+  }, RENEW), spots.length * TICK + FLY_IN);
+}
+
+let raf = 0, started = 0, playing = false;
+function tick(now) {
+  const t = (now - started) / 1000;
+  draw(intro(t));
+  if (t < INTRO) raf = requestAnimationFrame(tick); else playing = false;
+}
+function endIntro() { cancelAnimationFrame(raf); playing = false; draw(intro(INTRO)); }
+addEventListener("pointerdown", () => { if (playing) endIntro(); });  // a touch ends it, as on the booth
+addEventListener("scroll", () => {
+  $("bar").classList.toggle("solid", scrollY > innerHeight * .7 && !document.body.classList.contains("reserve"));
+  if (playing && scrollY > 8) endIntro();
+}, {passive: true});
+addEventListener("resize", () => { if (!playing) place(1); });
+window.__seek = t => { cancelAnimationFrame(raf); playing = false; draw(intro(t)); };
+
+// The real shots are tossed in too, once each: the page's only other motion.
+const tosser = new IntersectionObserver((entries, io) => entries.forEach(e => {
+  if (!e.isIntersecting) return;
+  io.unobserve(e.target);
+  const el = e.target, r = getComputedStyle(el).getPropertyValue("--r"), from = +el.dataset.from;
+  el.classList.add("in");
+  if (!calm) el.animate([{transform: `translateX(${from * 110}vw) rotate(${from * 9}deg)`}, {transform: `rotate(${r})`}],
+                        {duration: FLY_IN + 100, easing: "cubic-bezier(.34,1.26,.64,1)"});
+}), {threshold: .12});
+document.querySelectorAll(".toss").forEach(el => tosser.observe(el));
+
+// Reservation: a mock calendar, no data is sent anywhere.
+const TODAY = new Date(2026, 10, 7), LEAD_DAYS = 7, BUSY = ["2026-11-21", "2026-12-05", "2026-12-12", "2026-12-31", "2027-01-16"];
+const MONTHS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+let shown = new Date(2026, 10, 1), chosen = null;
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const longDate = d => d.toLocaleDateString("fr-FR", {weekday: "long", day: "numeric", month: "long"});
+function month() {
+  $("monthName").textContent = `${MONTHS[shown.getMonth()]} ${shown.getFullYear()}`;
+  $("prev").disabled = shown <= new Date(2026, 10, 1);
+  const first = (new Date(shown.getFullYear(), shown.getMonth(), 1).getDay() + 6) % 7;
+  const count = new Date(shown.getFullYear(), shown.getMonth() + 1, 0).getDate();
+  const earliest = new Date(TODAY); earliest.setDate(earliest.getDate() + LEAD_DAYS);
+  let html = ["L", "M", "M", "J", "V", "S", "D"].map(d => `<small>${d}</small>`).join("") + "<span></span>".repeat(first);
+  for (let n = 1; n <= count; n++) {
+    const d = new Date(shown.getFullYear(), shown.getMonth(), n), k = iso(d), busy = BUSY.includes(k), past = d < earliest;
+    html += `<button class="day${busy ? " busy" : ""}" data-d="${k}" ${busy || past ? "disabled" : ""} aria-pressed="${chosen && iso(chosen) === k}">${n}</button>`;
+  }
+  $("days").innerHTML = html;
+}
+$("days").addEventListener("click", e => {
+  const b = e.target.closest(".day");
+  if (!b || b.disabled) return;
+  const [y, m, n] = b.dataset.d.split("-").map(Number);
+  chosen = new Date(y, m - 1, n);
+  $("picked").textContent = longDate(chosen).replace(/^./, c => c.toUpperCase());
+  $("go1").disabled = false;
+  month();
+});
+$("prev").onclick = () => { shown = new Date(shown.getFullYear(), shown.getMonth() - 1, 1); month(); };
+$("next").onclick = () => { shown = new Date(shown.getFullYear(), shown.getMonth() + 1, 1); month(); };
+function pane(id) {
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.id === id));
+  const n = +id[1];
+  [...$("crumbs").children].forEach((li, i) => li.classList.toggle("now", i + 1 === n));
+  $("crumbs").style.display = n > 3 ? "none" : "";
+  $("res").scrollTop = 0;
+}
+$("go1").onclick = () => pane("p2");
+$("go2").onclick = () => pane("p3");
+document.querySelectorAll(".choice").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".choice").forEach(c => c.setAttribute("aria-pressed", c === b));
+  $("go2").disabled = false;
+});
+document.querySelectorAll("[data-back]").forEach(b => b.onclick = () => pane(b.dataset.back));
+$("p3").addEventListener("submit", e => {
+  e.preventDefault();
+  $("done").textContent = `Nous gardons le ${longDate(chosen)} pour vous et vous répondons sous 72 h. Un e-mail vient de partir avec le récapitulatif de votre demande.`;
+  pane("p4");
+});
+
+function route() {
+  const reserve = location.hash === "#reserver";
+  document.body.classList.toggle("reserve", reserve);
+  document.querySelectorAll(".onhome").forEach(a => a.style.display = reserve ? "none" : "");
+  document.querySelectorAll(".onres").forEach(a => a.style.display = reserve ? "" : "none");
+  $("bar").classList.toggle("solid", !reserve && scrollY > innerHeight * .7);
+  const film = $("film");
+  if (reserve) {
+    if (playing) endIntro();
+    if (!calm) film.play().catch(() => {});
+    scrollTo(0, 0);
+  } else film.pause();
+}
+addEventListener("hashchange", route);
+
+(async () => {
+  await buildLogo();
+  history.scrollRestoration = "manual";
+  if (location.hash !== "#borne" && location.hash !== "#formules") scrollTo(0, 0);
+  document.documentElement.classList.add("ready");
+  month();
+  route();
+  if (calm || location.hash === "#reserver") { draw(intro(INTRO)); return; }
+  playing = true; started = performance.now(); raf = requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

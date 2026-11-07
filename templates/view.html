@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0f">
+<title>Votre photo — BrotoBooth</title>
+<style>
+{% include "_theme.css" %}
+
+/* ---------- page: one photo, full stage ---------- */
+
+body {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+}
+.top { padding: 14px 16px; }
+.back { color: var(--text-soft); text-decoration: none; font-size: .95rem; }
+.shot {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 8px;
+}
+.shot img {
+  max-width: 100%;
+  /* L'image entière à l'écran, boutons compris, sans faire défiler. */
+  max-height: calc(100vh - 190px);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.actions {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+}
+.hint {
+  color: var(--text-faint);
+  font-size: .8rem; text-align: center;
+  padding-bottom: 4px;
+}
+</style>
+</head>
+<body>
+<div class="top"><a class="back" href="/">← Toutes les photos</a></div>
+<div class="shot"><img src="/media/{{ name }}" alt="Votre photo"></div>
+<div class="actions">
+  <a class="btn primary" href="/media/{{ name }}" download="{{ web_name }}">
+    Enregistrer cette photo
+  </a>
+  <a class="btn ghost" href="/original/{{ name }}">
+    Qualité maximale (fichier original)
+  </a>
+  <p class="hint">Astuce&nbsp;: un appui long sur l'image l'enregistre
+    aussi directement dans vos photos.</p>
+</div>
+</body>
+</html>

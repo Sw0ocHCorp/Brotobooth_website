@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0f">
+<title>Boîte à questions — BrotoBooth</title>
+<style>
+{% include "_theme.css" %}
+
+/* ---------- page ---------- */
+
+body {
+  max-width: 720px; margin: 0 auto;
+  padding: 20px 16px calc(32px + env(safe-area-inset-bottom));
+}
+.msg {
+  border-radius: 12px; padding: 10px 14px;
+  font-size: .9rem; margin: 16px 0;
+}
+
+.panel { padding: 20px 16px; margin-bottom: 18px; }
+.panel p { color: var(--text-soft); font-size: .85rem; margin-top: 8px; }
+.panel label { display: block; font-weight: 600; margin-bottom: 8px; }
+input[type="text"], input[type="password"] {
+  width: 100%; padding: 12px;
+  font-size: 1.05rem;
+}
+.panel .btn { width: 100%; min-height: 48px; margin-top: 10px; }
+.count { color: var(--text-faint); font-size: .8rem; margin: -6px 2px 18px; }
+.add { margin-top: 18px; }
+
+/* One question and what was answered to it. A long one wraps, a
+   markup-looking one is only text (the template escapes it). */
+.head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px 12px;
+}
+.head .q { flex: 1 1 14em; min-width: 0; }
+.head h2 {
+  font-size: 1.05rem; font-weight: 600; line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.head form { margin: 0; }
+.tag {
+  display: inline-block; margin-top: 6px;
+  font-size: .72rem; font-weight: 600; letter-spacing: .04em;
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--glass); border: 1px solid var(--glass-border-soft);
+  color: var(--text-soft);
+}
+.none { color: var(--text-faint); font-size: .85rem; margin-top: 12px; }
+
+/* The small text buttons: delete a question, delete an answer. */
+.panel .quiet {
+  width: auto; min-height: 36px; margin: 0; padding: 6px 12px;
+  background: none; border: 1.5px solid var(--danger-line);
+  color: var(--danger); font-size: .8rem;
+}
+
+.answers {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px; margin-top: 14px;
+}
+.answer { margin: 0; }
+/* The film's tile: a plain dark ground until the poster (or the first
+   frame) covers it. An answer without a poster stays that plain tile:
+   the ▶ drawn in the background does not show in Chromium, which paints
+   a video with nothing loaded over it. */
+.answer video {
+  display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 14px;
+  background: #0b0b0f url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M24 18v28l24-14z' fill='white'/%3E%3C/svg%3E") center / 48px no-repeat;
+}
+.answer .meta {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; margin-top: 8px; font-size: .85rem;
+}
+.answer .by { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.answer .len { color: var(--text-faint); white-space: nowrap; }
+.answer .acts { display: flex; gap: 8px; margin-top: 8px; }
+.answer .acts form { margin: 0; }
+.panel .acts .btn { width: auto; min-height: 36px; margin: 0; padding: 6px 14px; font-size: .8rem; }
+
+.empty { color: var(--text-soft); padding: 20px 0 8px; text-align: center; }
+
+/* The organiser's way in: out of the guests' way, at the bottom. */
+.organiser { margin-top: 28px; color: var(--text-faint); font-size: .85rem; }
+.organiser summary { cursor: pointer; padding: 6px 0; }
+.organiser form { margin-top: 8px; }
+</style>
+</head>
+<body>
+{% include "_brand.html" %}
+<h1>Boîte à questions</h1>
+<p class="sub">Posez une question à tous : les invités y répondent en vidéo, à la borne.</p>
+
+{% if msg %}<div class="msg glass" role="status">{{ msg }}</div>{% endif %}
+
+<form class="panel glass add" method="post" action="/questions/add">
+  <label for="question-text">Ajouter une question</label>
+  <input class="field" id="question-text" type="text" name="text"
+         maxlength="{{ max_length }}" required autocomplete="off"
+         placeholder="Un conseil pour les mariés&nbsp;?">
+  <button class="btn primary" type="submit">Ajouter</button>
+  <p>{{ max_length }} caractères au plus. Elle est proposée à la borne tout de suite.</p>
+</form>
+{% if count %}
+<p class="count">{{ count }} question{{ "s" if count > 1 }} dans la boîte.</p>
+{% endif %}
+
+{% for group in groups %}
+<section class="panel glass">
+  <div class="head">
+    <div class="q">
+      <h2>{{ group.text }}</h2>
+      {% if not group.live %}<span class="tag">plus proposée à la borne</span>{% endif %}
+    </div>
+    {% if group.live %}
+    <form method="post" action="/questions/delete"
+          onsubmit="return confirm('Retirer cette question de la borne ?');">
+      <input type="hidden" name="id" value="{{ group.id }}">
+      <button class="btn quiet" type="submit">Supprimer</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if group.answers %}
+  <div class="answers">
+    {% for answer in group.answers %}
+    <figure class="answer">
+      <video controls playsinline preload="none"
+             {% if answer.poster %}poster="{{ answer.poster }}" {% endif %}src="{{ answer.video }}"></video>
+      <div class="meta">
+        <span class="by">{% if answer.author %}Signé {{ answer.author }}{% endif %}</span>
+        <span class="len">{{ answer.duration }}</span>
+      </div>
+      <div class="acts">
+        <a class="btn ghost" href="{{ answer.download }}" download>Télécharger</a>
+        {% if authed %}
+        <form method="post" action="/questions/answer/delete"
+              onsubmit="return confirm('Supprimer cette réponse pour de bon ?');">
+          <input type="hidden" name="id" value="{{ answer.id }}">
+          <button class="btn quiet" type="submit">Supprimer la réponse</button>
+        </form>
+        {% endif %}
+      </div>
+    </figure>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="none">Pas encore de réponse.</p>
+  {% endif %}
+</section>
+{% else %}
+<div class="empty">Aucune question pour l'instant : ajoutez la première !</div>
+{% endfor %}
+
+{% if admin_enabled and not authed %}
+<details class="organiser">
+  <summary>Organisateur</summary>
+  <form class="panel glass" method="post" action="/questions/login">
+    <input class="field" type="password" name="pin" inputmode="numeric"
+           placeholder="Code d'accès" autocomplete="off" aria-label="Code d'accès">
+    <button class="btn primary" type="submit">Entrer</button>
+    <p>Le code qui vous a été donné avec la borne ouvre la suppression des réponses.</p>
+  </form>
+</details>
+{% endif %}
+</body>
+</html>

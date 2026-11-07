@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0f">
+<title>Messages vidéo — BrotoBooth</title>
+<style>
+{% include "_theme.css" %}
+
+/* ---------- page ---------- */
+
+body {
+  max-width: 560px; margin: 0 auto;
+  padding: 20px 16px calc(32px + env(safe-area-inset-bottom));
+}
+.msg { border-radius: 12px; padding: 10px 14px; font-size: .9rem; margin-bottom: 16px; }
+.panel { padding: 20px 16px; margin-bottom: 18px; }
+.panel p { color: var(--text-soft); font-size: .85rem; margin-top: 8px; }
+input[type="text"] { width: 100%; padding: 12px; font-size: 1.05rem; }
+.panel .btn { width: 100%; min-height: 48px; margin-top: 10px; }
+.who { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.who form { margin: 0; }
+.who button {
+  border: 0; background: none; color: var(--text-faint);
+  font-size: .8rem; cursor: pointer; padding: 4px 0;
+}
+
+/* The waiting messages: one card each, the newest on top. */
+.list { display: grid; gap: 10px; margin-top: 14px; }
+.card { border-radius: 16px; padding: 12px 14px; }
+.card .from { font-weight: 600; }
+.card .when { color: var(--text-faint); font-size: .78rem; margin-top: 2px; }
+.card .go { color: var(--text-soft); font-size: .85rem; margin-top: 6px; }
+.empty { color: var(--text-soft); padding: 16px 0 4px; text-align: center; }
+
+/* Arming the bell: a browser plays no sound before a tap, so the page
+   asks for one and says why. */
+#arm { margin-top: 14px; }
+#armed { color: var(--ok); font-size: .85rem; margin-top: 10px; display: none; }
+
+/* What was heard: the message and the film of hearing it, to keep. */
+.h2 { font-size: .8rem; font-weight: 600; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--text-faint); margin: 26px 0 6px; }
+.card .dl { display: flex; gap: 8px; margin-top: 10px; }
+.card .dl .btn { flex: 1; min-height: 48px; font-size: .85rem; padding: 9px 8px; }
+</style>
+</head>
+<body>
+{% include "_brand.html" %}
+<h1>Messages vidéo</h1>
+
+{% if msg %}<div class="msg glass">{{ msg }}</div>{% endif %}
+
+{% if not guest %}
+<p class="sub">Donnez le prénom que vous avez donné à la borne — ou que vous
+lui donnerez. Vous serez prévenu quand un message vous attend, et vous
+pourrez télécharger vos messages et les films de vos réactions.</p>
+<form class="panel glass" method="post" action="/messages/inscription">
+  <input class="field" type="text" name="name" placeholder="Votre prénom"
+         maxlength="24" autocomplete="given-name" autofocus required>
+  <button class="btn primary" type="submit">C'est moi</button>
+  <p>Le même prénom qu'à la borne&nbsp;: c'est lui qui relie ce téléphone
+  à vos messages.</p>
+</form>
+
+{% else %}
+<div class="who">
+  <p class="sub">Bonjour <strong>{{ guest.name }}</strong></p>
+  <form method="post" action="/messages/deconnexion">
+    <button type="submit">Ce n'est pas moi</button>
+  </form>
+</div>
+
+<div class="panel glass">
+  <p>Quand quelqu'un vous laisse un message, cette page sonne une fois
+  et vous prévient. Allez l'écouter au photobooth&nbsp;: touchez
+  «&nbsp;Laisser un message vidéo&nbsp;», tapez votre prénom, puis
+  «&nbsp;Écouter mes messages&nbsp;», et prenez le combiné. Il vous filme
+  pendant que vous le découvrez.</p>
+  <button class="btn primary" id="arm" type="button">Activer la sonnerie</button>
+  <p id="armed">Sonnerie activée. Vous pouvez laisser cette page ouverte.</p>
+</div>
+
+<div id="list" class="list">
+  {% for m in waiting %}
+  <div class="card glass" data-id="{{ m.id }}">
+    <div class="from">{% if m.for_everyone %}Un message pour tout le monde, de {{ m.author }}{% else %}{{ m.author }} vous a laissé un message{% endif %}</div>
+    <div class="when">{{ m.when }}</div>
+    <div class="go">À écouter au photobooth.</div>
+  </div>
+  {% endfor %}
+</div>
+<p id="empty" class="empty"{% if waiting %} hidden{% endif %}>
+  Aucun message pour vous pour l'instant.</p>
+
+{% if heard %}
+<h2 class="h2">Vos messages écoutés</h2>
+<div class="list">
+  {% for m in heard %}
+  <div class="card glass">
+    <div class="from">{% if m.for_everyone %}Pour tout le monde, de {{ m.author }}{% else %}De {{ m.author }}{% endif %}</div>
+    <div class="when">{{ m.when }}</div>
+    <div class="dl">
+      <a class="btn ghost" href="{{ m.video }}">Le message</a>
+      {% if m.reaction %}<a class="btn ghost" href="{{ m.reaction }}">Votre réaction</a>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if echoes %}
+<h2 class="h2">Réactions à vos messages</h2>
+<div class="list">
+  {% for r in echoes %}
+  <div class="card glass">
+    <div class="from">{{ r.by }} a découvert votre message</div>
+    <div class="when">{{ r.when }}</div>
+    <div class="go">{% if r.seen %}Vu au photobooth.{% else %}À voir au photobooth&nbsp;: «&nbsp;Laisser un message vidéo&nbsp;», tapez votre prénom, puis «&nbsp;Voir les réactions à mes messages&nbsp;».{% endif %}</div>
+    <div class="dl"><a class="btn ghost" href="{{ r.video }}">Le film</a></div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+  /* The page asks the booth what is waiting, every few seconds. A
+     message not yet announced on THIS phone rings the bell once and, if
+     allowed, raises a notification. Announced ids are remembered so a
+     reload never rings twice for the same message. */
+  (function () {
+    var POLL_MS = {{ poll_ms }};
+    var KEY = "brotobooth-guestbook-announced:{{ guest.slug }}";
+    var announced = {};
+    try { announced = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) {}
+    var bell = new Audio("/messages/sonnerie.wav");
+    var armed = false;
+    var list = document.getElementById("list");
+    var empty = document.getElementById("empty");
+    /* What was heard, as rendered: a listening at the booth is new
+       cards to show, with their downloads — the page reloads for them,
+       and again when the film of a reaction lands, a while later. */
+    var heardCount = {{ heard|length }};
+    var reactionCount = {{ heard|selectattr("reaction")|list|length }};
+    var echoCount = {{ echoes|length }};
+
+    function syncHeard(data) {
+      if (data.heard !== heardCount || data.reactions !== reactionCount
+          || data.echoes !== echoCount) {
+        location.reload();
+      }
+    }
+
+    document.getElementById("arm").addEventListener("click", function () {
+      /* The tap is what lets a browser play sound later: play and stop
+         at once, and the bell is unlocked for the evening. */
+      bell.play().then(function () { bell.pause(); bell.currentTime = 0; }).catch(function () {});
+      armed = true;
+      this.style.display = "none";
+      document.getElementById("armed").style.display = "block";
+      if (window.Notification && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+      poll();
+    });
+
+    function card(m) {
+      var div = document.createElement("div");
+      div.className = "card glass";
+      div.setAttribute("data-id", m.id);
+      var from = m.for_everyone
+        ? "Un message pour tout le monde, de " + m.author
+        : m.author + " vous a laissé un message";
+      div.innerHTML = '<div class="from"></div><div class="when"></div>'
+                    + '<div class="go">À écouter au photobooth.</div>';
+      div.querySelector(".from").textContent = from;
+      div.querySelector(".when").textContent = m.when;
+      return div;
+    }
+
+    function announce(m) {
+      if (armed) { bell.currentTime = 0; bell.play().catch(function () {}); }
+      if (window.Notification && Notification.permission === "granted") {
+        var body = m.for_everyone
+          ? m.author + " a laissé un message pour tout le monde."
+          : m.author + " vous a laissé un message.";
+        new Notification("Un message vous attend au photobooth", { body: body });
+      }
+      announced[m.id] = 1;
+      try { localStorage.setItem(KEY, JSON.stringify(announced)); } catch (e) {}
+    }
+
+    function render(messages) {
+      list.innerHTML = "";
+      messages.forEach(function (m) { list.appendChild(card(m)); });
+      empty.hidden = messages.length > 0;
+    }
+
+    function poll() {
+      fetch("/messages/attente.json", { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data.guest) { location.reload(); return; }
+          render(data.messages);
+          syncHeard(data);
+          /* Ring for at most one new message per poll: several arriving
+             together are one event for the guest, not a carillon. */
+          var fresh = data.messages.filter(function (m) { return !announced[m.id]; });
+          if (fresh.length) {
+            announce(fresh[0]);
+            fresh.slice(1).forEach(function (m) { announced[m.id] = 1; });
+            try { localStorage.setItem(KEY, JSON.stringify(announced)); } catch (e) {}
+          }
+        })
+        .catch(function () {});
+    }
+
+    /* What is on the page at load was announced by rendering it: no
+       ring for a message the guest is already reading. */
+    list.querySelectorAll(".card").forEach(function (div) {
+      announced[div.getAttribute("data-id")] = 1;
+    });
+    try { localStorage.setItem(KEY, JSON.stringify(announced)); } catch (e) {}
+    setInterval(poll, POLL_MS);
+  })();
+</script>
+{% endif %}
+</body>
+</html>

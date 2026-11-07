@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- The browser chrome follows the palette the page will pick. -->
+<meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0f">
+{% if count == 0 %}
+<!-- Galerie encore vide : la page se représente toute seule, l'invité
+     qui a scanné le QR avant la première photo n'a rien à faire. -->
+<meta http-equiv="refresh" content="8">
+{% endif %}
+<title>Vos photos — BrotoBooth</title>
+<style>
+{% include "_theme.css" %}
+
+/* ---------- page: the photos ARE the interface ---------- */
+
+body { padding-bottom: 108px; }   /* room for the floating dock */
+header { padding: 18px 16px 8px; }
+/* The links to the other pages, side by side when there are two. */
+header .links { display: flex; gap: 8px; }
+header .links .btn { flex: 1; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 5px;
+  padding: 8px;
+}
+.tile { position: relative; border-radius: 16px; overflow: hidden; }
+.tile img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: var(--glass);
+}
+/* La photo cochée se voit depuis l'autre bout de la grille : le liseré
+   orange du choix fait. */
+.tile:has(input:checked)::after {
+  content: "";
+  position: absolute; inset: 0;
+  border: 3px solid var(--select);
+  border-radius: 16px;
+  pointer-events: none;
+}
+
+/* La case à cocher : une pastille dans le coin, zone de toucher
+   généreuse (44 px), la case native restant cachée dessous. Cochée,
+   c'est un rond orange et sa coche est noir nuit (--select-mark) : le
+   texte blanc ne se lirait pas sur l'orange. */
+.pick {
+  position: absolute; top: 0; right: 0;
+  width: 44px; height: 44px;
+  display: flex; align-items: flex-start; justify-content: flex-end;
+  padding: 6px;
+  cursor: pointer;
+}
+.pick input { position: absolute; opacity: 0; }
+.pick .mark {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--mark-line);
+  background: var(--mark-bg);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: transparent;
+  font-size: 15px; line-height: 21px; text-align: center;
+}
+.pick input:checked + .mark {
+  background: var(--select);
+  border-color: var(--select);
+  color: var(--select-mark);
+}
+
+.empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+/* Floating frosted dock, detached from the edges (the card is the
+   .glass class). */
+.bar {
+  position: fixed;
+  left: 10px; right: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  display: flex; gap: 8px;
+  padding: 10px;
+}
+/* Unbounded is wide: a notch smaller, each caption holds on two lines
+   at a phone's width instead of three. */
+.bar .btn { flex: 1; }
+.bar .btn.primary { font-size: .82rem; }
+/* Rien de coché : le bouton de sélection s'éteint, sans JavaScript. */
+form:not(:has(input:checked)) .btn.primary {
+  opacity: .35;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+<header>
+  {% include "_brand.html" %}
+  <h1>Vos photos</h1>
+  {% if count > 0 %}
+  <p class="sub">{{ count }} photo{{ "s" if count > 1 }} de la soirée.</p>
+  {% endif %}
+  <!-- The box of questions is always there; the guest book (give a first
+       name, be told when a message waits) only while messages are open. -->
+  <p class="sub links"><a class="btn ghost" href="/questions">Boîte à questions</a>
+  {% if messages %}<a class="btn ghost" href="/messages">Messages vidéo</a>{% endif %}</p>
+</header>
+
+{% if count == 0 %}
+<div class="empty">
+  <p>Les photos de la soirée arrivent ici,<br>
+     quelques secondes après chaque prise.<br>
+     La page se rafraîchit toute seule.</p>
+</div>
+{% else %}
+<form method="post" action="/download">
+  <div class="grid">
+    {% for name in names %}
+    <div class="tile">
+      <a href="/view/{{ name }}">
+        <img src="/thumbs/{{ name }}" loading="lazy" alt="">
+      </a>
+      <label class="pick">
+        <input type="checkbox" name="photos" value="{{ name }}">
+        <span class="mark">✓</span>
+      </label>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="bar glass">
+    <button class="btn primary" type="submit" id="dl-selected">
+      Télécharger la sélection
+    </button>
+    <a class="btn ghost" href="/download/all">Tout télécharger (ZIP)</a>
+  </div>
+</form>
+<script>
+  /* Confort uniquement : le compte de photos cochées sur le bouton.
+     Sans script, le bouton marche pareil — le CSS l'éteint déjà quand
+     rien n'est coché. */
+  (function () {
+    var form = document.querySelector("form");
+    var button = document.getElementById("dl-selected");
+    form.addEventListener("change", function () {
+      var n = form.querySelectorAll("input:checked").length;
+      button.textContent = n > 0
+        ? "Télécharger la sélection (" + n + ")"
+        : "Télécharger la sélection";
+    });
+  })();
+</script>
+{% endif %}
+</body>
+</html>

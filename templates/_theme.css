@@ -1,0 +1,307 @@
+/* ==========================================================
+   BrotoBooth web theme — the CANONICAL token block.
+
+   Served pages (gallery, view, overlays, messages) include this file
+   from their <style> tag through Jinja; the two standalone pages in
+   deploy/ (index.html, overlay_upload.html) carry a copy of the
+   tokens, because they must remain single self-contained files — keep
+   the copies in sync with THIS file. They take the fonts from Google
+   Fonts instead of the @font-face below: they are opened with internet.
+
+   The DA "Sunset", the same as the kiosk's (ui/styles/Theme.py, whose
+   THEMES these tokens mirror, alpha/255): noir nuit, rose sunset for
+   the action, orange for the choice made, lemon for "pay attention",
+   white. ROSE is the action and the only coloured fill, at most one
+   button per screen. ORANGE is the choice made, always a ring or a
+   border, never a fill that carries text (the gallery's tick circle is
+   the one orange fill, and its check mark is --select-mark, noir
+   nuit). LEMON (a dark amber on the light ground) is a warning, next
+   to its icon. Text follows the scheme, everywhere: white on the dark
+   one, noir nuit on the light one — on the rose too.
+
+   Two fonts: Outfit (400, 600) for every word, and the logo's own
+   Unbounded for the title (800) and the text of the call to action
+   (700). No relief anywhere: no shadowed letters, no offset buttons.
+   Dark is the default (the brand's own face); phones set to light get
+   the same DA on a light ground, via prefers-color-scheme. The
+   surfaces are frosted cards, as on the booth — with what QSS cannot
+   do: a real backdrop blur.
+   ========================================================== */
+
+/* The fonts, served by the booth itself (gallery/GalleryServer.py,
+   /brand): the guests' phones are on a Wi-Fi without internet. */
+@font-face { font-family: "Outfit"; font-weight: 400; font-display: swap;
+             src: url("/brand/fonts/Outfit-latin-400.ttf") format("truetype"); }
+@font-face { font-family: "Outfit"; font-weight: 600; font-display: swap;
+             src: url("/brand/fonts/Outfit-latin-600.ttf") format("truetype"); }
+@font-face { font-family: "Unbounded"; font-weight: 700; font-display: swap;
+             src: url("/brand/fonts/Unbounded-latin-700.ttf") format("truetype"); }
+@font-face { font-family: "Unbounded"; font-weight: 800; font-display: swap;
+             src: url("/brand/fonts/Unbounded-latin-800.ttf") format("truetype"); }
+
+:root {
+  --bg-a: #0b0b0f;
+  --bg-b: #14141b;
+  --text: #ffffff;
+  --text-soft: rgba(255, 255, 255, .67);
+  --text-faint: rgba(255, 255, 255, .42);
+
+  --glass: rgba(255, 255, 255, .055);
+  --glass-press: rgba(255, 255, 255, .13);
+  --glass-border: rgba(255, 255, 255, .16);
+  --glass-border-soft: rgba(255, 255, 255, .09);
+
+  /* Plain fills inside a card (no rim): a row, an input well. */
+  --row: rgba(255, 255, 255, .06);
+  --field: rgba(11, 11, 15, .63);
+
+  /* The brand's colours, one role each, the same in both palettes:
+     rose = the action, orange = the choice made. The text on them is
+     the scheme's text; --select-mark is what is drawn ON an orange fill. */
+  --accent: #f2559b;
+  --accent-text: #ffffff;
+  --select: #ff8a3d;
+  --select-text: #ffffff;
+  --select-mark: #0b0b0f;
+
+  /* A mark over a photo (the gallery's tick circle, still unticked):
+     the scheme's ground, veiled, ringed in its text colour. */
+  --mark-bg: rgba(11, 11, 15, .40);
+  --mark-line: rgba(255, 255, 255, .9);
+
+  --ok: #22c55e;
+  --ok-soft: rgba(34, 197, 94, .14);
+  --ok-line: rgba(34, 197, 94, .38);
+  --warn: #facc15;
+  --warn-soft: rgba(250, 204, 21, .12);
+  --warn-line: rgba(250, 204, 21, .37);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, .14);
+  --danger-line: rgba(239, 68, 68, .38);
+
+  --veil: rgba(11, 11, 15, .78);
+  /* The frosted card: a lighter top (the highlight) fading into the body. */
+  --card: rgba(22, 22, 29, .84);
+  --card-top: rgba(44, 44, 54, .84);
+  --card-line: rgba(255, 255, 255, .15);
+  --shadow: 0 6px 24px rgba(0, 0, 0, .35);
+  /* The outline of the secondary button: the text colour at 35 %. */
+  --btn-line: rgba(255, 255, 255, .35);
+
+  /* Checkerboard behind transparent overlays: it must read as
+     "transparency" in both palettes. */
+  --checker-a: #26272e;
+  --checker-b: #1b1c22;
+
+  --font-text: "Outfit", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-title: "Unbounded", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-a: #ffffff;
+    --bg-b: #ececf1;
+    --text: #0b0b0f;
+    --text-soft: rgba(11, 11, 15, .68);
+    --text-faint: rgba(11, 11, 15, .44);
+
+    --glass: rgba(255, 255, 255, .55);
+    --glass-press: rgba(255, 255, 255, .85);
+    --glass-border: rgba(11, 11, 15, .18);
+    --glass-border-soft: rgba(11, 11, 15, .10);
+
+    --row: rgba(11, 11, 15, .04);
+    --field: rgba(255, 255, 255, .78);
+
+    --accent-text: #0b0b0f;
+    --select-text: #0b0b0f;
+    --mark-bg: rgba(255, 255, 255, .55);
+    --mark-line: rgba(11, 11, 15, .85);
+
+    --ok: #15803d;
+    --ok-soft: rgba(34, 197, 94, .18);
+    --ok-line: rgba(21, 128, 61, .45);
+    --warn: #a16207;
+    --warn-soft: rgba(234, 179, 8, .22);
+    --warn-line: rgba(161, 98, 7, .45);
+    --danger: #dc2626;
+    --danger-soft: rgba(239, 68, 68, .16);
+    --danger-line: rgba(220, 38, 38, .45);
+
+    --veil: rgba(236, 236, 241, .85);
+    --card: rgba(255, 255, 255, .86);
+    --card-top: rgba(255, 255, 255, .96);
+    --card-line: rgba(11, 11, 15, .12);
+    --shadow: 0 6px 24px rgba(11, 11, 15, .12);
+    --btn-line: rgba(11, 11, 15, .35);
+
+    --checker-a: #dcdce2;
+    --checker-b: #cbcbd3;
+  }
+}
+
+/* ---------- base ---------- */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: linear-gradient(180deg, var(--bg-a), var(--bg-b)) fixed;
+  color: var(--text);
+  font-family: var(--font-text);
+  font-weight: 400;
+}
+
+/* Form controls do not take the page's font by themselves. */
+button, input, select, textarea { font-family: inherit; }
+
+/* Titles: Unbounded ExtraBold, the logo's letters. */
+h1 {
+  font-family: var(--font-title);
+  font-weight: 800;
+  font-size: 1.75rem;
+  line-height: 1.15;
+}
+.sub { color: var(--text-soft); font-size: .88rem; margin-top: 4px; }
+
+/* The brand's logo, above a page's title: white letters on the dark
+   ground, noir nuit on the light one (a <picture>, see the pages). */
+.brand { display: block; height: 46px; width: auto; margin-bottom: 14px; }
+
+/* ---------- frosted card ---------- */
+/* Opaque enough (84 %) to read without the blur behind it, so there is
+   no fallback for a browser that lacks backdrop-filter. */
+
+.glass {
+  background: linear-gradient(var(--card-top), var(--card) 30%);
+  border: 1px solid var(--card-line);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 12px 10px;
+  border: 0;
+  border-radius: 999px;
+  font-size: .95rem;
+  font-weight: 600;
+  font-family: inherit;
+  text-align: center;
+  text-decoration: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* The call to action: rose, in the logo's Unbounded. Pressed, it
+   darkens — nothing moves. */
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-family: var(--font-title);
+  font-weight: 700;
+  font-size: 1.02rem;
+}
+
+.btn.primary:active { filter: brightness(.92); }
+
+/* The secondary button: an outline, no fill. */
+.btn.ghost {
+  background: transparent;
+  border: 1.5px solid var(--btn-line);
+}
+
+.btn.ghost:active { background: var(--glass-press); }
+
+/* ---------- status pills ---------- */
+
+.pill {
+  display: inline-block;
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border-soft);
+  color: var(--text-soft);
+}
+
+.pill.ok     { background: var(--ok-soft);     border-color: var(--ok-line);     color: var(--ok); }
+.pill.warn   { background: var(--warn-soft);   border-color: var(--warn-line);   color: var(--warn); }
+.pill.danger { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+
+/* ---------- procedure steps ---------- */
+/* Compact numbered how-to, shown on the customer-facing pages: three
+   short lines, never a paragraph. Numbers are drawn by CSS counters. */
+
+.steps {
+  list-style: none;
+  counter-reset: step;
+  display: grid;
+  gap: 9px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+/* The li stays a normal block (inline children like <strong> must
+   flow with the text); the number is absolutely positioned in the
+   left gutter. */
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 30px;
+  color: var(--text-soft);
+  font-size: .85rem;
+  line-height: 1.45;
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--glass-press);
+  border: 1px solid var(--glass-border-soft);
+  color: var(--text);
+  font-size: .7rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 19px;
+}
+
+/* ---------- small inline icons (SVG, currentColor) ---------- */
+
+.icon {
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+  fill: currentColor;
+}
+
+/* ---------- input well ---------- */
+/* A plain fill; the 2 px border is the orange ring of the active field,
+   a faint rim at rest (on the light ground the fill alone is white on
+   a white card: the well would not show) — it takes its place without
+   a jump. */
+
+.field {
+  background: var(--field);
+  color: var(--text);
+  border: 2px solid var(--glass-border-soft);
+  border-radius: 16px;
+  min-height: 60px;
+  font-family: inherit;
+  font-weight: 600;
+}
+
+.field:focus { outline: none; border-color: var(--select); }
