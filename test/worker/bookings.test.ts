@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ACTIVE_STATUSES,
   addDays,
+  bookingWindow,
   checkDate,
   depositCents,
   nextStatus,
@@ -83,6 +84,11 @@ describe("date de prestation", () => {
     expect(checkDate("2028-11-07", now)).toBe("ok");
     expect(checkDate("2028-11-08", now)).toBe("too_far");
     expect(checkDate("2026-11-14", new Date("2026-11-07T23:30:00Z"))).toBe("too_soon");
+  });
+  it("donne la première et la dernière date réservables, d'après le jour de Paris", () => {
+    expect(bookingWindow(new Date("2026-11-07T10:00:00Z"))).toEqual({ earliest: "2026-11-14", latest: "2028-11-07" });
+    expect(bookingWindow(new Date("2026-11-07T23:30:00Z"))).toEqual({ earliest: "2026-11-15", latest: "2028-11-08" });
+    expect(bookingWindow(new Date("2028-02-29T10:00:00Z"))).toEqual({ earliest: "2028-03-07", latest: "2030-02-28" });
   });
   it("refuse une date passée", () => {
     expect(checkDate("2026-11-06", new Date("2026-11-07T10:00:00Z"))).toBe("too_soon");

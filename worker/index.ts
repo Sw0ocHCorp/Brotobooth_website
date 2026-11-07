@@ -1,9 +1,9 @@
+import { makeDeps } from "./deps";
 import type { Env } from "./env";
+import { handle } from "./router";
 
 export default {
-  async fetch() {
-    return Response.json({ error: "not_found" }, { status: 404 });
-  },
+  fetch: (req, env, ctx) => handle(req, makeDeps(env), ctx),
 
   async scheduled() {
     // Les rappels et relances arrivent avec les tâches suivantes.

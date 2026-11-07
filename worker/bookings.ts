@@ -90,16 +90,23 @@ export function parisInstant(date: string, hour: number): Date {
   return new Date(wall - parisOffsetMs(estimate));
 }
 
-function isValidDate(date: string): boolean {
+/** `AAAA-MM-JJ` qui existe au calendrier. */
+export function isValidDate(date: string): boolean {
   const day = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(date) : null;
   return day !== null && !Number.isNaN(day.getTime()) && isoDate(day) === date;
 }
 
+/** La première et la dernière date réservables à cet instant. */
+export function bookingWindow(now: Date): { earliest: string; latest: string } {
+  const today = parisToday(now);
+  return { earliest: addDays(today, offer.minLeadDays), latest: addMonths(today, offer.horizonMonths) };
+}
+
 export function checkDate(date: string, now: Date): "ok" | "too_soon" | "too_far" | "invalid" {
   if (!isValidDate(date)) return "invalid";
-  const today = parisToday(now);
-  if (date < addDays(today, offer.minLeadDays)) return "too_soon";
-  if (date > addMonths(today, offer.horizonMonths)) return "too_far";
+  const { earliest, latest } = bookingWindow(now);
+  if (date < earliest) return "too_soon";
+  if (date > latest) return "too_far";
   return "ok";
 }
 
