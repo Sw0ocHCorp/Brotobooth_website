@@ -12,6 +12,8 @@
 
 **Ce plan s'arrête avant la publication :** la mise en ligne demande les comptes et les contenus du propriétaire. La tâche 19 livre la procédure et le contrôle qui bloque une publication incomplète.
 
+**Paiement réel en dernier (demande du propriétaire, 2026-11-07) :** le propriétaire veut vérifier le fonctionnement du site avant de brancher le vrai système de règlement. Les tâches 1 à 19 utilisent donc un paiement simulé. Après la tâche 19 et la relecture de la branche, l'exécution **s'arrête** pour que le propriétaire essaie le site en local (`npm run demo`). La tâche 20 (Stripe réel) ne démarre qu'avec son accord.
+
 ## Global Constraints
 
 - Identifiants de code et de base en anglais, adresses visibles par les clients en français (`/reserver`, `/acompte`, `/agenda`, `/cgv`).
@@ -548,16 +550,17 @@ Run : `npx vitest run test/worker/operations.test.ts`. Expected : PASS.
 git add -A && git commit -m "feat: opérations sur les réservations"
 ```
 
-### Task 7: Paiement de l'acompte
+### Task 7: Paiement de l'acompte, en simulation
 
 **Files:**
-- Create: `worker/stripe.ts`, `worker/payments.ts`, `worker/html.ts`, `public/styles/tokens.css`, `test/worker/payments.test.ts`, `test/worker/stripe.test.ts`
-- Modify: `worker/router.ts`, `worker/deps.ts`
+- Create: `worker/simulated-payment.ts`, `worker/payments.ts`, `worker/html.ts`, `public/styles/tokens.css`, `test/worker/payments.test.ts`, `test/worker/simulated-payment.test.ts`
+- Modify: `worker/router.ts`, `worker/deps.ts`, `worker/env.ts`
 
 **Interfaces:**
 - Consumes : `confirmDeposit`, `patchBooking`, `getBookingByToken`, `StripeGateway`.
 - Produces :
-  - `stripeGateway(env: Env, fetchFn?: typeof fetch): StripeGateway` (`worker/stripe.ts`)
+  - `PAYMENT_MODE?: string` dans `Env`. `simulatedGateway(env: Env): StripeGateway` (`worker/simulated-payment.ts`), utilisée par `makeDeps` seulement si `PAYMENT_MODE === "simulated"`. Sans cette valeur, les méthodes de paiement continuent de lever une erreur à l'appel, jusqu'à la tâche 20
+  - `GET` et `POST /acompte/<jeton>/simulation?session=<id>` : page de paiement factice, 404 hors du mode simulé
   - `escapeHtml(s: string): string`, `page(title: string, bodyHtml: string): string` (`worker/html.ts`), page sombre qui charge `/styles/tokens.css`, fichier repris des jetons de `templates/_theme.css`, sans `@font-face`
   - `paymentPage(req, deps, token): Promise<Response>`, `startPayment(req, deps, token): Promise<Response>`, `stripeWebhook(req, deps): Promise<Response>` (`worker/payments.ts`)
 
@@ -624,24 +627,37 @@ it("échappe le nom et le lieu", async () => {  // Review Focus 2
 });
 ```
 
-`test/worker/stripe.test.ts` : avec un `fetchFn` factice, `createSession` envoie `mode=payment`, le montant, la devise `eur`, `metadata[booking_id]`, `client_reference_id`, `expires_at`, et les adresses de retour `/acompte/<jeton>?paid=1` et `/acompte/<jeton>`. `verifyWebhook` accepte un en-tête produit par `stripe.webhooks.generateTestHeaderStringAsync` et rejette une signature fausse.
+`test/worker/simulated-payment.test.ts`, avec `simulatedGateway(env)` et D1 :
+
+```ts
+it("le parcours complet fonctionne sans Stripe", async () => {
+  // validée, POST /acompte/<jeton> : redirection vers /acompte/<jeton>/simulation?session=...
+  // la page affiche clairement « Simulation » et « aucun paiement réel »
+  // POST « paiement réussi » : réservation confirmed, redirection vers /acompte/<jeton>?paid=1
+});
+it("abandonner laisse la date tenue et le lien réutilisable", async () => { /* awaiting_deposit, nouvelle tentative possible */ });
+it("retrieveSession et expireSession gardent leur état entre deux requêtes", async () => { /* état lu dans D1 : open, complete, expired */ });
+it("expireSession lève une erreur sur une session déjà payée, comme Stripe", async () => {});
+it("la page de simulation répond 404 si PAYMENT_MODE n'est pas simulated", async () => {});
+it("une session d'une autre réservation est refusée", async () => { /* jeton A, session de B : 404, rien ne change */ });
+```
 
 - [ ] **Step 2: Lancer les tests pour les voir échouer**
 
-Run : `npx vitest run test/worker/payments.test.ts test/worker/stripe.test.ts`. Expected : FAIL.
+Run : `npx vitest run test/worker/payments.test.ts test/worker/simulated-payment.test.ts`. Expected : FAIL.
 
-- [ ] **Step 3: Implémenter `stripe.ts`, `html.ts`, `payments.ts`**
+- [ ] **Step 3: Implémenter `simulated-payment.ts`, `html.ts`, `payments.ts`**
 
-`stripe.ts` : `new Stripe(key, { httpClient: Stripe.createFetchHttpClient(fetchFn) })` et `webhooks.constructEventAsync(body, sig, secret, undefined, Stripe.createSubtleCryptoProvider())`. Seul `checkout.session.completed` avec `paymentStatus: "paid"` déclenche une confirmation. `startPayment` n'agit qu'en `awaiting_deposit` et avant l'échéance : session ouverte réutilisée, sinon `expires_at = now + 30 min`, puis `hold_until = max(hold_until, expires + 5 min)`. Un paiement arrivé hors `awaiting_deposit` met en file `owner_late_payment` sur Telegram et par e-mail, avec une clé propre à la session. Brancher `stripeGateway` dans `makeDeps`.
+`simulated-payment.ts` respecte l'interface `StripeGateway`, garde l'état de chaque session dans `system_state` (clé `sim_session:<id>`) et se comporte comme Stripe, y compris l'erreur sur `expireSession` d'une session non ouverte. `verifyWebhook` y lève une erreur : la route `/api/stripe/webhook` existe et sa logique est testée avec la doublure de `fakeDeps`. Seul `checkout.session.completed` avec `paymentStatus: "paid"` déclenche une confirmation. `startPayment` n'agit qu'en `awaiting_deposit` et avant l'échéance : session ouverte réutilisée, sinon `expires_at = now + 30 min`, puis `hold_until = max(hold_until, expires + 5 min)`. Un paiement arrivé hors `awaiting_deposit` met en file `owner_late_payment` sur Telegram et par e-mail, avec une clé propre à la session. Brancher `simulatedGateway` dans `makeDeps`.
 
 - [ ] **Step 4: Vérifier**
 
-Run : `npx vitest run test/worker/payments.test.ts test/worker/stripe.test.ts`. Expected : PASS.
+Run : `npx vitest run test/worker/payments.test.ts test/worker/simulated-payment.test.ts`. Expected : PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat: paiement de l'acompte par Stripe Checkout"
+git add -A && git commit -m "feat: paiement de l'acompte, en simulation"
 ```
 
 ### Task 8: Tâche automatique
@@ -805,7 +821,7 @@ Run : `npx vitest run test/worker/delivery.test.ts test/worker/templates.test.ts
 
 Dans `processDue`, chaque notification a son `try/catch`, et le corps est rendu juste avant l'envoi à partir de la réservation à jour. Après `markFailed`, si `attempts` atteint 3 pour un e-mail client, enqueue `owner_email_failed` (clé `<clé>:alert`). Pour un échec Telegram, enqueue le même modèle en e-mail (clé `<clé>:fallback`).
 
-Brancher : `processDue` dans `runCron` et, après une demande réussie, via `ctx.waitUntil(processDue(deps).catch(...))` ; les passerelles réelles dans `makeDeps` ; `FAKE_GATEWAYS === "1"` y donne des passerelles qui journalisent le modèle seul et répondent `pass`, pour la tâche 13. Cette variable n'apparaît que dans `dev:e2e`, jamais dans `wrangler.jsonc`.
+Brancher : `processDue` dans `runCron` et, après une demande réussie, via `ctx.waitUntil(processDue(deps).catch(...))` ; les passerelles réelles dans `makeDeps` ; `FAKE_GATEWAYS === "1"` y donne des passerelles qui répondent `pass` et gardent les 50 derniers messages (destinataire, objet, texte, boutons) dans `system_state`, clé `demo_messages`. `GET /demo` les affiche, liens cliquables, pour lire ce qui aurait été envoyé, et répond 404 sans cette variable (à tester, avec l'échappement des messages). Cette variable n'apparaît jamais dans `wrangler.jsonc`.
 
 - [ ] **Step 4: Vérifier**
 
@@ -1016,7 +1032,7 @@ git add -A && git commit -m "feat: API d'administration"
 
 **Interfaces:**
 - Consumes : routes de la tâche 12, `public/styles/tokens.css`.
-- Produces : `playwright.config.ts` (projets Chromium et WebKit, tailles 375×812 et 1280×800), lançant `npm run dev:e2e` sur le port 8788 ; `dev:e2e` = `rm -rf .wrangler/e2e && astro build && wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e && wrangler dev --port 8788 --persist-to .wrangler/e2e --var FAKE_GATEWAYS:1 --var ACCESS_AUD:local-dev --var BASE_URL:http://localhost:8788`, avec `workers: 1`. `seed(request, kind)` dans `e2e/seed.ts` crée des réservations par l'API, chacune sur une date libre calculée à partir d'aujourd'hui, et `freeDate()` donne une date libre à au moins 30 jours.
+- Produces : `playwright.config.ts` (projets Chromium et WebKit, tailles 375×812 et 1280×800), lançant `npm run dev:e2e` sur le port 8788 ; `dev:e2e` = `rm -rf .wrangler/e2e && astro build && wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e && wrangler dev --port 8788 --persist-to .wrangler/e2e --var FAKE_GATEWAYS:1 --var PAYMENT_MODE:simulated --var ACCESS_AUD:local-dev --var BASE_URL:http://localhost:8788`, avec `workers: 1`. `seed(request, kind)` dans `e2e/seed.ts` crée des réservations par l'API, chacune sur une date libre calculée à partir d'aujourd'hui, et `freeDate()` donne une date libre à au moins 30 jours.
 
 - [ ] **Step 1: Écrire les tests qui échouent**
 
@@ -1385,11 +1401,11 @@ git add -A && git commit -m "feat: pages légales, référencement et en-têtes 
 ### Task 19: Contrôles finaux et procédure de mise en ligne
 
 **Files:**
-- Create: `scripts/check-launch.mjs`, `e2e/a11y-perf.spec.ts`, `docs/mise-en-ligne.md`, `test/worker/check-launch.test.ts`
+- Create: `scripts/check-launch.mjs`, `e2e/a11y-perf.spec.ts`, `e2e/parcours.spec.ts`, `docs/mise-en-ligne.md`, `docs/essai-local.md`, `test/worker/check-launch.test.ts`
 - Modify: `package.json`
 
 **Interfaces:**
-- Produces : `findLaunchBlockers(input: { offer: Offer; legalPages: Record<string, string>; databaseId: string }): string[]` (exportée par `scripts/check-launch.mjs`, fonction pure : la lecture des fichiers reste dans le bloc principal du script). `npm run deploy` = `npm test && npx playwright test && node scripts/check-launch.mjs && astro build && wrangler deploy`.
+- Produces : `findLaunchBlockers(input: { offer: Offer; legalPages: Record<string, string>; databaseId: string; vars: Record<string, string> }): string[]` (exportée par `scripts/check-launch.mjs`, fonction pure : la lecture des fichiers reste dans le bloc principal du script). `npm run deploy` = `npm test && npx playwright test && node scripts/check-launch.mjs && astro build && wrangler deploy`. `npm run demo` lance le site en local avec des données d'essai, le paiement simulé, les messages lisibles sur `/demo` et la tâche automatique déclenchable (`wrangler dev --test-scheduled`).
 
 - [ ] **Step 1: Écrire les tests qui échouent**
 
@@ -1399,10 +1415,17 @@ it("bloque tant que les contenus manquent", () => {
   expect(b).toEqual(expect.arrayContaining([expect.stringMatching(/provisoire/), expect.stringMatching(/téléphone/), expect.stringMatching(/cgv/), expect.stringMatching(/D1/)]));
 });
 it("signale une formule à 0 €", () => { /* priceCents: 0 */ });
+it("refuse de publier avec le paiement simulé ou les fausses passerelles", () => { /* vars: { PAYMENT_MODE: "simulated" } ou { FAKE_GATEWAYS: "1" } : bloqué */ });
 it("laisse passer un contenu complet", () => { expect(findLaunchBlockers(completeInput)).toEqual([]); });
 ```
 
 ```ts
+// e2e/parcours.spec.ts
+test("une réservation de bout en bout", async ({ page }) => {
+  // demande sur /reserver, validation dans /admin, lien lu sur /demo, paiement simulé,
+  // puis prestation confirmée dans /admin et date barrée sur /reserver
+});
+
 // e2e/a11y-perf.spec.ts
 for (const url of ["/", "/reserver", "/cgv", "/mentions-legales", "/confidentialite", "/admin"]) {
   test(`aucune violation d'accessibilité sur ${url}`, async ({ page }) => {
@@ -1436,20 +1459,58 @@ Procédure pour le propriétaire, dans cet ordre, avec les commandes :
 5. **Resend :** ajouter SPF et DKIM sans toucher à l'entrée de messagerie.
 6. **Cloudflare Access :** application sur `/admin*` et `/api/admin*`, politique limitée aux e-mails du propriétaire, public (AUD) à reporter dans `ACCESS_AUD`.
 7. **Turnstile :** créer le widget, clé publique dans `PUBLIC_TURNSTILE_SITE_KEY`, clé secrète dans `TURNSTILE_SECRET`.
-8. **Stripe :** webhook sur `/api/stripe/webhook` pour `checkout.session.completed`, d'abord en mode test.
+8. **Stripe (après la tâche 20) :** webhook sur `/api/stripe/webhook` pour `checkout.session.completed`, d'abord en mode test.
 9. **Telegram :** `node scripts/set-telegram-webhook.mjs`.
 10. **Contenus :** remplir `config/offer.json`, retirer `draft`, compléter les pages légales après validation par un professionnel, confirmer le texte de présentation.
 11. **Publication :** `npm run deploy`.
 12. **Avant d'ouvrir :** un vrai paiement de faible montant remboursé, un e-mail reçu sur Gmail, les boutons du bot, l'agenda abonné et ses alertes réglées sur le téléphone, un essai sur un vrai téléphone et sur Safari, le point du lundi reçu, une restauration Time Travel répétée à blanc.
 
-- [ ] **Step 5: Vérifier l'ensemble**
+- [ ] **Step 5: Écrire `docs/essai-local.md`**
+
+Guide pour le propriétaire : lancer `npm run demo`, ouvrir le site, faire une demande depuis le téléphone ou l'ordinateur, lire les messages sur `/demo`, valider dans `/admin`, payer en simulation, déclencher la tâche automatique, et la liste de ce qui est simulé (paiement, e-mails, Telegram, anti-robots).
+
+- [ ] **Step 6: Vérifier l'ensemble**
 
 Run : `npm test && npx playwright test && npm run build`. Expected : tout passe. Run : `node scripts/check-launch.mjs`. Expected : ÉCHEC listant les contenus manquants, ce qui prouve que le contrôle fonctionne.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add -A && git commit -m "feat: contrôles finaux et procédure de mise en ligne"
+git add -A && git commit -m "feat: contrôles finaux, essai local et procédure de mise en ligne"
+```
+
+### Task 20: Vrai paiement Stripe
+
+**Ne démarre qu'après la vérification du site par le propriétaire et son accord explicite.** Le mode test de Stripe suffit pour cette tâche : aucune clé réelle.
+
+**Files:**
+- Create: `worker/stripe.ts`, `test/worker/stripe.test.ts`
+- Modify: `worker/deps.ts`, `docs/mise-en-ligne.md`
+
+**Interfaces:**
+- Consumes : `StripeGateway`, `stripeWebhook` et tout le parcours `/acompte` de la tâche 7, inchangés.
+- Produces : `stripeGateway(env: Env, fetchFn?: typeof fetch): StripeGateway`. `makeDeps` l'utilise dès que `PAYMENT_MODE` n'est pas `simulated`.
+
+- [ ] **Step 1: Écrire les tests qui échouent**
+
+Avec un `fetchFn` factice : `createSession` envoie `mode=payment`, le montant, la devise `eur`, `metadata[booking_id]`, `client_reference_id`, `expires_at`, et les adresses de retour `/acompte/<jeton>?paid=1` et `/acompte/<jeton>`. `retrieveSession` traduit la réponse en `StripeSession`, y compris `bookingId` depuis les métadonnées. `expireSession` relaie l'erreur de Stripe. `verifyWebhook` accepte un en-tête produit par `stripe.webhooks.generateTestHeaderStringAsync` et rejette une signature fausse.
+
+- [ ] **Step 2: Lancer les tests pour les voir échouer**
+
+Run : `npx vitest run test/worker/stripe.test.ts`. Expected : FAIL.
+
+- [ ] **Step 3: Implémenter `worker/stripe.ts`**
+
+`new Stripe(key, { httpClient: Stripe.createFetchHttpClient(fetchFn) })` et `webhooks.constructEventAsync(body, sig, secret, undefined, Stripe.createSubtleCryptoProvider())`.
+
+- [ ] **Step 4: Vérifier**
+
+Run : `npm test`. Expected : tout passe. Puis, avec les clés de test du propriétaire et la CLI Stripe : paiement normal, paiement en limite d'échéance, webhook rejoué, webhook perdu, paiement sur réservation expirée.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A && git commit -m "feat: paiement réel par Stripe Checkout"
 ```
 
 ## Sources vérifiées pour ce plan

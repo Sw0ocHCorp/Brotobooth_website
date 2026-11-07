@@ -65,6 +65,8 @@ La borne, son projet Supabase, son bot Telegram et sa page de monitoring sur Net
 | `POST /api/stripe/webhook` | Confirme les paiements | Signature Stripe |
 | `POST /api/telegram/webhook` | Boutons du bot | En-tête secret et liste de chats autorisés |
 | `GET /agenda/<jeton>.ics` | Flux d'agenda privé | Jeton long |
+| `/acompte/<jeton>/simulation` | Paiement factice | Uniquement en mode simulé |
+| `GET /demo` | Lecture des messages qui auraient été envoyés | Uniquement avec les fausses passerelles |
 | `/admin` et `/api/admin/*` | Administration | Cloudflare Access, vérifié aussi par le Worker via `ctx.access` et le public attendu |
 
 ### Organisation du code
@@ -366,11 +368,14 @@ Tant que ces contenus manquent, le site peut être développé et testé, mais p
 ## 14. Découpage suggéré pour l'implémentation
 
 1. Socle : dépôt git (le dossier n'en est pas encore un, avec `.superpowers/`, `node_modules/`, `.wrangler/` et `.dev.vars` ignorés), projet, D1, machine à états, routes de demande et de disponibilité.
-2. Paiement : `/acompte`, sessions Checkout, webhook, libération des dates.
+2. Paiement en simulation : `/acompte`, sessions, webhook, libération des dates.
 3. Notifications : file d'attente, e-mails, bot Telegram, agenda.
 4. Administration.
 5. Vitrine : identité, accueil, animations, page de réservation branchée à l'API.
-6. Pages légales, contrôles qualité, mise en ligne.
+6. Pages légales, contrôles qualité, procédure de mise en ligne.
+7. Vrai paiement Stripe, en dernier.
+
+**Paiement réel en dernier (demande du propriétaire, 2026-11-07) :** le propriétaire veut vérifier le fonctionnement du site avant de brancher le vrai système de règlement. Jusque-là, le paiement est simulé : tout le parcours est identique, sans Stripe ni argent réel, et la page de simulation l'indique clairement. Après l'étape 6, l'implémentation s'arrête pour que le propriétaire essaie le site en local. L'étape 7 ne démarre qu'avec son accord. Le mode simulé et les fausses passerelles ne peuvent pas être publiés : le contrôle d'avant publication les refuse.
 
 ## Sources
 
