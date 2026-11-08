@@ -4,7 +4,7 @@ import type { Deps } from "./deps";
 export type Handler = (req: Request, deps: Deps, ctx: ExecutionContext, params: string[]) => Promise<Response>;
 
 /** Ni gardées en cache ni indexées, sauf si l'appelant en décide autrement. */
-const DEFAULT_HEADERS = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
+export const DEFAULT_HEADERS = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 
 export const json = (data: unknown, status = 200, headers: Record<string, string> = {}): Response =>
   Response.json(data, { status, headers: { ...DEFAULT_HEADERS, ...headers } });
@@ -37,6 +37,20 @@ export const redirect = (location: string): Response =>
 export function fromOtherOrigin(req: Request, baseUrl: string): boolean {
   const origin = req.headers.get("Origin");
   return origin !== null && origin !== new URL(baseUrl).origin;
+}
+
+const digest = async (text: string): Promise<Uint8Array> =>
+  new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
+
+/**
+ * `true` si `given` est le secret `expected`. Les deux sont réduits à une empreinte de même longueur, comparée
+ * octet par octet sans s'arrêter au premier écart : ni la durée, ni la longueur ne disent où ils diffèrent.
+ * Un secret absent ou vide, d'un côté ou de l'autre, est refusé, jamais comparé : deux textes vides ne s'accordent pas.
+ */
+export async function secretMatches(given: string | null | undefined, expected: string | null | undefined): Promise<boolean> {
+  if (!given || !expected) return false;
+  const [a, b] = await Promise.all([digest(given), digest(expected)]);
+  return a.reduce((diff, byte, i) => diff | (byte ^ b[i]), 0) === 0;
 }
 
 export type TextBody =

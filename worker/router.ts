@@ -1,4 +1,5 @@
 import { availability, postRequest } from "./api";
+import { calendarFeed } from "./calendar";
 import { demoPage } from "./demo";
 import type { Deps } from "./deps";
 import { fromOtherOrigin, json, type Handler } from "./http";
@@ -18,6 +19,11 @@ const forToken =
   (req, deps, ctx, [token]) =>
     handler(req, deps, token, ctx);
 
+/** `/agenda/<jeton>.ics` : le jeton est le nom du fichier sans son extension. Sans elle, il n'y a pas de jeton, et le flux répond 404. */
+const ICS = ".ics";
+const agenda: Handler = (_req, deps, _ctx, [file]) =>
+  calendarFeed(deps, file.endsWith(ICS) ? file.slice(0, -ICS.length) : "");
+
 const ROUTES: Route[] = [
   { method: "GET", path: "/api/availability", handler: availability },
   { method: "POST", path: "/api/requests", handler: postRequest },
@@ -27,6 +33,7 @@ const ROUTES: Route[] = [
   { method: "POST", path: "/acompte/:token", handler: forToken(startPayment) },
   { method: "GET", path: "/acompte/:token/simulation", handler: forToken(simulationPage) },
   { method: "POST", path: "/acompte/:token/simulation", handler: forToken(simulationAction) },
+  { method: "GET", path: "/agenda/:file", handler: agenda },
   { method: "GET", path: "/demo", handler: demoPage },
 ];
 

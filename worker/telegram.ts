@@ -1,7 +1,7 @@
 import type { BookingStatus } from "./bookings";
 import type { Button, Deps, TelegramGateway } from "./deps";
 import { chatIds, type Env } from "./env";
-import { callServiceOk, json, jsonPost, readJson } from "./http";
+import { callServiceOk, json, jsonPost, readJson, secretMatches } from "./http";
 import { sendSoon } from "./notifications";
 import { refuseBooking, validateBooking } from "./operations";
 import { getBooking, type Booking } from "./repository";
@@ -47,22 +47,9 @@ const SECRET_HEADER = "X-Telegram-Bot-Api-Secret-Token";
 /** Une mise à jour de Telegram tient en quelques centaines d'octets : au-delà, ce n'est pas une mise à jour. */
 const MAX_UPDATE_BYTES = 64 * 1024;
 
-const digest = async (text: string): Promise<Uint8Array> =>
-  new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
-
-/**
- * `true` si la requête porte le secret du webhook. Les deux secrets sont réduits à une empreinte de même
- * longueur, comparée octet par octet sans s'arrêter au premier écart : ni la durée, ni la longueur ne disent
- * où les secrets diffèrent. Un secret absent d'un côté ou de l'autre est refusé, jamais comparé : deux
- * textes vides ne s'accordent pas.
- */
-async function hasSecret(req: Request, env: Env): Promise<boolean> {
-  const given = req.headers.get(SECRET_HEADER);
-  const expected = env.TELEGRAM_WEBHOOK_SECRET;
-  if (!given || !expected) return false;
-  const [a, b] = await Promise.all([digest(given), digest(expected)]);
-  return a.reduce((diff, byte, i) => diff | (byte ^ b[i]), 0) === 0;
-}
+/** `true` si la requête porte le secret du webhook. */
+const hasSecret = (req: Request, env: Env): Promise<boolean> =>
+  secretMatches(req.headers.get(SECRET_HEADER), env.TELEGRAM_WEBHOOK_SECRET);
 
 /** L'appui sur un bouton d'un message du bot : ce que Telegram en dit, rien de plus. */
 type Tap = { id: string; data: string; chatId: string; messageId: number };

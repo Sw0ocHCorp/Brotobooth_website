@@ -41,8 +41,9 @@ const paymentUrl = (b: Booking, ctx: MessageContext): string => absolute(ctx, `/
 
 const day = (b: Booking): string => formatDay(b.event_date);
 const euros = (cents: number | null): string => formatEuros(cents ?? 0);
-const planName = (b: Booking): string | null => planById(b.plan ?? "")?.name ?? b.plan;
-const balance = (b: Booking): string =>
+export const planName = (b: Booking): string | null => planById(b.plan ?? "")?.name ?? b.plan;
+/** Ce qui reste à régler après l'acompte, en euros ; zéro une fois le solde réglé. */
+export const balance = (b: Booking): string =>
   euros(b.balance_paid_at ? 0 : Math.max(0, (b.price_cents ?? 0) - (b.deposit_cents ?? 0)));
 /** « jusqu'au mardi 10 novembre à 11 h », ou rien quand la date n'a pas d'échéance. */
 const through = (b: Booking): string => (b.hold_until ? ` jusqu'au ${formatMoment(b.hold_until)}` : "");
