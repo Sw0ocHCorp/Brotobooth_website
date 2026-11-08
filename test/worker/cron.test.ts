@@ -8,18 +8,27 @@ import {
   getBooking,
   getHistory,
   getState,
-  listDueNotifications,
   listUnavailableDates,
   patchBooking,
   type Booking,
   type NewBooking,
 } from "../../worker/repository";
-import { T0, fakeDeps, insert, newBooking, request, resetDb, strictStripe, validatedBooking, type FakeDeps } from "../support";
+import {
+  T0,
+  fakeDeps,
+  insert,
+  newBooking,
+  notificationRows,
+  request,
+  resetDb,
+  strictStripe,
+  validatedBooking,
+  type FakeDeps,
+} from "../support";
 
 const DEADLINE = "2026-11-10T10:00:00.000Z";
 /** Lundi 9 h à Paris, un an et un jour après `T0` : de quoi libérer, annoncer le point et anonymiser dans un même passage. */
 const MONDAY_9H = "2027-11-08T08:00:00.000Z";
-const FAR_FUTURE = "9999-12-31T23:59:59.999Z";
 
 let deps: FakeDeps;
 let logged: MockInstance<Console["error"]>;
@@ -56,8 +65,9 @@ const afterHold = (b: Booking): string => b.hold_until!;
 
 const current = async (b: Booking) => (await getBooking(env.DB, b.id))!;
 const lastEvent = async (b: Booking) => (await getHistory(env.DB, b.id)).at(-1);
+/** Les notifications de ce modèle mises en file et pas annulées, envoyées ou non : `runCron` envoie aussi. */
 const queued = async (template: string) =>
-  (await listDueNotifications(env.DB, FAR_FUTURE, 100)).filter((n) => n.template === template);
+  (await notificationRows()).filter((n) => n.template === template && n.cancelled_at === null);
 const digests = () => queued("owner_digest");
 
 /** La base, sauf pour les requêtes qui correspondent à `pattern` : elles lèvent, comme une panne de D1. */
@@ -403,6 +413,58 @@ describe("runCron", () => {
     expect(await getState(env.DB, "last_cron_run")).toBe(MONDAY_9H);
   });
 
+  describe("envoi des messages", () => {
+    it("envoie les messages dus", async () => {
+      await request();
+      await runCron(deps);
+      expect(deps.emails.map((m) => m.subject)).toEqual(
+        expect.arrayContaining(["Votre demande pour le samedi 19 décembre", "Nouvelle demande pour le samedi 19 décembre"]),
+      );
+      expect(deps.telegrams).toHaveLength(1);
+      expect(deps.telegrams[0].buttons!.flat()).toHaveLength(3);
+    });
+
+    it("envoie dans le même passage le point du lundi qu'il vient de préparer", async () => {
+      deps.setNow(MONDAY_9H);
+      await runCron(deps);
+      expect(deps.emails.map((m) => m.subject)).toEqual(["Point du lundi : les prestations à venir"]);
+      expect(deps.telegrams.map((m) => m.html.split("\n")[0])).toEqual(["<b>Point du lundi : les prestations à venir</b>"]);
+      expect((await digests()).every((n) => n.sent_at === MONDAY_9H)).toBe(true);
+    });
+
+    it("annonce la libération d'une date dans le passage qui la libère", async () => {
+      const due = await request();
+      deps.setNow(afterHold(due));
+      await runCron(deps);
+      expect(deps.emails.map((m) => m.subject)).toEqual(
+        expect.arrayContaining(["Votre demande pour le samedi 19 décembre", "Date libérée : samedi 19 décembre"]),
+      );
+      expect(deps.emails.some((m) => m.to === "camille@example.test" && /n'est plus réservée/.test(m.text))).toBe(true);
+    });
+
+    it("n'envoie qu'une fois un même message, d'un passage à l'autre", async () => {
+      await request();
+      await runCron(deps);
+      const count = deps.emails.length + deps.telegrams.length;
+      await runCron(deps);
+      expect(deps.emails.length + deps.telegrams.length).toBe(count);
+    });
+
+    it("une panne de l'envoi n'empêche ni la libération ni l'anonymisation, ni l'heure du passage", async () => {
+      const due = await request();
+      const refused = (await insert(newBooking({ status: "refused", event_date: "2026-12-26", hold_until: null }))).booking;
+      deps.setNow(MONDAY_9H);
+      deps.env = { ...deps.env, DB: brokenFor(/FROM notifications/) };
+      await runCron(deps);
+      expect((await current(due)).status).toBe("expired");
+      expect((await current(refused)).anonymized_at).toBe(MONDAY_9H);
+      expect(await getState(env.DB, "last_cron_run")).toBe(MONDAY_9H);
+      expect(deps.emails).toHaveLength(0);
+      expect(logged).toHaveBeenCalledTimes(1);
+      expect(String(logged.mock.calls[0])).toBe("Envoi des messages : Error");
+    });
+  });
+
   describe("anonymisation", () => {
     /** Un refus, une expiration et une prestation confirmée, tous créés à `T0`. */
     async function seed() {
@@ -463,7 +525,8 @@ describe("runCron", () => {
 describe("tâche planifiée du Worker", () => {
   it("lance la tâche automatique", async () => {
     const ctx = createExecutionContext();
-    await worker.scheduled(createScheduledController(), env, ctx);
+    // Un lundi après 9 h, le point du lundi part : avec les vraies passerelles, ce serait un appel réseau.
+    await worker.scheduled(createScheduledController(), { ...env, FAKE_GATEWAYS: "1" }, ctx);
     await waitOnExecutionContext(ctx);
     const last = await getState(env.DB, "last_cron_run");
     expect(last).not.toBeNull();

@@ -1,5 +1,6 @@
 import { addDays, bookingWindow, isValidDate } from "./bookings";
 import { json, readJson, type Handler } from "./http";
+import { sendSoon } from "./notifications";
 import { createRequest } from "./operations";
 import { listUnavailableDates } from "./repository";
 
@@ -18,13 +19,14 @@ export const availability: Handler = async (req, deps) => {
   return json({ unavailable, ...bookingWindow(deps.now()) }, 200, { "Cache-Control": "public, max-age=30" });
 };
 
-export const postRequest: Handler = async (req, deps) => {
+export const postRequest: Handler = async (req, deps, ctx) => {
   const body = await readJson(req, MAX_BODY_BYTES);
   if (!body.ok) return json({ error: body.error }, body.status);
 
   const result = await createRequest(deps, body.value, req.headers.get("CF-Connecting-IP") || null);
   switch (result.kind) {
     case "created":
+      sendSoon(ctx, deps); // l'accusé et l'alerte partent sans attendre la tâche automatique
       return json({ status: "created" }, 201);
     case "already_requested":
       return json({ status: "already_requested" });

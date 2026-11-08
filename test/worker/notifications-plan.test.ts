@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeDeps } from "../../worker/deps";
 import { ALL_TEMPLATES, type PlanEvent, isRelevant, plan } from "../../worker/notifications";
 import type { Booking, NotificationSpec } from "../../worker/repository";
@@ -177,16 +177,30 @@ describe("isRelevant", () => {
 });
 
 describe("makeDeps", () => {
-  it("se crée sans lever, les passerelles réelles n'existant pas encore", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("se crée sans lever et garde l'environnement tel quel", () => {
     expect(() => makeDeps(env)).not.toThrow();
+    expect(makeDeps(env).env).toBe(env);
   });
 
-  it("ses passerelles lèvent à l'appel", async () => {
+  it("branche les vraies passerelles d'e-mail et de Telegram, et celles de Stripe restent à venir", async () => {
+    const fetched: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      fetched.push(url);
+      return Response.json({ ok: true });
+    });
     const d = makeDeps(env);
-    await expect(d.email.send({ to: "a@example.test", subject: "s", text: "t", html: "h" })).rejects.toThrow();
-    await expect(d.telegram.send("1", "x")).rejects.toThrow();
-    await expect(d.telegram.edit("1", 2, "x")).rejects.toThrow();
-    await expect(d.telegram.answer("cb")).rejects.toThrow();
+    await d.email.send({ to: "a@example.test", subject: "s", text: "t", html: "h" });
+    await d.telegram.send("1", "x");
+    await d.telegram.edit("1", 2, "x");
+    await d.telegram.answer("cb");
+    expect(fetched.map((url) => new URL(url).pathname.split("/").at(-1))).toEqual([
+      "emails",
+      "sendMessage",
+      "editMessageText",
+      "answerCallbackQuery",
+    ]);
     await expect(d.stripe.createSession({
       bookingId: "i", token: "t", email: null, amountCents: 100, label: "l", expiresAt: 1,
     })).rejects.toThrow();
@@ -195,11 +209,16 @@ describe("makeDeps", () => {
     await expect(d.stripe.verifyWebhook("{}", "sig")).rejects.toThrow();
   });
 
-  it("n'accepte aucun propriétaire et déclare Turnstile indisponible en attendant les tâches suivantes", async () => {
+  it("n'accepte aucun propriétaire en attendant la tâche suivante, et interroge le vrai Turnstile", async () => {
+    const fetched: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      fetched.push(url);
+      return Response.json({ success: true });
+    });
     const d = makeDeps(env);
-    expect(d.env).toBe(env);
     expect(d.isOwner({} as ExecutionContext)).toBe(false);
-    expect(await d.verifyTurnstile("t", null)).toBe("unavailable");
+    expect(await d.verifyTurnstile("t", null)).toBe("pass");
+    expect(fetched).toEqual(["https://challenges.cloudflare.com/turnstile/v0/siteverify"]);
   });
 
   it("donne l'horloge réelle", () => {

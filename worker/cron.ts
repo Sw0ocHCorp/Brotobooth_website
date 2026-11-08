@@ -1,5 +1,6 @@
 import { addMonths, nextStatus, parisHour, parisToday, parisWeekday } from "./bookings";
 import type { Deps } from "./deps";
+import { processDue } from "./notifications";
 import { offer } from "./offer";
 import { closeSession, expireHold } from "./operations";
 import { logFailure, recordPayment } from "./payments";
@@ -36,7 +37,10 @@ async function releaseHold(deps: Deps, id: string): Promise<void> {
   const sessionId = booking.stripe_session;
   if (sessionId) {
     const session = await closeSession(deps.stripe, sessionId);
-    if (session.paymentStatus === "paid") return recordPayment(deps, session);
+    if (session.paymentStatus === "paid") {
+      await recordPayment(deps, session);
+      return;
+    }
     // Les appels à Stripe ont pris du temps : un client parti avant l'échéance a pu ouvrir une autre session,
     // ou le propriétaire changer le prix. Sa date reste tenue, la suite se décide au passage suivant.
     booking = await dueBooking(deps, id);
@@ -90,9 +94,11 @@ async function anonymizeExpiredRequests(deps: Deps): Promise<void> {
   await setState(db, LAST_ANONYMIZE_KEY, today);
 }
 
-const STEPS: readonly (readonly [name: string, run: (deps: Deps) => Promise<void>])[] = [
+/** L'envoi vient après la libération et le point du lundi : leurs messages partent dans le même passage. */
+const STEPS: readonly (readonly [name: string, run: (deps: Deps) => Promise<unknown>])[] = [
   ["Libération des dates", releaseDueHolds],
   ["Point du lundi", enqueueWeeklyDigest],
+  ["Envoi des messages", processDue],
   ["Anonymisation", anonymizeExpiredRequests],
 ];
 

@@ -1,6 +1,7 @@
 import type { Deps, StripeSession } from "./deps";
 import { escapeHtml, formatDay, formatEuros, formatMoment, page } from "./html";
 import { html, json, readText, redirect, type Handler } from "./http";
+import { sendSoon } from "./notifications";
 import { offer } from "./offer";
 import { attachSession, confirmDeposit } from "./operations";
 import {
@@ -128,7 +129,7 @@ function statusView(b: Booking, verifying: boolean): string {
  * Le client revient de la page de paiement : si Stripe confirme que la session est payée, la réservation l'est
  * aussi, sans attendre le webhook. Une panne de Stripe laisse la réservation telle quelle.
  */
-async function settleReturn(deps: Deps, b: Booking): Promise<Booking> {
+async function settleReturn(deps: Deps, ctx: ExecutionContext, b: Booking): Promise<Booking> {
   if (!b.stripe_session) return b;
   let session: StripeSession;
   try {
@@ -138,17 +139,17 @@ async function settleReturn(deps: Deps, b: Booking): Promise<Booking> {
     return b;
   }
   if (session.paymentStatus !== "paid") return b;
-  await recordPayment(deps, session);
+  await settlePayment(deps, ctx, session);
   return (await getBooking(deps.env.DB, b.id)) ?? b;
 }
 
 /** `GET /acompte/<jeton>` : le récapitulatif à payer, ou ce qu'il en est de la réservation. */
-export async function paymentPage(req: Request, deps: Deps, token: string): Promise<Response> {
+export async function paymentPage(req: Request, deps: Deps, token: string, ctx: ExecutionContext): Promise<Response> {
   let booking = await getBookingByToken(deps.env.DB, token);
   if (!booking || booking.status === "blocked") return notFoundPage();
 
   const returning = booking.status === "awaiting_deposit" && new URL(req.url).searchParams.get("paid") === "1";
-  if (returning) booking = await settleReturn(deps, booking);
+  if (returning) booking = await settleReturn(deps, ctx, booking);
 
   // Revenu de la page de paiement sans que Stripe confirme : on ne propose pas de payer une seconde fois.
   const verifying = returning && booking.status === "awaiting_deposit";
@@ -163,11 +164,11 @@ const checkoutUrl = (session: StripeSession): string => {
 };
 
 /** Envoie le client vers la session ouverte, ou en ouvre une. */
-async function checkout(deps: Deps, b: Booking, now: Date): Promise<Response> {
+async function checkout(deps: Deps, ctx: ExecutionContext, b: Booking, now: Date): Promise<Response> {
   const existing = b.stripe_session ? await deps.stripe.retrieveSession(b.stripe_session) : null;
   if (existing?.paymentStatus === "paid") {
     // Payée, mais le webhook n'est pas encore là : le client n'a rien à payer de plus.
-    await recordPayment(deps, existing);
+    await settlePayment(deps, ctx, existing);
     return redirect(`${acomptePath(b.token)}?paid=1`);
   }
   if (existing?.status === "open") return redirect(checkoutUrl(existing));
@@ -190,13 +191,13 @@ async function checkout(deps: Deps, b: Booking, now: Date): Promise<Response> {
 }
 
 /** `POST /acompte/<jeton>` : renvoie le client vers sa session de paiement, ouverte au besoin. */
-export async function startPayment(_req: Request, deps: Deps, token: string): Promise<Response> {
+export async function startPayment(_req: Request, deps: Deps, token: string, ctx: ExecutionContext): Promise<Response> {
   const booking = await getBookingByToken(deps.env.DB, token);
   if (!booking || booking.status === "blocked") return notFoundPage();
   const now = deps.now();
   if (!payable(booking, now)) return redirect(acomptePath(token)); // la page dit pourquoi
   try {
-    return await checkout(deps, booking, now);
+    return await checkout(deps, ctx, booking, now);
   } catch (error) {
     // Stripe ou la base en panne : la date reste tenue, rien n'a été écrit.
     logFailure("Session de paiement", error);
@@ -222,21 +223,32 @@ const lateAlerts = (bookingId: string, sessionId: string, now: Date): Notificati
 /**
  * Le client a payé `session`. La réservation passe à `confirmed` si elle attend cet acompte, et rejouer
  * l'appel ne change rien. Si elle ne l'attend plus (date libérée, annulée, déjà payée par une autre session),
- * rien n'est écrasé : le propriétaire est alerté, pour rembourser depuis Stripe.
+ * rien n'est écrasé : le propriétaire est alerté, pour rembourser depuis Stripe. Rend `true` si le paiement a
+ * mis des messages en file (confirmation, ou alerte), `false` s'il n'y avait rien à faire.
  */
-export async function recordPayment(deps: Deps, session: StripeSession): Promise<void> {
-  if (!session.bookingId) return;
+export async function recordPayment(deps: Deps, session: StripeSession): Promise<boolean> {
+  if (!session.bookingId) return false;
   const confirmed = await confirmDeposit(deps, session.bookingId, "stripe");
-  if (confirmed.ok || confirmed.reason !== "stale") return;
+  if (confirmed.ok) return true;
+  if (confirmed.reason !== "stale") return false;
 
   // Relue après l'échec : la confirmation d'un rejeu, ou du retour du client arrivé en même temps, est déjà faite.
   const booking = await getBooking(deps.env.DB, session.bookingId);
-  if (!booking || (booking.deposit_paid_at !== null && booking.stripe_session === session.id)) return;
+  if (!booking || (booking.deposit_paid_at !== null && booking.stripe_session === session.id)) return false;
   await enqueue(deps.env.DB, lateAlerts(booking.id, session.id, deps.now()));
+  return true;
+}
+
+/**
+ * `recordPayment`, puis l'envoi sans attendre de ce qu'il a mis en file. Seul l'appel qui enregistre le
+ * paiement envoie : le webhook et le retour du client, presque simultanés, ne doublent pas les messages.
+ */
+export async function settlePayment(deps: Deps, ctx: ExecutionContext, session: StripeSession): Promise<void> {
+  if (await recordPayment(deps, session)) sendSoon(ctx, deps);
 }
 
 /** `POST /api/stripe/webhook` : 400 si la signature ne se vérifie pas, 200 sinon, y compris pour un événement ignoré. */
-export const stripeWebhook: Handler = async (req, deps) => {
+export const stripeWebhook: Handler = async (req, deps, ctx) => {
   const body = await readText(req, MAX_WEBHOOK_BYTES);
   if (!body.ok) return json({ error: body.error }, body.status);
 
@@ -249,7 +261,7 @@ export const stripeWebhook: Handler = async (req, deps) => {
     return json({ error: "invalid_signature" }, 400);
   }
   if (event.type === "checkout.session.completed" && event.session?.paymentStatus === "paid") {
-    await recordPayment(deps, event.session);
+    await settlePayment(deps, ctx, event.session);
   }
   return json({ received: true });
 };

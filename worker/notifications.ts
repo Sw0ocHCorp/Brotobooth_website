@@ -1,6 +1,20 @@
-import { addDays, parisInstant, type BookingStatus } from "./bookings";
+import { addDays, parisInstant, parisToday, type BookingStatus } from "./bookings";
+import type { Deps } from "./deps";
 import { offer } from "./offer";
-import type { Booking, NotificationSpec } from "./repository";
+import {
+  cancelNotification,
+  enqueue,
+  getBooking,
+  listDueNotifications,
+  listUpcoming,
+  markFailed,
+  markSent,
+  type Booking,
+  type NotificationRow,
+  type NotificationSpec,
+} from "./repository";
+import { chatIds } from "./telegram";
+import { renderEmail, renderTelegram, type MessageContext } from "./templates";
 
 /** Les modèles de message de la spec (section 5), partagés par la planification, l'envoi et les tests. */
 export const ALL_TEMPLATES = [
@@ -133,3 +147,135 @@ export const isRelevant = (template: string, b: Booking | null): boolean => {
   const required = REQUIRED_STATUS.get(template);
   return b === null || required === undefined || b.status === required;
 };
+
+// ---------- l'envoi ----------
+
+const DEFAULT_LIMIT = 50;
+/** Un échec met en file une suite (alerte, message de secours) qui peut elle-même échouer : trois tours suffisent. */
+const MAX_ROUNDS = 3;
+/** À partir de ce nombre d'échecs d'un e-mail au client, le propriétaire est alerté. */
+const ALERT_AFTER_FAILURES = 3;
+const MAX_ERROR_LENGTH = 200;
+const UPCOMING_STATUSES: readonly BookingStatus[] = ["pending_review", "awaiting_deposit", "confirmed"];
+
+const errorName = (error: unknown): string => (error instanceof Error ? error.name : "erreur inconnue");
+
+/** Une panne se consigne par le numéro, le modèle et le nom de l'erreur : jamais son message, qui peut citer un client. */
+const report = (n: Pick<NotificationRow, "id" | "template">, error: unknown): void =>
+  console.error(`Notification ${n.id} (${n.template}) : ${errorName(error)}`);
+
+const errorSummary = (error: unknown): string =>
+  error instanceof Error ? `${error.name}: ${error.message}`.slice(0, MAX_ERROR_LENGTH) : "erreur inconnue";
+
+async function sendEmail(deps: Deps, n: NotificationRow, booking: Booking | null, context: MessageContext): Promise<void> {
+  const message = renderEmail(n.template, booking, context);
+  const to = n.recipient === "owner" ? deps.env.OWNER_EMAIL : booking?.client_email;
+  if (!to) throw new Error("adresse du destinataire manquante");
+  await deps.email.send({ to, ...message });
+}
+
+/**
+ * Le message part à chaque chat configuré, l'un après l'autre. Un chat qui répond a livré le message : le renvoyer
+ * aux autres au passage suivant le doublerait, d'où l'échec seulement quand aucun chat ne répond.
+ */
+async function sendTelegram(deps: Deps, n: NotificationRow, booking: Booking | null, context: MessageContext): Promise<void> {
+  const { html, buttons } = renderTelegram(n.template, booking, context);
+  const chats = chatIds(deps.env);
+  const failures: unknown[] = [];
+  for (const chat of chats) {
+    try {
+      await deps.telegram.send(chat, html, buttons);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length === chats.length) throw failures[0] ?? new Error("aucun chat Telegram configuré");
+  for (const error of failures) report(n, error);
+}
+
+/**
+ * Rend le message d'après la réservation à jour, puis l'envoie. `false` pour un rappel devenu inutile (la
+ * réservation a changé d'état depuis sa mise en file) : il est annulé, sans échec.
+ */
+async function deliver(deps: Deps, n: NotificationRow): Promise<boolean> {
+  const db = deps.env.DB;
+  const now = deps.now();
+  const booking = n.booking_id === null ? null : await getBooking(db, n.booking_id);
+  if (!isRelevant(n.template, booking)) {
+    await cancelNotification(db, n.id, now.toISOString());
+    return false;
+  }
+  const context: MessageContext = {
+    baseUrl: deps.env.BASE_URL,
+    upcoming: n.template === "owner_digest" ? await listUpcoming(db, parisToday(now), UPCOMING_STATUSES) : undefined,
+  };
+  await (n.channel === "email" ? sendEmail(deps, n, booking, context) : sendTelegram(deps, n, booking, context));
+  await markSent(db, n.id, now.toISOString());
+  return true;
+}
+
+/**
+ * Note l'échec de `n`, puis met en file ce qui doit suivre, dû tout de suite : un e-mail au propriétaire quand
+ * Telegram échoue, une alerte Telegram quand l'e-mail au client échoue pour la troisième fois. Les clés
+ * `<clé>:fallback` et `<clé>:alert` font que la suite n'est mise en file qu'une fois. Rend `true` si une suite
+ * a été mise en file.
+ */
+async function settleFailure(deps: Deps, n: NotificationRow, error: unknown): Promise<boolean> {
+  const db = deps.env.DB;
+  await markFailed(db, n.id, errorSummary(error));
+  const followUp = (suffix: string, channel: NotificationSpec["channel"], template: string): NotificationSpec => ({
+    booking_id: n.booking_id,
+    dedupe_key: `${n.dedupe_key}:${suffix}`,
+    channel,
+    recipient: "owner",
+    template,
+    due_at: deps.now().toISOString(),
+  });
+  if (n.channel === "telegram") {
+    await enqueue(db, [followUp("fallback", "email", n.template)]);
+    return true;
+  }
+  if (n.recipient === "client" && n.attempts + 1 >= ALERT_AFTER_FAILURES) {
+    await enqueue(db, [followUp("alert", "telegram", "owner_email_failed")]);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Envoie les notifications échues, les plus anciennes d'abord (`limit` au plus par tour). Chacune a son propre
+ * filet : une panne n'arrête pas les suivantes, et reste en file pour le passage suivant. Les suites d'un échec
+ * (message de secours, alerte) sont envoyées dans le même appel.
+ */
+export async function processDue(deps: Deps, limit = DEFAULT_LIMIT): Promise<{ sent: number; failed: number }> {
+  const result = { sent: 0, failed: 0 };
+  const handled = new Set<number>();
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const due = (await listDueNotifications(deps.env.DB, deps.now().toISOString(), limit)).filter((n) => !handled.has(n.id));
+    let followUps = false;
+    for (const n of due) {
+      handled.add(n.id);
+      try {
+        if (await deliver(deps, n)) result.sent++;
+      } catch (error) {
+        result.failed++;
+        report(n, error);
+        const queued = await settleFailure(deps, n, error).catch((bookkeeping) => {
+          report(n, bookkeeping);
+          return false;
+        });
+        followUps ||= queued;
+      }
+    }
+    if (!followUps) break;
+  }
+  return result;
+}
+
+/**
+ * Envoie sans attendre la tâche automatique, une fois la réponse partie. Ce qui échoue reste en file : l'appelant
+ * n'a rien à gérer, et une demande ou un paiement déjà enregistré ne se perd jamais à cause d'un envoi.
+ */
+export function sendSoon(ctx: ExecutionContext, deps: Deps): void {
+  ctx.waitUntil(processDue(deps).catch((error) => console.error(`Envoi immédiat : ${errorName(error)}`)));
+}

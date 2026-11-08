@@ -1,5 +1,9 @@
+import { demoGateways, withDemoRecipients } from "./demo";
+import { resendGateway } from "./email";
 import type { Env } from "./env";
+import { callService } from "./http";
 import { simulatedGateway } from "./simulated-payment";
+import { telegramGateway } from "./telegram";
 
 export type EmailMessage = { to: string; subject: string; text: string; html: string };
 
@@ -52,11 +56,53 @@ const notWired = (method: string) => async (): Promise<never> => {
   throw new Error(`${method} : passerelle pas encore branchée`);
 };
 
+const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+
+/** Les codes d'erreur qui disent que le secret du site est absent ou faux, non que le visiteur est un robot. */
+const SECRET_ERRORS = ["missing-input-secret", "invalid-input-secret"];
+
 /**
- * Les dépendances réelles. Le vrai Stripe (tâche 20), les messages et Turnstile (tâche 9) et l'accès propriétaire
- * (tâche 12) les remplacent. D'ici là, seul `PAYMENT_MODE=simulated` branche un paiement, factice.
+ * Le vrai Turnstile. `siteverify` est toujours interrogé, même pour un jeton vide : un robot qui omet le jeton
+ * obtient `fail`. Une panne du service, réseau ou 5xx, donne `unavailable` et ne coûte jamais une demande.
+ * Ni le jeton ni le secret ne sont écrits dans les journaux.
  */
-export function makeDeps(env: Env): Deps {
+export function turnstileVerifier(env: Env, fetchFn: typeof fetch = fetch): Deps["verifyTurnstile"] {
+  return async (token, ip) => {
+    const form = new URLSearchParams({ secret: env.TURNSTILE_SECRET, response: token });
+    if (ip) form.set("remoteip", ip);
+
+    let res: Response;
+    try {
+      res = await callService("Turnstile", fetchFn, SITEVERIFY_URL, { method: "POST", body: form });
+    } catch (error) {
+      console.error((error as Error).message);
+      return "unavailable";
+    }
+    if (res.status >= 500) {
+      console.error(`Turnstile a répondu ${res.status}`);
+      return "unavailable";
+    }
+    const verdict = await res.json<{ success?: boolean; "error-codes"?: string[] }>().catch(() => null);
+    if (verdict === null) {
+      console.error("Turnstile : réponse illisible");
+      return "unavailable";
+    }
+    // Un secret faux refuserait tous les visiteurs en silence : il se voit dans les journaux.
+    const codes = Array.isArray(verdict["error-codes"]) ? verdict["error-codes"] : [];
+    const refused = codes.filter((code) => SECRET_ERRORS.includes(code));
+    if (refused.length > 0) console.error(`Turnstile : ${refused.join(", ")}`);
+    return verdict.success === true ? "pass" : "fail";
+  };
+}
+
+/**
+ * Les dépendances réelles. Le vrai Stripe (tâche 20) et l'accès propriétaire (tâche 12) les remplaceront. D'ici
+ * là, seul `PAYMENT_MODE=simulated` branche un paiement, factice. `FAKE_GATEWAYS=1` remplace les e-mails,
+ * Telegram et Turnstile par des passerelles d'essai dont `/demo` montre les messages.
+ */
+export function makeDeps(realEnv: Env): Deps {
+  const demo = realEnv.FAKE_GATEWAYS === "1";
+  const env = demo ? withDemoRecipients(realEnv) : realEnv;
   const now = () => new Date();
   return {
     env,
@@ -70,13 +116,9 @@ export function makeDeps(env: Env): Deps {
             expireSession: notWired("stripe.expireSession"),
             verifyWebhook: notWired("stripe.verifyWebhook"),
           },
-    email: { send: notWired("email.send") },
-    telegram: {
-      send: notWired("telegram.send"),
-      edit: notWired("telegram.edit"),
-      answer: notWired("telegram.answer"),
-    },
-    verifyTurnstile: async () => "unavailable",
+    ...(demo
+      ? demoGateways(env, now)
+      : { email: resendGateway(env), telegram: telegramGateway(env), verifyTurnstile: turnstileVerifier(env) }),
     isOwner: () => false,
   };
 }

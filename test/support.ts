@@ -6,6 +6,7 @@ import {
   insertBooking,
   type Booking,
   type NewBooking,
+  type NotificationRow,
   type NotificationSpec,
 } from "../worker/repository";
 
@@ -74,6 +75,10 @@ export const spec = (key: string, bookingId?: string): NotificationSpec => ({
   template: "test",
   due_at: T0,
 });
+
+/** Toutes les notifications, envoyées, annulées ou en attente, dans l'ordre de leur mise en file. */
+export const notificationRows = async (): Promise<NotificationRow[]> =>
+  (await env.DB.prepare("SELECT * FROM notifications ORDER BY id").all<NotificationRow>()).results;
 
 /** Vide toutes les tables, les tables filles d'abord à cause des clés étrangères. */
 export async function resetDb(db: D1Database): Promise<void> {
@@ -157,11 +162,16 @@ function fakeStripe(): FakeStripe {
   };
 }
 
+/** Les destinataires du propriétaire dans les tests : l'environnement de test n'en définit aucun. */
+export const OWNER_EMAIL = "proprietaire@example.test";
+export const CHAT_ID = "111";
+
 /**
- * Les dépendances des tests : environnement réel, horloge à `T0`, propriétaire et Turnstile passants,
- * et tout ce que les passerelles reçoivent consigné dans les listes retournées.
+ * Les dépendances des tests : environnement réel (avec un propriétaire joignable par e-mail et par Telegram),
+ * horloge à `T0`, propriétaire et Turnstile passants, et tout ce que les passerelles reçoivent consigné dans
+ * les listes retournées.
  */
-export function fakeDeps(over: Partial<Deps> = {}): FakeDeps {
+export function fakeDeps({ env: given, ...over }: Partial<Deps> = {}): FakeDeps {
   let current = new Date(T0);
   const emails: EmailMessage[] = [];
   const telegrams: FakeDeps["telegrams"] = [];
@@ -170,7 +180,7 @@ export function fakeDeps(over: Partial<Deps> = {}): FakeDeps {
   const answerTexts: (string | undefined)[] = [];
 
   const base: FakeDeps = {
-    env,
+    env: { ...env, OWNER_EMAIL, FROM_EMAIL: "reservations@example.test", TELEGRAM_CHAT_IDS: CHAT_ID, ...given },
     now: () => new Date(current),
     setNow: (iso) => {
       current = new Date(iso);

@@ -6,3 +6,8 @@ it("répond 404 en JSON sur une route d'API inconnue", async () => {
   expect(res.status).toBe(404);
   expect(await res.json()).toEqual({ error: "not_found" });
 });
+
+it("répond 404 sur /demo : les messages d'essai n'existent qu'avec les fausses passerelles", async () => {
+  const res = await exports.default.fetch("https://brotobooth.fr/demo");
+  expect(res.status).toBe(404);
+});

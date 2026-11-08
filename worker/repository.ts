@@ -405,6 +405,14 @@ export async function markFailed(db: D1Database, id: number, error: string): Pro
     .run();
 }
 
+/** Annule un envoi devenu inutile pour qu'il ne soit plus repris. Un envoi déjà fait ou annulé reste tel quel. */
+export async function cancelNotification(db: D1Database, id: number, nowIso: string): Promise<void> {
+  await db
+    .prepare("UPDATE notifications SET cancelled_at = ? WHERE id = ? AND sent_at IS NULL AND cancelled_at IS NULL")
+    .bind(nowIso, id)
+    .run();
+}
+
 /** Les envois ni faits ni annulés qui ont échoué au moins trois fois. */
 export const listFailedNotifications = (db: D1Database): Promise<NotificationRow[]> =>
   rows<NotificationRow>(

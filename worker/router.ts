@@ -1,4 +1,5 @@
 import { availability, postRequest } from "./api";
+import { demoPage } from "./demo";
 import type { Deps } from "./deps";
 import { fromOtherOrigin, json, type Handler } from "./http";
 import { paymentPage, startPayment, stripeWebhook } from "./payments";
@@ -7,11 +8,14 @@ import { simulationAction, simulationPage } from "./simulated-payment";
 /** `:nom` dans `path` capte un segment du chemin, passé au gestionnaire dans l'ordre. */
 type Route = { method: string; path: string; handler: Handler };
 
-/** Le gestionnaire d'une page qui s'adresse à un client par son jeton (`:token`, premier segment capté). */
+/**
+ * Le gestionnaire d'une page qui s'adresse à un client par son jeton (`:token`, premier segment capté). Le
+ * contexte d'exécution suit en dernier : seules les pages qui enregistrent un paiement en ont besoin.
+ */
 const forToken =
-  (handler: (req: Request, deps: Deps, token: string) => Promise<Response>): Handler =>
-  (req, deps, _ctx, [token]) =>
-    handler(req, deps, token);
+  (handler: (req: Request, deps: Deps, token: string, ctx: ExecutionContext) => Promise<Response>): Handler =>
+  (req, deps, ctx, [token]) =>
+    handler(req, deps, token, ctx);
 
 const ROUTES: Route[] = [
   { method: "GET", path: "/api/availability", handler: availability },
@@ -21,6 +25,7 @@ const ROUTES: Route[] = [
   { method: "POST", path: "/acompte/:token", handler: forToken(startPayment) },
   { method: "GET", path: "/acompte/:token/simulation", handler: forToken(simulationPage) },
   { method: "POST", path: "/acompte/:token/simulation", handler: forToken(simulationAction) },
+  { method: "GET", path: "/demo", handler: demoPage },
 ];
 
 /** Les envois des formulaires de `/acompte` viennent du site lui-même, jamais d'une page d'un autre site. */

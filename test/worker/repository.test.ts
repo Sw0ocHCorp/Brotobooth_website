@@ -5,6 +5,7 @@ import {
   type NewBooking,
   anonymizeOld,
   applyTransition,
+  cancelNotification as cancelPending,
   countActiveByEmail,
   countRecentByIp,
   enqueue,
@@ -571,6 +572,23 @@ describe("file de notifications", () => {
     expect(await dueKeys()).toEqual([]);
     const row = await env.DB.prepare("SELECT sent_at FROM notifications WHERE id = ?").bind(n!.id).first();
     expect(row).toEqual({ sent_at: "2026-11-07T10:05:00.000Z" });
+  });
+
+  it("cancelNotification retire un envoi de la file, une seule fois, sans toucher à un envoi déjà fait", async () => {
+    await enqueue(env.DB, ["a-annuler", "fait", "deja-annule"].map((k) => spec(k)));
+    await markSent(env.DB, await notificationId("fait"), T0);
+    await cancelNotification("deja-annule");
+
+    for (const key of ["a-annuler", "fait", "deja-annule"]) {
+      await cancelPending(env.DB, await notificationId(key), "2026-11-07T11:00:00.000Z");
+    }
+    const rows = await env.DB.prepare("SELECT dedupe_key, sent_at, cancelled_at FROM notifications ORDER BY id").all();
+    expect(rows.results).toEqual([
+      { dedupe_key: "a-annuler", sent_at: null, cancelled_at: "2026-11-07T11:00:00.000Z" },
+      { dedupe_key: "fait", sent_at: T0, cancelled_at: null },
+      { dedupe_key: "deja-annule", sent_at: null, cancelled_at: T0 },
+    ]);
+    expect(await dueKeys()).toEqual([]);
   });
 
   it("markFailed compte l'essai et garde la dernière erreur", async () => {

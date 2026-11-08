@@ -1,0 +1,807 @@
+import { createExecutionContext } from "cloudflare:test";
+import { env } from "cloudflare:workers";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import { cancelBooking } from "../../worker/operations";
+import { makeDeps, turnstileVerifier } from "../../worker/deps";
+import type { Deps } from "../../worker/deps";
+import type { Env } from "../../worker/env";
+import { resendGateway } from "../../worker/email";
+import { processDue } from "../../worker/notifications";
+import { enqueue, getState, patchBooking, setState, type NotificationSpec } from "../../worker/repository";
+import { handle } from "../../worker/router";
+import { chatIds, telegramGateway } from "../../worker/telegram";
+import wrangler from "../../wrangler.jsonc?raw";
+import { CHAT_ID, OWNER_EMAIL, T0, fakeDeps, insert, newBooking, notificationRows, resetDb, type FakeDeps } from "../support";
+
+let deps: FakeDeps;
+let logged: MockInstance<Console["error"]>;
+beforeEach(async () => {
+  await resetDb(env.DB);
+  deps = fakeDeps();
+  logged = vi.spyOn(console, "error").mockImplementation(() => {});
+});
+afterEach(() => {
+  logged.mockRestore();
+  vi.unstubAllGlobals();
+});
+
+const logs = () => logged.mock.calls.flat().join("\n");
+
+const spec = (channel: NotificationSpec["channel"], template: string, bookingId: string | null, over: Partial<NotificationSpec> = {}): NotificationSpec => ({
+  booking_id: bookingId,
+  dedupe_key: `${bookingId}:${template}:${channel}`,
+  channel,
+  recipient: template.startsWith("client_") ? "client" : "owner",
+  template,
+  due_at: T0,
+  ...over,
+});
+const mail = (template: string, bookingId: string | null, over: Partial<NotificationSpec> = {}) => spec("email", template, bookingId, over);
+const telegram = (template: string, bookingId: string | null, over: Partial<NotificationSpec> = {}) => spec("telegram", template, bookingId, over);
+
+/** Une réservation du 19 décembre, par défaut en attente de réponse. */
+const seeded = async (over: Parameters<typeof newBooking>[0] = {}) => (await insert(newBooking(over))).booking;
+
+describe("processDue : envoi des messages dus", () => {
+  it("envoie une notification due une seule fois", async () => {
+    const b = await seeded();
+    await enqueue(env.DB, [mail("client_received", b.id)]);
+    expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
+    expect(await processDue(deps)).toEqual({ sent: 0, failed: 0 });
+    expect(deps.emails).toHaveLength(1);
+    expect(deps.emails[0]).toMatchObject({ to: "camille@example.test", subject: "Votre demande pour le samedi 19 décembre" });
+    expect(deps.emails[0].text).toContain("Bonjour Camille Martin,");
+    expect((await notificationRows())[0].sent_at).toBe(T0);
+  });
+
+  it("envoie les messages du propriétaire à l'adresse du propriétaire, et ceux de Telegram à ses chats", async () => {
+    const b = await seeded();
+    await enqueue(env.DB, [mail("owner_new_request", b.id), telegram("owner_new_request", b.id)]);
+    await processDue(deps);
+    expect(deps.emails.map((m) => m.to)).toEqual([OWNER_EMAIL]);
+    expect(deps.telegrams.map((m) => m.chatId)).toEqual([CHAT_ID]);
+    expect(deps.telegrams[0].buttons!.flat().map((x) => x.text)).toEqual(["Valider", "Refuser", "Ajuster le prix"]);
+  });
+
+  it("n'envoie pas avant l'heure ni après annulation", async () => {
+    const b = await seeded();
+    await enqueue(env.DB, [
+      mail("client_received", b.id, { dedupe_key: "later", due_at: "2026-11-07T10:00:01.000Z" }),
+      mail("client_refused", b.id, { dedupe_key: "cancelled" }),
+    ]);
+    await env.DB.prepare("UPDATE notifications SET cancelled_at = ? WHERE dedupe_key = 'cancelled'").bind(T0).run();
+    expect(await processDue(deps)).toEqual({ sent: 0, failed: 0 });
+    expect(deps.emails).toHaveLength(0);
+
+    deps.setNow("2026-11-07T10:00:01.000Z");
+    expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
+    expect(deps.emails.map((m) => m.subject)).toEqual(["Votre demande pour le samedi 19 décembre"]);
+    expect((await notificationRows()).find((n) => n.dedupe_key === "cancelled")!.sent_at).toBeNull();
+  });
+
+  it("saute un rappel devenu inutile sans échec", async () => {
+    const cancelled = await seeded({ status: "cancelled", hold_until: null });
+    await enqueue(env.DB, [telegram("owner_d7", cancelled.id), mail("owner_d7", cancelled.id)]);
+    expect(await processDue(deps)).toEqual({ sent: 0, failed: 0 });
+    expect(deps.telegrams).toHaveLength(0);
+    expect(deps.emails).toHaveLength(0);
+    const rows = await notificationRows();
+    expect(rows.map((n) => n.cancelled_at)).toEqual([T0, T0]);
+    expect(rows.map((n) => n.sent_at)).toEqual([null, null]);
+    expect(rows.map((n) => n.attempts)).toEqual([0, 0]);
+  });
+
+  it("envoie le même rappel quand la réservation est encore confirmée", async () => {
+    const confirmed = await seeded({ status: "confirmed", hold_until: null, deposit_paid_at: T0 });
+    await enqueue(env.DB, [telegram("owner_d7", confirmed.id)]);
+    expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
+    expect(deps.telegrams[0].html).toContain("Dans une semaine");
+  });
+
+  it("n'envoie pas un message annulé par l'annulation de la réservation", async () => {
+    const b = await seeded({ status: "awaiting_deposit" });
+    await enqueue(env.DB, [mail("client_deposit_reminder", b.id)]);
+    expect((await cancelBooking(deps, b.id, "owner")).ok).toBe(true);
+    expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
+    // Seul l'avis d'annulation part : le rappel du délai d'acompte a été annulé avec la réservation.
+    expect(deps.emails.map((m) => m.subject)).toEqual(["Votre réservation du samedi 19 décembre"]);
+  });
+
+  it("rend le message d'après la réservation à jour, juste avant l'envoi", async () => {
+    const b = await seeded({ status: "awaiting_deposit", deposit_cents: 45_000 });
+    await enqueue(env.DB, [mail("client_deposit_link", b.id)]);
+    await patchBooking(env.DB, b.id, { deposit_cents: 30_000 }, "owner", "price_adjusted", T0);
+    await processDue(deps);
+    expect(deps.emails[0].text).toContain("300,00 €");
+    expect(deps.emails[0].text).not.toContain("450,00 €");
+  });
+
+  it("limite le nombre d'envois d'un passage", async () => {
+    const b = await seeded();
+    await enqueue(env.DB, ["a", "b", "c"].map((k) => mail("client_received", b.id, { dedupe_key: k })));
+    expect(await processDue(deps, 2)).toEqual({ sent: 2, failed: 0 });
+    expect(await processDue(deps, 2)).toEqual({ sent: 1, failed: 0 });
+  });
+
+  it("une panne d'envoi n'empêche pas les notifications suivantes", async () => {
+    const first = await seeded({ event_date: "2026-12-19", client_email: "un@example.test" });
+    const second = await seeded({ event_date: "2026-12-20", client_email: "deux@example.test" });
+    await enqueue(env.DB, [mail("client_received", first.id), mail("client_received", second.id, { due_at: "2026-11-07T10:00:00.500Z" })]);
+    deps.setNow("2026-11-07T10:00:01.000Z");
+    const send = deps.email.send;
+    deps.email.send = async (m) => {
+      if (m.to === "un@example.test") throw new Error("panne");
+      await send(m);
+    };
+    expect(await processDue(deps)).toEqual({ sent: 1, failed: 1 });
+    expect(deps.emails.map((m) => m.to)).toEqual(["deux@example.test"]);
+  });
+});
+
+describe("processDue : reprises et alertes", () => {
+  it("reprend un envoi après un échec", async () => {
+    const d = fakeDeps();
+    let fail = true;
+    d.email.send = async (m) => {
+      if (fail) {
+        fail = false;
+        throw new Error("panne");
+      }
+      d.emails.push(m);
+    };
+    const b = await seeded();
+    await enqueue(env.DB, [mail("client_received", b.id)]);
+    expect(await processDue(d)).toEqual({ sent: 0, failed: 1 });
+    expect((await notificationRows())[0]).toMatchObject({ attempts: 1, last_error: "Error: panne", sent_at: null });
+    expect(await processDue(d)).toEqual({ sent: 1, failed: 0 });
+    expect(d.emails).toHaveLength(1);
+  });
+
+  it("alerte le propriétaire après 3 échecs d'envoi au client, une seule fois", async () => {
+    deps.email.send = async () => {
+      throw new Error("panne");
+    };
+    const b = await seeded();
+    await enqueue(env.DB, [mail("client_received", b.id)]);
+
+    await processDue(deps);
+    await processDue(deps);
+    expect(deps.telegrams).toHaveLength(0);
+    await processDue(deps);
+    expect(deps.telegrams).toHaveLength(1);
+    expect(deps.telegrams[0]).toMatchObject({ chatId: CHAT_ID });
+    expect(deps.telegrams[0].html).toContain("Camille Martin");
+
+    await processDue(deps);
+    await processDue(deps);
+    expect(deps.telegrams).toHaveLength(1);
+    const alerts = (await notificationRows()).filter((n) => n.template === "owner_email_failed");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({
+      dedupe_key: `${b.id}:client_received:email:alert`,
+      channel: "telegram",
+      recipient: "owner",
+      booking_id: b.id,
+    });
+    expect(alerts[0].sent_at).toBe(T0);
+  });
+
+  it("n'alerte pas pour un e-mail du propriétaire qui échoue", async () => {
+    deps.email.send = async () => {
+      throw new Error("panne");
+    };
+    const b = await seeded();
+    await enqueue(env.DB, [mail("owner_new_request", b.id)]);
+    for (let i = 0; i < 4; i++) await processDue(deps);
+    expect(deps.telegrams).toHaveLength(0);
+    expect((await notificationRows()).map((n) => n.template)).toEqual(["owner_new_request"]);
+  });
+
+  it("bascule sur e-mail quand Telegram échoue", async () => {
+    deps.telegram.send = async () => {
+      throw new Error("panne");
+    };
+    const b = await seeded({ status: "confirmed", hold_until: null });
+    await enqueue(env.DB, [telegram("owner_d7", b.id)]);
+
+    expect(await processDue(deps)).toEqual({ sent: 1, failed: 1 });
+    const rows = await notificationRows();
+    expect(rows.map((n) => [n.dedupe_key, n.channel, n.recipient, n.template])).toEqual([
+      [`${b.id}:owner_d7:telegram`, "telegram", "owner", "owner_d7"],
+      [`${b.id}:owner_d7:telegram:fallback`, "email", "owner", "owner_d7"],
+    ]);
+    expect(rows[0]).toMatchObject({ attempts: 1, sent_at: null });
+    expect(rows[1].sent_at).toBe(T0);
+    expect(deps.emails).toHaveLength(1);
+    expect(deps.emails[0]).toMatchObject({ to: OWNER_EMAIL, subject: "Dans une semaine : samedi 19 décembre" });
+
+    // Au passage suivant, Telegram est retenté sans doubler le message de secours.
+    await processDue(deps);
+    expect((await notificationRows()).filter((n) => n.channel === "email")).toHaveLength(1);
+  });
+
+  it("bascule aussi sur e-mail quand l'alerte Telegram échoue", async () => {
+    deps.telegram.send = async () => {
+      throw new Error("panne");
+    };
+    deps.email.send = async (m) => {
+      if (m.to === "camille@example.test") throw new Error("panne");
+      deps.emails.push(m);
+    };
+    const b = await seeded();
+    await enqueue(env.DB, [mail("client_received", b.id)]);
+    for (let i = 0; i < 3; i++) await processDue(deps);
+    expect(deps.emails.map((m) => [m.to, m.subject])).toEqual([
+      [OWNER_EMAIL, "Un e-mail n'est pas parti pour la prestation du samedi 19 décembre"],
+    ]);
+  });
+
+  it("envoie à chaque chat configuré", async () => {
+    const d = fakeDeps({ env: { ...env, OWNER_EMAIL, TELEGRAM_CHAT_IDS: "1,2" } });
+    const b = await seeded({ status: "confirmed", hold_until: null });
+    await enqueue(env.DB, [telegram("owner_d7", b.id)]);
+    expect(await processDue(d)).toEqual({ sent: 1, failed: 0 });
+    expect(d.telegrams.map((m) => m.chatId)).toEqual(["1", "2"]);
+    expect(d.telegrams[1].html).toBe(d.telegrams[0].html);
+  });
+
+  it("compte l'envoi comme fait quand un chat répond, sans le renvoyer aux autres", async () => {
+    const d = fakeDeps({ env: { ...env, OWNER_EMAIL, TELEGRAM_CHAT_IDS: "1,2" } });
+    d.telegram.send = async (chatId, html, buttons) => {
+      if (chatId === "2") throw new Error("bot bloqué par ce chat");
+      d.telegrams.push({ chatId, html, buttons });
+    };
+    const b = await seeded({ status: "confirmed", hold_until: null });
+    await enqueue(env.DB, [telegram("owner_d7", b.id)]);
+    expect(await processDue(d)).toEqual({ sent: 1, failed: 0 });
+    expect(await processDue(d)).toEqual({ sent: 0, failed: 0 });
+    expect(d.telegrams.map((m) => m.chatId)).toEqual(["1"]);
+    expect(d.emails).toHaveLength(0);
+    expect(logs()).toMatch(/Notification \d+ \(owner_d7\) : Error/);
+    expect(logs()).not.toContain("bloqué");
+  });
+
+  it("échoue, puis écrit par e-mail, quand aucun chat n'est configuré", async () => {
+    const d = fakeDeps({ env: { ...env, OWNER_EMAIL, TELEGRAM_CHAT_IDS: " , " } });
+    const b = await seeded({ status: "confirmed", hold_until: null });
+    await enqueue(env.DB, [telegram("owner_d7", b.id)]);
+    expect(await processDue(d)).toEqual({ sent: 1, failed: 1 });
+    expect(d.telegrams).toHaveLength(0);
+    expect(d.emails.map((m) => m.to)).toEqual([OWNER_EMAIL]);
+  });
+
+  it("échoue sans envoyer quand le client n'a pas d'adresse", async () => {
+    const b = await seeded({ client_email: null });
+    await enqueue(env.DB, [mail("client_received", b.id)]);
+    expect(await processDue(deps)).toEqual({ sent: 0, failed: 1 });
+    expect(deps.emails).toHaveLength(0);
+  });
+
+  it("ne consigne que le numéro, le modèle et le nom de l'erreur", async () => {
+    deps.email.send = async () => {
+      throw new Error("panne chez camille@example.test, clé re_secrète");
+    };
+    const b = await seeded();
+    await enqueue(env.DB, [mail("client_received", b.id)]);
+    await processDue(deps);
+    const id = (await notificationRows())[0].id;
+    expect(logged.mock.calls).toEqual([[`Notification ${id} (client_received) : Error`]]);
+  });
+
+  it("consigne, sans donnée personnelle, une panne de la base pendant la mise en file des suites", async () => {
+    deps.email.send = async () => {
+      throw new Error("panne");
+    };
+    const b = await seeded();
+    await enqueue(env.DB, [mail("client_received", b.id)]);
+    await processDue(deps);
+    await processDue(deps);
+    const real = env.DB;
+    const flaky = {
+      prepare: (sql: string) => real.prepare(sql),
+      batch: () => Promise.reject(new Error("D1 : camille@example.test")),
+    } as unknown as D1Database;
+    deps.env = { ...deps.env, DB: flaky };
+    logged.mockClear();
+    expect(await processDue(deps)).toEqual({ sent: 0, failed: 1 });
+    expect(logged.mock.calls.map(([line]) => line)).toEqual([
+      expect.stringMatching(/^Notification \d+ \(client_received\) : Error$/),
+      expect.stringMatching(/^Notification \d+ \(client_received\) : Error$/),
+    ]);
+    expect(logs()).not.toContain("camille");
+  });
+});
+
+describe("processDue : le point du lundi", () => {
+  const confirmed = (date: string, name: string) => ({
+    status: "confirmed" as const,
+    event_date: date,
+    client_name: name,
+    hold_until: null,
+    client_email: `${name.split(" ")[0].toLowerCase()}@example.test`,
+  });
+
+  it("liste les prestations à venir, pas celles de la veille ni les annulées", async () => {
+    await seeded(confirmed("2026-12-19", "Camille Martin"));
+    await seeded({ ...confirmed("2027-01-09", "Lou Durand"), status: "awaiting_deposit" });
+    await seeded({ ...confirmed("2026-11-07", "Sam Aujourdhui") });
+    await seeded(confirmed("2026-11-06", "Hier Passé"));
+    await seeded({ ...confirmed("2026-12-26", "Annulée Cancel"), status: "cancelled" });
+    await seeded({ ...confirmed("2026-12-27", "Bloquée Bloc"), status: "blocked" });
+    await enqueue(env.DB, [telegram("owner_digest", null, { dedupe_key: "digest:2026-11-07:telegram" }), mail("owner_digest", null, { dedupe_key: "digest:2026-11-07:email" })]);
+
+    expect(await processDue(deps)).toEqual({ sent: 2, failed: 0 });
+    const { html } = deps.telegrams[0];
+    for (const part of ["samedi 19 décembre 2026", "samedi 9 janvier 2027", "samedi 7 novembre 2026", "Camille Martin", "Lou Durand", "Sam Aujourdhui"]) {
+      expect(html).toContain(part);
+    }
+    for (const part of ["Hier Passé", "Annulée Cancel", "Bloquée Bloc"]) expect(html).not.toContain(part);
+    expect(deps.emails[0]).toMatchObject({ to: OWNER_EMAIL, subject: "Point du lundi : les prestations à venir" });
+    expect(deps.emails[0].text).toContain("Camille Martin");
+  });
+
+  it("annonce une semaine vide", async () => {
+    await enqueue(env.DB, [telegram("owner_digest", null, { dedupe_key: "digest:2026-11-07:telegram" })]);
+    await processDue(deps);
+    expect(deps.telegrams[0].html).toContain("Aucune prestation à venir");
+  });
+
+  it("compte le jour de Paris : à minuit passé à Paris, la veille UTC n'est plus à venir", async () => {
+    await seeded(confirmed("2026-11-07", "Sam Aujourdhui"));
+    await enqueue(env.DB, [telegram("owner_digest", null, { dedupe_key: "digest:x:telegram", due_at: "2026-11-07T23:30:00.000Z" })]);
+    deps.setNow("2026-11-07T23:30:00.000Z"); // 0 h 30 à Paris, le 8 novembre
+    await processDue(deps);
+    expect(deps.telegrams[0].html).toContain("Aucune prestation à venir");
+  });
+});
+
+describe("passerelle Resend", () => {
+  const message = { to: "camille@example.test", subject: "Objet", text: "Texte", html: "<p>Texte</p>" };
+  const RESEND_ENV = { ...env, RESEND_API_KEY: "re_cle_secrete", FROM_EMAIL: "reservations@example.test" } as Env;
+
+  const recorder = (respond: () => Response | Promise<Response>) => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchFn = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return respond();
+    }) as unknown as typeof fetch;
+    return { calls, fetchFn };
+  };
+
+  it("envoie vers api.resend.com avec la clé et l'expéditeur de l'environnement", async () => {
+    const { calls, fetchFn } = recorder(() => Response.json({ id: "e1" }));
+    await resendGateway(RESEND_ENV, fetchFn).send(message);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("https://api.resend.com/emails");
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.headers).toMatchObject({ Authorization: "Bearer re_cle_secrete", "Content-Type": "application/json" });
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({
+      from: "reservations@example.test",
+      to: ["camille@example.test"],
+      subject: "Objet",
+      text: "Texte",
+      html: "<p>Texte</p>",
+    });
+  });
+
+  it("borne l'appel dans le temps", async () => {
+    const { calls, fetchFn } = recorder(() => Response.json({}));
+    await resendGateway(RESEND_ENV, fetchFn).send(message);
+    expect(calls[0].init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it.each([400, 422, 429, 500, 503])("lève sur une réponse %i, sans reprendre ni la réponse ni la clé", async (status) => {
+    const { fetchFn } = recorder(() => new Response('{"message":"adresse camille@example.test refusée"}', { status }));
+    const error = await resendGateway(RESEND_ENV, fetchFn).send(message).catch((e: Error) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(`Resend a répondu ${status}`);
+  });
+
+  it("lève quand le réseau échoue, sans reprendre le message d'origine", async () => {
+    const fetchFn = (async () => {
+      throw new TypeError("connexion à re_cle_secrete perdue");
+    }) as unknown as typeof fetch;
+    const error = await resendGateway(RESEND_ENV, fetchFn).send(message).catch((e: Error) => e);
+    expect((error as Error).message).toBe("Resend injoignable (TypeError)");
+  });
+
+  it("utilise le fetch global par défaut", async () => {
+    const { calls, fetchFn } = recorder(() => Response.json({}));
+    vi.stubGlobal("fetch", fetchFn);
+    await resendGateway(RESEND_ENV).send(message);
+    expect(calls[0].url).toBe("https://api.resend.com/emails");
+  });
+});
+
+describe("passerelle Telegram", () => {
+  const TG_ENV = { ...env, TELEGRAM_BOT_TOKEN: "123:jeton-secret" } as Env;
+  const buttons = [[{ text: "Valider", data: "v:b1" }, { text: "Refuser", data: "r:b1" }], [{ text: "Ajuster le prix", url: "https://brotobooth.fr/admin#b1" }]];
+
+  const recorder = (respond: () => Response | Promise<Response> = () => Response.json({ ok: true })) => {
+    const calls: { url: string; body: Record<string, unknown>; init: RequestInit }[] = [];
+    const fetchFn = (async (url: string, init: RequestInit) => {
+      calls.push({ url, body: JSON.parse(init.body as string), init });
+      return respond();
+    }) as unknown as typeof fetch;
+    return { calls, fetchFn };
+  };
+
+  it("send appelle sendMessage en HTML avec un clavier à boutons", async () => {
+    const { calls, fetchFn } = recorder();
+    await telegramGateway(TG_ENV, fetchFn).send("42", "<b>Bonjour</b>", buttons);
+    expect(calls[0].url).toBe("https://api.telegram.org/bot123:jeton-secret/sendMessage");
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.headers).toMatchObject({ "Content-Type": "application/json" });
+    expect(calls[0].body).toEqual({
+      chat_id: "42",
+      text: "<b>Bonjour</b>",
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "Valider", callback_data: "v:b1" }, { text: "Refuser", callback_data: "r:b1" }],
+          [{ text: "Ajuster le prix", url: "https://brotobooth.fr/admin#b1" }],
+        ],
+      },
+    });
+  });
+
+  it("send n'ajoute pas de clavier sans bouton", async () => {
+    const { calls, fetchFn } = recorder();
+    await telegramGateway(TG_ENV, fetchFn).send("42", "texte");
+    expect(calls[0].body).toEqual({ chat_id: "42", text: "texte", parse_mode: "HTML" });
+  });
+
+  it("edit appelle editMessageText, et retire le clavier sans bouton", async () => {
+    const { calls, fetchFn } = recorder();
+    const gateway = telegramGateway(TG_ENV, fetchFn);
+    await gateway.edit("42", 7, "<b>Fait</b>", buttons);
+    await gateway.edit("42", 7, "<b>Fait</b>");
+    expect(calls[0].url).toBe("https://api.telegram.org/bot123:jeton-secret/editMessageText");
+    expect(calls[0].body).toMatchObject({ chat_id: "42", message_id: 7, text: "<b>Fait</b>", parse_mode: "HTML" });
+    expect(calls[1].body.reply_markup).toEqual({ inline_keyboard: [] });
+  });
+
+  it("answer appelle answerCallbackQuery", async () => {
+    const { calls, fetchFn } = recorder();
+    const gateway = telegramGateway(TG_ENV, fetchFn);
+    await gateway.answer("cb1", "C'est fait");
+    await gateway.answer("cb2");
+    expect(calls[0].url).toBe("https://api.telegram.org/bot123:jeton-secret/answerCallbackQuery");
+    expect(calls[0].body).toEqual({ callback_query_id: "cb1", text: "C'est fait" });
+    expect(calls[1].body).toEqual({ callback_query_id: "cb2" });
+  });
+
+  it.each([400, 401, 403, 429, 500])("lève sur une réponse %i, sans le jeton ni la réponse", async (status) => {
+    const { fetchFn } = recorder(() => new Response('{"ok":false,"description":"chat 42 introuvable"}', { status }));
+    const gateway = telegramGateway(TG_ENV, fetchFn);
+    for (const call of [() => gateway.send("42", "x"), () => gateway.edit("42", 1, "x"), () => gateway.answer("cb")]) {
+      const error = (await call().catch((e: Error) => e)) as Error;
+      expect(error.message).toBe(`Telegram a répondu ${status}`);
+    }
+  });
+
+  it("lève quand le réseau échoue, sans l'adresse qui porte le jeton", async () => {
+    const fetchFn = (async (url: string) => {
+      throw new Error(`échec de ${url}`);
+    }) as unknown as typeof fetch;
+    const error = (await telegramGateway(TG_ENV, fetchFn).send("42", "x").catch((e: Error) => e)) as Error;
+    expect(error.message).toBe("Telegram injoignable (Error)");
+    expect(error.message).not.toContain("jeton-secret");
+  });
+});
+
+describe("chatIds", () => {
+  it.each([
+    ["1", ["1"]],
+    ["1,2", ["1", "2"]],
+    [" 1 , -1002 ,, 3 ", ["1", "-1002", "3"]],
+    ["", []],
+    [" , ", []],
+    [undefined, []],
+  ])("lit %j", (raw, expected) => {
+    expect(chatIds({ ...env, TELEGRAM_CHAT_IDS: raw } as Env)).toEqual(expected);
+  });
+});
+
+describe("Turnstile réel", () => {
+  const TS_ENV = { ...env, TURNSTILE_SECRET: "0x-secret-turnstile" } as Env;
+  const reply = (body: unknown, status = 200) => async () => Response.json(body, { status });
+  const verifier = (respond: () => Promise<Response>) => {
+    const calls: { url: string; form: URLSearchParams; init: RequestInit }[] = [];
+    const fetchFn = (async (url: string, init: RequestInit) => {
+      calls.push({ url, form: new URLSearchParams(init.body as URLSearchParams), init });
+      return respond();
+    }) as unknown as typeof fetch;
+    return { calls, verify: turnstileVerifier(TS_ENV, fetchFn) };
+  };
+
+  it("répond pass quand siteverify dit success", async () => {
+    const { calls, verify } = verifier(reply({ success: true }));
+    expect(await verify("jeton-client", "203.0.113.5")).toBe("pass");
+    expect(calls[0].url).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
+    expect(calls[0].init.method).toBe("POST");
+    expect(Object.fromEntries(calls[0].form)).toEqual({
+      secret: "0x-secret-turnstile",
+      response: "jeton-client",
+      remoteip: "203.0.113.5",
+    });
+  });
+
+  it("répond fail quand siteverify refuse le jeton", async () => {
+    const { verify } = verifier(reply({ success: false, "error-codes": ["invalid-input-response"] }));
+    expect(await verify("jeton-client", null)).toBe("fail");
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  it("répond fail sur une réponse sans success", async () => {
+    expect(await verifier(reply({})).verify("t", null)).toBe("fail");
+  });
+
+  it("interroge siteverify même pour un jeton vide : un robot sans jeton obtient fail", async () => {
+    const { calls, verify } = verifier(reply({ success: false, "error-codes": ["missing-input-response"] }));
+    expect(await verify("", null)).toBe("fail");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].form.get("response")).toBe("");
+    expect(calls[0].form.has("remoteip")).toBe(false);
+  });
+
+  it.each([500, 502, 503])("répond unavailable sur une réponse %i", async (status) => {
+    expect(await verifier(reply({ success: false }, status)).verify("t", null)).toBe("unavailable");
+  });
+
+  it("répond unavailable quand fetch lève", async () => {
+    const { verify } = verifier(async () => {
+      throw new Error("réseau");
+    });
+    expect(await verify("t", null)).toBe("unavailable");
+  });
+
+  it("répond unavailable quand la réponse n'est pas du JSON", async () => {
+    expect(await verifier(async () => new Response("<html>")).verify("t", null)).toBe("unavailable");
+  });
+
+  it("ne consigne jamais le jeton ni le secret", async () => {
+    const failing = verifier(async () => {
+      throw new TypeError("échec avec jeton-client et 0x-secret-turnstile");
+    });
+    expect(await failing.verify("jeton-client", "203.0.113.5")).toBe("unavailable");
+    expect(await verifier(reply({ success: false }, 503)).verify("jeton-client", "203.0.113.5")).toBe("unavailable");
+    expect(await verifier(async () => new Response("jeton-client 0x-secret-turnstile")).verify("jeton-client", null)).toBe("unavailable");
+    expect(logged).toHaveBeenCalled();
+    for (const secret of ["jeton-client", "0x-secret-turnstile", "203.0.113.5"]) expect(logs()).not.toContain(secret);
+  });
+
+  it("signale un secret refusé, sans le citer", async () => {
+    const { verify } = verifier(reply({ success: false, "error-codes": ["invalid-input-secret"] }));
+    expect(await verify("jeton-client", null)).toBe("fail");
+    expect(logs()).toContain("invalid-input-secret");
+    expect(logs()).not.toContain("0x-secret-turnstile");
+  });
+});
+
+describe("makeDeps", () => {
+  it("branche les vraies passerelles quand FAKE_GATEWAYS n'est pas 1", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      calls.push(url);
+      return Response.json({ success: true, ok: true });
+    });
+    for (const FAKE_GATEWAYS of [undefined, "", "0", "true"]) {
+      calls.length = 0;
+      const real = makeDeps({ ...env, FAKE_GATEWAYS });
+      expect(real.env.FAKE_GATEWAYS).toBe(FAKE_GATEWAYS);
+      await real.email.send({ to: "a@example.test", subject: "s", text: "t", html: "h" });
+      await real.telegram.send("1", "x");
+      await real.telegram.edit("1", 2, "x");
+      await real.telegram.answer("cb");
+      expect(await real.verifyTurnstile("t", null)).toBe("pass");
+      expect(calls.map((u) => new URL(u).host)).toEqual([
+        "api.resend.com",
+        "api.telegram.org",
+        "api.telegram.org",
+        "api.telegram.org",
+        "challenges.cloudflare.com",
+      ]);
+    }
+    expect(await getState(env.DB, "demo_messages")).toBeNull();
+  });
+
+  it("garde l'environnement tel quel hors des fausses passerelles", () => {
+    expect(makeDeps(env).env).toBe(env);
+  });
+});
+
+describe("fausses passerelles (FAKE_GATEWAYS=1)", () => {
+  const FAKE = { ...env, FAKE_GATEWAYS: "1", OWNER_EMAIL: "", TELEGRAM_CHAT_IDS: "" } as Env;
+  const stored = async () => JSON.parse((await getState(env.DB, "demo_messages")) ?? "[]") as Record<string, unknown>[];
+
+  it("répondent pass à Turnstile et n'appellent aucun service", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const demo = makeDeps(FAKE);
+    expect(await demo.verifyTurnstile("", null)).toBe("pass");
+    await demo.email.send({ to: "a@example.test", subject: "s", text: "t", html: "h" });
+    await demo.telegram.send("1", "x");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("gardent chaque message avec son destinataire, son objet, son texte et ses boutons", async () => {
+    const demo = makeDeps({ ...FAKE, FAKE_GATEWAYS: "1" });
+    await demo.email.send({ to: "camille@example.test", subject: "Votre acompte", text: "Texte brut", html: "<p>Texte</p>" });
+    await demo.telegram.send("42", "<b>Nouvelle demande</b>", [[{ text: "Valider", data: "v:1" }]]);
+    const [telegramMessage, emailMessage] = await stored();
+    expect(emailMessage).toMatchObject({ channel: "email", to: "camille@example.test", subject: "Votre acompte", text: "Texte brut" });
+    expect(telegramMessage).toMatchObject({ channel: "telegram", to: "42", text: "Nouvelle demande", buttons: [[{ text: "Valider", data: "v:1" }]] });
+    expect(typeof emailMessage.at).toBe("string");
+  });
+
+  it("ne gardent de Telegram que le texte : balises retirées, adresses des liens conservées, caractères décodés", async () => {
+    const demo = makeDeps(FAKE);
+    await demo.telegram.send("42", '<b>Acompte</b> de A&lt;b&gt; &amp; &quot;C&quot; &#39;D&#39;\n<a href="https://brotobooth.fr/admin#b1?x=1&amp;y=2">Ouvrir</a>');
+    expect((await stored())[0].text).toBe('Acompte de A<b> & "C" \'D\'\nOuvrir (https://brotobooth.fr/admin#b1?x=1&y=2)');
+  });
+
+  it("gardent aussi les modifications de message et les réponses aux boutons", async () => {
+    const demo = makeDeps(FAKE);
+    await demo.telegram.edit("42", 7, "<b>Demande validée</b>");
+    await demo.telegram.answer("cb1", "C'est fait");
+    const [answer, edit] = await stored();
+    expect(edit).toMatchObject({ channel: "telegram", to: "42", subject: "Message modifié", text: "Demande validée" });
+    expect(answer).toMatchObject({ channel: "telegram", subject: "Réponse au bouton", text: "C'est fait" });
+  });
+
+  it("gardent les 50 derniers messages, le plus récent d'abord", async () => {
+    const demo = makeDeps(FAKE);
+    for (let i = 1; i <= 55; i++) await demo.email.send({ to: "a@example.test", subject: `Message ${i}`, text: "t", html: "h" });
+    const messages = await stored();
+    expect(messages).toHaveLength(50);
+    expect(messages[0].subject).toBe("Message 55");
+    expect(messages[49].subject).toBe("Message 6");
+  });
+
+  it("donnent au propriétaire des destinataires d'essai quand l'environnement n'en a pas", async () => {
+    const demo = makeDeps(FAKE);
+    expect(demo.env.OWNER_EMAIL).not.toBe("");
+    expect(chatIds(demo.env)).toHaveLength(1);
+    const b = await seeded({ status: "confirmed", hold_until: null });
+    const old = { due_at: "2020-01-01T00:00:00.000Z" };
+    await enqueue(env.DB, [mail("owner_d7", b.id, old), telegram("owner_d7", b.id, old)]);
+    expect(await processDue(demo)).toEqual({ sent: 2, failed: 0 });
+    expect((await stored()).map((m) => m.channel).sort()).toEqual(["email", "telegram"]);
+  });
+
+  it("gardent les adresses de l'environnement quand il en a", () => {
+    const demo = makeDeps({ ...FAKE, OWNER_EMAIL: "moi@example.test", TELEGRAM_CHAT_IDS: "7" });
+    expect(demo.env.OWNER_EMAIL).toBe("moi@example.test");
+    expect(chatIds(demo.env)).toEqual(["7"]);
+  });
+});
+
+describe("GET /demo", () => {
+  const ctx = createExecutionContext();
+  const demoDeps = (vars: Partial<Env> = { FAKE_GATEWAYS: "1" }) => fakeDeps({ env: { ...env, ...vars } });
+  const seed = (messages: unknown[]) => setState(env.DB, "demo_messages", JSON.stringify(messages));
+  const open = (d: Deps = demoDeps(), method = "GET") => handle(new Request("https://brotobooth.fr/demo", { method }), d, ctx);
+
+  const email = (over: Record<string, unknown> = {}) => ({ at: T0, channel: "email", to: "camille@example.test", subject: "Votre acompte", text: "Bonjour", ...over });
+
+  it.each([[undefined], [""], ["0"], ["true"], ["yes"]])("répond 404 quand FAKE_GATEWAYS vaut %j", async (value) => {
+    await seed([email()]);
+    const r = await open(demoDeps({ FAKE_GATEWAYS: value }));
+    expect(r.status).toBe(404);
+    expect(await r.text()).not.toContain("camille@example.test");
+  });
+
+  it("n'accepte que GET", async () => {
+    expect((await open(demoDeps(), "POST")).status).toBe(405);
+  });
+
+  it("affiche une page vide, avec une phrase, avant tout message", async () => {
+    const r = await open();
+    expect(r.status).toBe(200);
+    expect(r.headers.get("Content-Type")).toMatch(/text\/html/);
+    expect(r.headers.get("Cache-Control")).toBe("no-store");
+    const body = await r.text();
+    expect(body).toContain("Aucun message pour l'instant");
+    expect(body).toContain('<meta name="robots" content="noindex">');
+  });
+
+  it("affiche le canal, le destinataire, l'objet et le texte de chaque message, le plus récent d'abord", async () => {
+    await seed([
+      email({ subject: "Plus récent", to: "recent@example.test" }),
+      { at: T0, channel: "telegram", to: "42", subject: "", text: "Nouvelle demande\nClient : Camille" },
+    ]);
+    const body = await (await open()).text();
+    expect(body).toContain("recent@example.test");
+    expect(body).toContain("Plus récent");
+    expect(body).toContain("E-mail");
+    expect(body).toContain("Telegram");
+    expect(body).toContain("Chat 42");
+    expect(body).toContain("Nouvelle demande");
+    expect(body.indexOf("Plus récent")).toBeLessThan(body.indexOf("Nouvelle demande"));
+  });
+
+  it("rend cliquables les seuls liens http et https vers BASE_URL", async () => {
+    await seed([
+      email({
+        text: [
+          "Payer : https://brotobooth.fr/acompte/jeton123.",
+          "Autre : https://brotobooth.fr.pirate.example/acompte/x",
+          "Piège : https://brotobooth.fr@pirate.example/x",
+          "Ailleurs : https://example.org/page",
+          "Clair : http://brotobooth.fr/acompte/y",
+          "Script : javascript:alert(1)",
+          "Admin : https://brotobooth.fr/admin#b-1?a=1&b=2",
+        ].join("\n"),
+      }),
+    ]);
+    const body = await (await open()).text();
+    expect(body).toContain('<a href="https://brotobooth.fr/acompte/jeton123">https://brotobooth.fr/acompte/jeton123</a>.');
+    expect(body).toContain('<a href="https://brotobooth.fr/admin#b-1?a=1&amp;b=2">');
+    expect(body.match(/<a href="/g) ?? []).toHaveLength(2);
+    for (const bad of ["pirate.example", "example.org", "http://brotobooth.fr/acompte/y", "javascript:alert(1)"]) {
+      expect(body).toContain(bad);
+      expect(body).not.toMatch(new RegExp(`href="[^"]*${bad.replace(/[.?()/:]/g, "\\$&")}`));
+    }
+  });
+
+  it("affiche les boutons de Telegram en étiquettes ou en liens", async () => {
+    await seed([
+      {
+        at: T0,
+        channel: "telegram",
+        to: "42",
+        subject: "",
+        text: "x",
+        buttons: [
+          [{ text: "Valider", data: "v:b1" }, { text: "Refuser", data: "r:b1" }],
+          [{ text: "Ajuster le prix", url: "https://brotobooth.fr/admin#b1" }, { text: "Ailleurs", url: "https://example.org/x" }],
+        ],
+      },
+    ]);
+    const body = await (await open()).text();
+    expect(body).toContain("Valider");
+    expect(body).toContain("Refuser");
+    expect(body).toMatch(/<a [^>]*href="https:\/\/brotobooth\.fr\/admin#b1"[^>]*>Ajuster le prix<\/a>/);
+    expect(body).toContain("Ailleurs");
+    expect(body).not.toContain('href="https://example.org/x"');
+  });
+
+  it("affiche échappé un message qui contient du HTML", async () => {
+    const script = "<script>alert(1)</script>";
+    await seed([
+      email({ to: `"><img src=x onerror=alert(1)>`, subject: script, text: `Texte ${script} <img src=x onerror=alert(2)>` }),
+      { at: T0, channel: "telegram", to: script, subject: "", text: script, buttons: [[{ text: script, url: `https://brotobooth.fr/"><script>` }, { text: script, data: script }]] },
+    ]);
+    const body = await (await open()).text();
+    expect(body).not.toContain("<script>alert");
+    expect(body).not.toContain("<img src=x");
+    expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(body).toContain("&lt;img src=x onerror=alert(2)&gt;");
+  });
+
+  it("ignore des messages gardés qui seraient illisibles", async () => {
+    await setState(env.DB, "demo_messages", "pas du JSON");
+    expect((await open()).status).toBe(200);
+  });
+
+  it("montre ce que le site enverrait à la suite d'une vraie demande, de bout en bout", async () => {
+    const demo = makeDeps({ ...env, FAKE_GATEWAYS: "1", OWNER_EMAIL: "", TELEGRAM_CHAT_IDS: "" } as Env);
+    const b = await seeded({ status: "awaiting_deposit" });
+    const old = { due_at: "2020-01-01T00:00:00.000Z" };
+    await enqueue(env.DB, [mail("client_deposit_link", b.id, old), telegram("owner_new_request", b.id, old), mail("owner_new_request", b.id, old)]);
+    await processDue(demo);
+    const body = await (await open(demo)).text();
+    expect(body).toContain("Votre acompte pour le samedi 19 décembre");
+    expect(body).toContain(`<a href="https://brotobooth.fr/acompte/${b.token}">`);
+    expect(body).toContain("Valider");
+    expect(body).toContain("Camille Martin");
+  });
+});
+
+describe("configuration du déploiement", () => {
+  it("ne cite jamais FAKE_GATEWAYS dans wrangler.jsonc, et envoie /demo au Worker", () => {
+    expect(wrangler).not.toContain("FAKE_GATEWAYS");
+    expect(wrangler).toMatch(/"run_worker_first":\s*\[[^\]]*"\/demo"/);
+  });
+});

@@ -1,16 +1,15 @@
-import { createExecutionContext } from "cloudflare:test";
+import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import type { BookingStatus } from "../../worker/bookings";
 import type { StripeGateway } from "../../worker/deps";
 import { offer } from "../../worker/offer";
 import { cancelBooking, expireHold } from "../../worker/operations";
-import { getBooking, getHistory, listDueNotifications, type Booking } from "../../worker/repository";
+import { getBooking, getHistory, type Booking } from "../../worker/repository";
 import { handle } from "../../worker/router";
 import tokens from "../../public/styles/tokens.css?raw";
-import { T0, fakeDeps, insert, newBooking, resetDb, validatedBooking, type FakeDeps } from "../support";
+import { CHAT_ID, OWNER_EMAIL, T0, fakeDeps, insert, newBooking, notificationRows, resetDb, validatedBooking, type FakeDeps } from "../support";
 
-const ctx = createExecutionContext();
 const PHONE = "06 12 34 56 78";
 const DEADLINE = "2026-11-10T10:00:00.000Z";
 
@@ -31,8 +30,18 @@ afterEach(() => {
   logged.mockRestore();
 });
 
-const open = (t: string, init?: RequestInit) =>
-  handle(new Request(`https://brotobooth.fr/acompte/${t}`, init), deps, ctx);
+/**
+ * Une requête au Worker. Les messages d'un paiement partent après la réponse : le test attend la fin de cet
+ * envoi, pour qu'aucun ne déborde sur le test suivant.
+ */
+async function run(req: Request): Promise<Response> {
+  const background = createExecutionContext();
+  const response = await handle(req, deps, background);
+  await waitOnExecutionContext(background);
+  return response;
+}
+
+const open = (t: string, init?: RequestInit) => run(new Request(`https://brotobooth.fr/acompte/${t}`, init));
 
 const post = (t: string, headers: Record<string, string> = {}) => open(t, { method: "POST", headers });
 
@@ -44,20 +53,19 @@ async function start(): Promise<string> {
 
 /** Le faux Stripe appelle le webhook ; la signature « invalid » est refusée. */
 const hook = (sessionId: string, over: { type?: string; signature?: string; body?: string } = {}) =>
-  handle(
+  run(
     new Request("https://brotobooth.fr/api/stripe/webhook", {
       method: "POST",
       headers: { "Stripe-Signature": over.signature ?? "valid" },
       body: over.body ?? JSON.stringify({ type: over.type ?? "checkout.session.completed", sessionId }),
     }),
-    deps,
-    ctx,
   );
 
 const current = async () => (await getBooking(env.DB, v.id))!;
 const events = async () => (await getHistory(env.DB, v.id)).map((h) => h.event);
-const lateAlerts = async () =>
-  (await listDueNotifications(env.DB, T0, 50)).filter((n) => n.template === "owner_late_payment");
+/** Les notifications mises en file, envoyées ou non : l'envoi suit le paiement. */
+const queued = async () => (await notificationRows()).filter((n) => n.cancelled_at === null);
+const lateAlerts = async () => (await queued()).filter((n) => n.template === "owner_late_payment");
 
 /** Une autre réservation, sur une autre date, dans l'état voulu : `v` tient déjà le 19 décembre. */
 const withStatus = async (status: BookingStatus) =>
@@ -370,7 +378,7 @@ describe("POST /api/stripe/webhook", () => {
     deps.stripe.completeSession(s);
     await hook(s);
     expect((await getHistory(env.DB, v.id)).at(-1)).toMatchObject({ actor: "stripe", event: "paid" });
-    const templates = (await listDueNotifications(env.DB, T0, 50)).map((n) => n.template);
+    const templates = (await queued()).map((n) => n.template);
     expect(templates).toContain("client_confirmed");
     expect(templates).toContain("owner_deposit_paid");
   });
@@ -409,13 +417,11 @@ describe("POST /api/stripe/webhook", () => {
       if (signature === "") throw new Error("pas de signature");
       return verify(body, signature);
     };
-    const r = await handle(
+    const r = await run(
       new Request("https://brotobooth.fr/api/stripe/webhook", {
         method: "POST",
         body: JSON.stringify({ type: "checkout.session.completed", sessionId: s }),
       }),
-      deps,
-      ctx,
     );
     expect(r.status).toBe(400);
     expect((await current()).status).toBe("awaiting_deposit");
@@ -426,14 +432,12 @@ describe("POST /api/stripe/webhook", () => {
   });
 
   it("refuse un corps démesuré sans le lire", async () => {
-    const r = await handle(
+    const r = await run(
       new Request("https://brotobooth.fr/api/stripe/webhook", {
         method: "POST",
         headers: { "Stripe-Signature": "valid", "Content-Length": String(2 * 1024 * 1024) },
         body: "{}",
       }),
-      deps,
-      ctx,
     );
     expect(r.status).toBe(413);
   });
@@ -444,7 +448,7 @@ describe("POST /api/stripe/webhook", () => {
     deps.stripe.completeSession(s);
     expect((await hook(s)).status).toBe(200);
     expect((await current()).status).toBe("expired");
-    expect((await listDueNotifications(env.DB, T0, 20)).map((n) => n.template)).toContain("owner_late_payment");
+    expect((await queued()).map((n) => n.template)).toContain("owner_late_payment");
   });
 
   it("l'alerte part sur Telegram et par e-mail, une seule fois par session, même rejouée", async () => {
@@ -544,9 +548,109 @@ describe("POST /api/stripe/webhook", () => {
   });
 
   it("répond 405 à un autre verbe", async () => {
-    const r = await handle(new Request("https://brotobooth.fr/api/stripe/webhook"), deps, ctx);
+    const r = await run(new Request("https://brotobooth.fr/api/stripe/webhook"));
     expect(r.status).toBe(405);
     expect(r.headers.get("Allow")).toBe("POST");
+  });
+});
+
+describe("envoi immédiat après un paiement", () => {
+  const sentTo = () => deps.emails.map((m) => [m.to, m.subject]);
+  const confirmation = [expect.any(String), "C'est confirmé pour le samedi 19 décembre"];
+
+  /** Le client a payé : la session est terminée, mais rien n'a encore enregistré le paiement. */
+  async function paid(): Promise<string> {
+    const s = await start();
+    deps.stripe.completeSession(s);
+    return s;
+  }
+
+  it("le webhook envoie la confirmation au client et l'alerte au propriétaire, sans attendre la tâche automatique", async () => {
+    await hook(await paid());
+    expect(sentTo()).toHaveLength(2);
+    expect(sentTo()).toEqual(
+      expect.arrayContaining([
+        ["camille@example.test", "C'est confirmé pour le samedi 19 décembre"],
+        [OWNER_EMAIL, "Acompte reçu pour le samedi 19 décembre"],
+      ]),
+    );
+    expect(deps.telegrams.map((m) => m.chatId)).toEqual([CHAT_ID]);
+    expect(deps.telegrams[0].html).toContain("Acompte reçu pour le samedi 19 décembre");
+    // Les rappels de J-7 et de J-1 ne sont pas dus : ils attendent leur heure.
+    const reminders = (await queued()).filter((n) => n.template.endsWith("_d7") || n.template.endsWith("_d1"));
+    expect(reminders).toHaveLength(5);
+    expect(reminders.every((n) => n.sent_at === null)).toBe(true);
+  });
+
+  it("le retour du client envoie la confirmation, et le webhook qui suit ne la double pas", async () => {
+    const s = await paid();
+    await open(`${v.token}?paid=1`);
+    expect(sentTo()).toHaveLength(2);
+    await hook(s);
+    await open(`${v.token}?paid=1`);
+    expect(sentTo()).toHaveLength(2);
+    expect(deps.telegrams).toHaveLength(1);
+  });
+
+  it("le webhook envoie la confirmation, et le retour du client qui suit ne la double pas", async () => {
+    const s = await paid();
+    await hook(s);
+    await open(`${v.token}?paid=1`);
+    expect(sentTo()).toHaveLength(2);
+    expect(deps.telegrams).toHaveLength(1);
+  });
+
+  it("le webhook et le retour du client simultanés n'envoient la confirmation qu'une fois", async () => {
+    const s = await paid();
+    await Promise.all([hook(s), open(`${v.token}?paid=1`)]);
+    expect(sentTo().filter(([, subject]) => subject === confirmation[1])).toHaveLength(1);
+    expect(deps.telegrams).toHaveLength(1);
+  });
+
+  it("rejouer le webhook n'envoie rien de plus", async () => {
+    const s = await paid();
+    await hook(s);
+    await hook(s);
+    expect(sentTo()).toHaveLength(2);
+    expect(deps.telegrams).toHaveLength(1);
+  });
+
+  it("le POST d'un client dont le paiement est déjà fait envoie la confirmation", async () => {
+    await paid();
+    expect((await post(v.token)).status).toBe(303);
+    expect((await current()).status).toBe("confirmed");
+    expect(sentTo()).toHaveLength(2);
+  });
+
+  it("un événement qui n'est pas un paiement n'envoie rien", async () => {
+    const s = await paid();
+    await hook(s, { type: "checkout.session.expired" });
+    expect(deps.emails).toHaveLength(0);
+    expect(deps.telegrams).toHaveLength(0);
+  });
+
+  it("un paiement tardif envoie l'alerte de remboursement par Telegram et par e-mail", async () => {
+    const s = await paid();
+    await expireHold(deps, await current());
+    await hook(s);
+    const alert = deps.emails.find((m) => m.subject === "Paiement à rembourser : samedi 19 décembre");
+    expect(alert).toMatchObject({ to: OWNER_EMAIL });
+    expect(alert!.text).toMatch(/Stripe/);
+    expect(deps.telegrams.some((m) => /rembours/i.test(m.html))).toBe(true);
+    expect((await lateAlerts()).every((n) => n.sent_at !== null)).toBe(true);
+    expect(deps.emails.some((m) => m.subject === confirmation[1])).toBe(false);
+  });
+
+  it("un envoi en panne ne fait pas échouer le webhook : le paiement reste enregistré et les messages en file", async () => {
+    deps.email.send = async () => {
+      throw new Error("panne");
+    };
+    const s = await paid();
+    expect((await hook(s)).status).toBe(200);
+    expect((await current()).status).toBe("confirmed");
+    const unsent = (await queued()).filter((n) => n.channel === "email" && n.template === "client_confirmed");
+    expect(unsent).toHaveLength(1);
+    expect(unsent[0]).toMatchObject({ sent_at: null, attempts: 1 });
   });
 });
 

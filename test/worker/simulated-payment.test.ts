@@ -1,4 +1,4 @@
-import { createExecutionContext } from "cloudflare:test";
+import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { makeDeps, type Deps } from "../../worker/deps";
@@ -8,10 +8,9 @@ import { handle } from "../../worker/router";
 import { simulatedGateway } from "../../worker/simulated-payment";
 import { T0, fakeDeps, resetDb, validatedBooking, type FakeDeps } from "../support";
 
-const ctx = createExecutionContext();
 const BASE = "https://brotobooth.fr";
 
-type SimDeps = Deps & Pick<FakeDeps, "setNow" | "emails">;
+type SimDeps = Deps & Pick<FakeDeps, "setNow" | "emails" | "telegrams">;
 
 /** Des dépendances de test dont Stripe est le paiement simulé, avec l'horloge des tests. */
 function simulatedDeps(vars: Pick<Env, "PAYMENT_MODE"> = { PAYMENT_MODE: "simulated" }): SimDeps {
@@ -32,7 +31,13 @@ beforeEach(async () => {
 });
 afterEach(() => logged.mockRestore());
 
-const send = (path: string, init?: RequestInit, d: Deps = deps) => handle(new Request(`${BASE}${path}`, init), d, ctx);
+/** Une requête au Worker. Les messages d'un paiement partent après la réponse : le test attend leur fin. */
+async function send(path: string, init?: RequestInit, d: Deps = deps): Promise<Response> {
+  const background = createExecutionContext();
+  const response = await handle(new Request(`${BASE}${path}`, init), d, background);
+  await waitOnExecutionContext(background);
+  return response;
+}
 
 const form = (outcome: string) => ({
   method: "POST",
@@ -77,6 +82,21 @@ describe("le parcours complet, sans Stripe", () => {
 
     const done = await (await send(`/acompte/${v.token}?paid=1`)).text();
     expect(done).toContain("date est confirmée");
+  });
+
+  it("le paiement simulé envoie la confirmation au client et l'alerte au propriétaire, une seule fois", async () => {
+    const { path } = await start();
+    await send(path, form("abandon"));
+    expect(deps.emails).toHaveLength(0);
+
+    await send(path, form("paid"));
+    expect(deps.emails.map((m) => m.subject).sort()).toEqual([
+      "Acompte reçu pour le samedi 19 décembre",
+      "C'est confirmé pour le samedi 19 décembre",
+    ]);
+    expect(deps.emails.find((m) => m.subject.startsWith("C'est confirmé"))!.to).toBe(v.client_email);
+    await send(`/acompte/${v.token}?paid=1`);
+    expect(deps.emails).toHaveLength(2);
   });
 
   it("la page de simulation se distingue d'un vrai paiement et n'a qu'un bouton plein", async () => {

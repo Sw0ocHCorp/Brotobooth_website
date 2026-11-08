@@ -1,12 +1,13 @@
-import { createExecutionContext } from "cloudflare:test";
+import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { addDays } from "../../worker/bookings";
-import type { Deps } from "../../worker/deps";
+import type { Deps, EmailMessage } from "../../worker/deps";
+import { processDue } from "../../worker/notifications";
 import { planById } from "../../worker/offer";
-import { listDueNotifications, listRange } from "../../worker/repository";
+import { listRange } from "../../worker/repository";
 import { handle } from "../../worker/router";
-import { T0, fakeDeps, resetDb, type FakeDeps } from "../support";
+import { CHAT_ID, OWNER_EMAIL, T0, fakeDeps, notificationRows, resetDb, type FakeDeps } from "../support";
 
 const ctx = createExecutionContext();
 const IP = "203.0.113.5";
@@ -25,17 +26,24 @@ beforeEach(async () => {
   deps = fakeDeps();
 });
 
-/** Un envoi du formulaire. `ip: null` : requête sans l'en-tête de Cloudflare. */
-const send = (raw: BodyInit | null, d: Deps = deps, ip: string | null = IP, headers: Record<string, string> = {}) =>
-  handle(
+/**
+ * Un envoi du formulaire. `ip: null` : requête sans l'en-tête de Cloudflare. L'envoi immédiat des messages se
+ * fait après la réponse : le test l'attend, pour qu'aucun envoi ne déborde sur le test suivant.
+ */
+const send = async (raw: BodyInit | null, d: Deps = deps, ip: string | null = IP, headers: Record<string, string> = {}) => {
+  const background = createExecutionContext();
+  const response = await handle(
     new Request("https://brotobooth.fr/api/requests", {
       method: "POST",
       body: raw,
       headers: { ...(ip === null ? {} : { "CF-Connecting-IP": ip }), ...headers },
     }),
     d,
-    ctx,
+    background,
   );
+  await waitOnExecutionContext(background);
+  return response;
+};
 const post = (b: unknown, d: Deps = deps, ip: string | null = IP) => send(JSON.stringify(b), d, ip);
 const get = (path: string, d: Deps = deps) => handle(new Request(`https://brotobooth.fr${path}`), d, ctx);
 
@@ -61,7 +69,13 @@ describe("POST /api/requests : enregistrement", () => {
     expect(b.price_cents).toBe(planById("formule-1")!.priceCents);
     expect(b.deposit_cents).toBe(0);
     expect(b.created_at).toBe(T0);
-    expect(await listDueNotifications(env.DB, T0, 20)).not.toHaveLength(0);
+    expect((await notificationRows()).map((n) => `${n.template}|${n.channel}`).sort()).toEqual([
+      "client_received|email",
+      "owner_new_request|email",
+      "owner_new_request|telegram",
+      "owner_review_reminder|telegram",
+      "owner_review_reminder|telegram",
+    ]);
   });
 
   it("calcule le prix et l'acompte d'après la formule", async () => {
@@ -137,13 +151,81 @@ describe("POST /api/requests : enregistrement", () => {
     expect(await stored()).toHaveLength(1);
   });
 
+  it("envoie tout de suite l'accusé au client et l'alerte au propriétaire", async () => {
+    expect((await post(body())).status).toBe(201);
+    expect(deps.emails.map((m) => [m.to, m.subject])).toEqual(
+      expect.arrayContaining([
+        ["camille@example.test", "Votre demande pour le samedi 19 décembre"],
+        [OWNER_EMAIL, "Nouvelle demande pour le samedi 19 décembre"],
+      ]),
+    );
+    expect(deps.emails).toHaveLength(2);
+    expect(deps.telegrams).toHaveLength(1);
+    expect(deps.telegrams[0].chatId).toBe(CHAT_ID);
+    expect(deps.telegrams[0].buttons!.flat().map((b) => b.text)).toEqual(["Valider", "Refuser", "Ajuster le prix"]);
+    // Les rappels de 24 h et de 48 h ne sont pas dus : ils attendent la tâche automatique.
+    const rows = await notificationRows();
+    expect(rows.filter((n) => n.sent_at !== null)).toHaveLength(3);
+    expect(rows.filter((n) => n.template === "owner_review_reminder").every((n) => n.sent_at === null)).toBe(true);
+  });
+
   it("ne perd pas la demande si l'envoi immédiat échoue", async () => {
-    const d = fakeDeps();
-    d.email.send = async () => {
-      throw new Error("panne");
-    };
-    expect((await post(body(), d)).status).toBe(201);
-    expect(await stored()).toHaveLength(1);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const d = fakeDeps();
+      const send = vi.fn(async (_m: EmailMessage) => {
+        throw new Error("panne");
+      });
+      d.email.send = send;
+      d.telegram.send = vi.fn(async () => {
+        throw new Error("panne");
+      });
+      expect((await post(body(), d)).status).toBe(201);
+      expect(await stored()).toHaveLength(1);
+      // L'envoi a bien été tenté, pour l'accusé comme pour l'alerte du propriétaire.
+      expect(send).toHaveBeenCalled();
+      expect(send.mock.calls.map(([m]) => m.to)).toEqual(expect.arrayContaining(["camille@example.test", OWNER_EMAIL]));
+      expect(d.telegram.send).toHaveBeenCalledTimes(1);
+      // Rien n'est perdu : tout reste en file pour la tâche automatique.
+      expect((await notificationRows()).filter((n) => n.sent_at === null)).not.toHaveLength(0);
+      expect(log.mock.calls.every(([line]) => /^Notification \d+ \(\w+\) : Error$/.test(String(line)))).toBe(true);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("reprend à la tâche automatique ce que l'envoi immédiat n'a pas pu envoyer", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const d = fakeDeps();
+      const down = d.email.send;
+      d.email.send = async () => {
+        throw new Error("panne");
+      };
+      await post(body(), d);
+      expect(d.emails).toHaveLength(0);
+      d.email.send = down;
+      d.setNow("2026-11-07T10:05:00.000Z");
+      await processDue(d);
+      expect(d.emails.map((m) => m.subject)).toEqual(
+        expect.arrayContaining(["Votre demande pour le samedi 19 décembre", "Nouvelle demande pour le samedi 19 décembre"]),
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("n'envoie rien quand la demande n'est pas enregistrée", async () => {
+    await post(body());
+    const sent = deps.emails.length + deps.telegrams.length;
+    await post(body()); // la même demande : déjà enregistrée
+    await post(body({ email: "autre@example.test" })); // la date vient d'être prise
+    await post(body({ date: "2026-12-20", name: "" })); // un champ refusé
+    const robot = fakeDeps({ verifyTurnstile: async () => "fail" });
+    await post(body({ date: "2026-12-21", email: "robot@example.test" }), robot);
+    expect(deps.emails.length + deps.telegrams.length).toBe(sent);
+    expect(robot.emails).toHaveLength(0);
+    expect(robot.telegrams).toHaveLength(0);
   });
 });
 

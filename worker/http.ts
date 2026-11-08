@@ -87,3 +87,32 @@ export async function readJson(req: Request, maxBytes: number): Promise<JsonBody
     return INVALID_JSON;
   }
 }
+
+/** Un service extérieur qui ne répond pas dans ce délai ne doit pas retenir l'envoi des messages suivants. */
+const OUTBOUND_TIMEOUT_MS = 10_000;
+
+/**
+ * Un appel à un service extérieur, borné dans le temps. Si l'appel échoue, l'erreur nomme le service et le
+ * type de la panne, jamais le message d'origine : il peut citer l'adresse appelée, qui porte parfois un secret.
+ */
+export async function callService(service: string, fetchFn: typeof fetch, url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetchFn(url, { ...init, signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS) });
+  } catch (error) {
+    throw new Error(`${service} injoignable (${error instanceof Error ? error.name : "erreur inconnue"})`);
+  }
+}
+
+/** Comme `callService`, et lève aussi sur une réponse qui n'est pas 2xx, sans reprendre son contenu. */
+export async function callServiceOk(service: string, fetchFn: typeof fetch, url: string, init: RequestInit): Promise<Response> {
+  const res = await callService(service, fetchFn, url, init);
+  if (!res.ok) throw new Error(`${service} a répondu ${res.status}`);
+  return res;
+}
+
+/** Un envoi `POST` d'un corps JSON. */
+export const jsonPost = (body: unknown, headers: Record<string, string> = {}): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json", ...headers },
+  body: JSON.stringify(body),
+});

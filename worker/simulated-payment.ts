@@ -2,7 +2,7 @@ import type { Deps, StripeGateway, StripeSession } from "./deps";
 import type { Env } from "./env";
 import { escapeHtml, formatDay, formatEuros, page } from "./html";
 import { html, json, readText, redirect } from "./http";
-import { acomptePath, recordPayment } from "./payments";
+import { acomptePath, settlePayment } from "./payments";
 import { getBookingByToken, getState, setState, type Booking } from "./repository";
 
 /** Chaque session vit dans `system_state` : un autre appel du Worker la retrouve, comme chez Stripe. */
@@ -107,7 +107,7 @@ async function outcomeOf(req: Request): Promise<"paid" | "abandon" | null> {
  * est payée, la réservation confirmée comme par le webhook, puis le client revient sur sa page. « Abandonner »
  * revient sans payer, la session reste ouverte et se rouvre par le même lien.
  */
-export async function simulationAction(req: Request, deps: Deps, token: string): Promise<Response> {
+export async function simulationAction(req: Request, deps: Deps, token: string, ctx: ExecutionContext): Promise<Response> {
   const found = await target(req, deps, token);
   if (!found) return notFound();
   const outcome = await outcomeOf(req);
@@ -116,6 +116,6 @@ export async function simulationAction(req: Request, deps: Deps, token: string):
 
   const paid: StripeSession = { ...found.session, status: "complete", paymentStatus: "paid", url: null };
   await store(deps.env, () => deps.now()).put(paid);
-  await recordPayment(deps, paid);
+  await settlePayment(deps, ctx, paid);
   return redirect(`${acomptePath(token)}?paid=1`);
 }
