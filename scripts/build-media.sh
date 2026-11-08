@@ -15,9 +15,10 @@ source_dir="${SPOT_PUB_DIR:-/home/sw0och/Spot_pub_Brotobooth}"
 target_dir="$root/public/media"
 
 WEBP_QUALITY=78
-# Le film du spot est en 16:9 ; le cadre qui garde l'écran de la borne et les tirages en main, sans la barre de titre.
+# Le film du spot est en 16:9. Le cadre 4:3 de tirage-1 ne garde que la photo à l'écran de la borne, sans ses boutons
+# (Retour, Filtres, Dessiner) : un tirage du mur doit être une photo nette.
 SPOT=spot_reseau_brotobooth.mp4
-SPOT_FRAME=1408:1054:132:12
+SPOT_FRAME=1286:964:132:70
 # Les rushs de la GoPro sont en 4K 16:9 ; le cadre 4:3 centré sur la borne.
 RUSH_FRAME=2880:2160:480:0
 # La vidéo : l'extrait de GX011249 (début et durée en secondes), son ralenti, sa largeur, sa cadence et son poids maximal en Ko.
