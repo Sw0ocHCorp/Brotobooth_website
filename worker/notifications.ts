@@ -1,5 +1,6 @@
 import { addDays, parisInstant, parisToday, type BookingStatus } from "./bookings";
 import type { Deps } from "./deps";
+import { chatIds } from "./env";
 import { offer } from "./offer";
 import {
   cancelNotification,
@@ -14,7 +15,6 @@ import {
   type NotificationRow,
   type NotificationSpec,
 } from "./repository";
-import { chatIds } from "./telegram";
 import { renderEmail, renderTelegram, type MessageContext } from "./templates";
 
 /** Les modèles de message de la spec (section 5), partagés par la planification, l'envoi et les tests. */

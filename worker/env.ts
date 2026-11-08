@@ -18,3 +18,10 @@ export interface Env {
   /** `simulated` : paiement factice, sans Stripe. Toute autre valeur, ou aucune : le vrai paiement. */
   PAYMENT_MODE?: string;
 }
+
+/** Les chats du propriétaire, d'après `TELEGRAM_CHAT_IDS` (identifiants séparés par des virgules). */
+export const chatIds = (env: Env): string[] =>
+  (env.TELEGRAM_CHAT_IDS ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);

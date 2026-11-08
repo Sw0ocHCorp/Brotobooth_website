@@ -4,12 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { cancelBooking } from "../../worker/operations";
 import { makeDeps, turnstileVerifier } from "../../worker/deps";
 import type { Deps } from "../../worker/deps";
-import type { Env } from "../../worker/env";
+import { chatIds, type Env } from "../../worker/env";
 import { resendGateway } from "../../worker/email";
 import { processDue } from "../../worker/notifications";
 import { claimNotification, enqueue, getState, patchBooking, setState, type NotificationSpec } from "../../worker/repository";
 import { handle } from "../../worker/router";
-import { chatIds, telegramGateway } from "../../worker/telegram";
+import { telegramGateway } from "../../worker/telegram";
 import wrangler from "../../wrangler.jsonc?raw";
 import { CHAT_ID, OWNER_EMAIL, T0, fakeDeps, insert, newBooking, notificationRows, resetDb, type FakeDeps } from "../support";
 

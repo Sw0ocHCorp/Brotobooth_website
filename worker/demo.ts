@@ -1,9 +1,8 @@
 import type { Button, Deps } from "./deps";
-import type { Env } from "./env";
+import { chatIds, type Env } from "./env";
 import { escapeHtml, formatMoment, page } from "./html";
 import { html, json, type Handler } from "./http";
 import { getState, setState } from "./repository";
-import { chatIds } from "./telegram";
 
 /** Le propriétaire d'essai : ni adresse ni chat réels n'existent encore. */
 const DEMO_OWNER_EMAIL = "proprietaire@demo.test";

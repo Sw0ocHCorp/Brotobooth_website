@@ -1,18 +1,11 @@
 import type { BookingStatus } from "./bookings";
 import type { Button, Deps, TelegramGateway } from "./deps";
-import type { Env } from "./env";
+import { chatIds, type Env } from "./env";
 import { callServiceOk, json, jsonPost, readJson } from "./http";
 import { sendSoon } from "./notifications";
 import { refuseBooking, validateBooking } from "./operations";
 import { getBooking, type Booking } from "./repository";
 import { renderTelegram } from "./templates";
-
-/** Les chats du propriétaire, d'après `TELEGRAM_CHAT_IDS` (identifiants séparés par des virgules). */
-export const chatIds = (env: Env): string[] =>
-  (env.TELEGRAM_CHAT_IDS ?? "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
 
 /** Le clavier de Telegram : un bouton à lien ouvre son adresse, les autres renvoient leur donnée au bot. */
 const keyboard = (buttons: Button[][]) =>
