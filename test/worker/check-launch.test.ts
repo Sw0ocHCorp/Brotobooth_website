@@ -1,5 +1,6 @@
+import { parseEnv } from "node:util";
 import { describe, expect, it } from "vitest";
-import { envValue, findLaunchBlockers, parseJsonc } from "../../scripts/check-launch.mjs";
+import { findLaunchBlockers, parseJsonc, siteKeyFrom } from "../../scripts/check-launch.mjs";
 import type { Offer } from "../../worker/offer";
 
 /** Le contrôle d'avant publication (spec, sections 13 et 14) : il refuse tant qu'un contenu manque ou qu'un réglage d'essai reste. */
@@ -170,22 +171,40 @@ describe("parseJsonc", () => {
   });
 });
 
-describe("envValue", () => {
-  const FILE = `# la clé du widget
-PUBLIC_OTHER=non
-export PUBLIC_TURNSTILE_SITE_KEY = "cle-entre-guillemets"
-`;
+describe("siteKeyFrom", () => {
+  const NAME = "PUBLIC_TURNSTILE_SITE_KEY";
+  const key = (file: string, processEnv: Record<string, string> = {}) => siteKeyFrom(processEnv, file, parseEnv);
 
-  it("lit la valeur d'une variable, sans guillemets ni espaces", () => {
-    expect(envValue(FILE, "PUBLIC_TURNSTILE_SITE_KEY")).toBe("cle-entre-guillemets");
-    expect(envValue("PUBLIC_TURNSTILE_SITE_KEY=abc\r\n", "PUBLIC_TURNSTILE_SITE_KEY")).toBe("abc");
-    expect(envValue("PUBLIC_TURNSTILE_SITE_KEY='abc'", "PUBLIC_TURNSTILE_SITE_KEY")).toBe("abc");
+  it("lit la clé comme la construction (Vite), sans guillemets ni espaces", () => {
+    const file = `# la clé du widget
+PUBLIC_OTHER=non
+export ${NAME} = "cle-entre-guillemets"
+`;
+    expect(key(file)).toBe("cle-entre-guillemets");
+    expect(key(`${NAME}=abc\r\n`)).toBe("abc");
+    expect(key(`${NAME}='abc'`)).toBe("abc");
   });
 
-  it("donne une valeur vide pour une ligne vide, et rien pour une variable absente ou mise en commentaire", () => {
-    expect(envValue("PUBLIC_TURNSTILE_SITE_KEY=\n", "PUBLIC_TURNSTILE_SITE_KEY")).toBe("");
-    expect(envValue("# PUBLIC_TURNSTILE_SITE_KEY=abc", "PUBLIC_TURNSTILE_SITE_KEY")).toBeUndefined();
-    expect(envValue("XPUBLIC_TURNSTILE_SITE_KEY=abc", "PUBLIC_TURNSTILE_SITE_KEY")).toBeUndefined();
-    expect(envValue("", "PUBLIC_TURNSTILE_SITE_KEY")).toBeUndefined();
+  // `parseEnv` retire le commentaire de fin de ligne, comme la construction : « NOM= # à compléter » est une clé vide.
+  it("ignore un commentaire en fin de ligne", () => {
+    expect(key(`${NAME}= # à compléter`)).toBe("");
+    expect(key(`${NAME}=0x4AAAAAAA # clé de production`)).toBe("0x4AAAAAAA");
+    expect(key(`${NAME}="0x4AAAAAAA" # clé de production`)).toBe("0x4AAAAAAA");
+  });
+
+  it("refuse la publication quand la clé n'est qu'un commentaire, et la laisse passer quand elle est écrite", () => {
+    expect(findLaunchBlockers({ ...complete, siteKey: key(`${NAME}=0x4AAAAAAA # clé de production`) })).toEqual([]);
+    expect(findLaunchBlockers({ ...complete, siteKey: key(`${NAME}= # à compléter`) })).toEqual([
+      expect.stringMatching(/anti-robots.*PUBLIC_TURNSTILE_SITE_KEY/),
+    ]);
+  });
+
+  it("donne une clé vide pour une ligne vide, une variable absente ou mise en commentaire", () => {
+    for (const file of [`${NAME}=\n`, `# ${NAME}=abc`, `X${NAME}=abc`, ""]) expect(key(file), file).toBe("");
+  });
+
+  it("laisse une variable de l'environnement, même vide, l'emporter sur le fichier", () => {
+    expect(key(`${NAME}=du-fichier`, { [NAME]: "de-l-environnement" })).toBe("de-l-environnement");
+    expect(key(`${NAME}=du-fichier`, { [NAME]: "" })).toBe("");
   });
 });

@@ -4,6 +4,9 @@
   "private": true,
   "description": "Site vitrine et réservations de Brotobooth (Astro, Cloudflare Worker, D1).",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "pretest": "mkdir -p dist",
     "test": "vitest run",

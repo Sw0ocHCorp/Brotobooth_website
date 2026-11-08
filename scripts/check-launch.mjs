@@ -68,11 +68,16 @@ export function findLaunchBlockers({ offer, legalPages, databaseId, vars, siteKe
   return blockers;
 }
 
-/** La valeur de `name` dans le texte d'un fichier `.env` (`NOM=valeur`, guillemets et `export` permis), ou `undefined` si la variable n'y est pas. */
-export function envValue(text, name) {
-  const line = text.match(new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=(.*)$`, "m"));
-  return line?.[1].trim().replace(/^(["'])(.*)\1$/, "$2");
-}
+/**
+ * La clé publique du widget que la construction de la publication posera, `""` si elle n'est écrite nulle part. Comme Vite,
+ * une variable de l'environnement, même vide, l'emporte sur `.env.production`, que `parseEnv` de `node:util` lit (Vite
+ * emploie le même) : guillemets, `export` et commentaires de fin de ligne compris. `NOM= # à compléter` est une clé vide.
+ *
+ * @param {Record<string, string | undefined>} processEnv les variables de l'environnement du processus
+ * @param {string} envFile le texte de `.env.production`
+ * @param {(text: string) => Record<string, string>} parseEnv `parseEnv` de `node:util`, que `readLaunchInput` importe à son appel
+ */
+export const siteKeyFrom = (processEnv, envFile, parseEnv) => processEnv[SITE_KEY_NAME] ?? parseEnv(envFile)[SITE_KEY_NAME] ?? "";
 
 const STRINGS_OR_COMMENTS = /("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g;
 const STRINGS_OR_TRAILING_COMMAS = /("(?:\\.|[^"\\])*")|,(\s*[}\]])/g;
@@ -103,8 +108,9 @@ async function readLaunchInput(root) {
     const path = `src/${file.replaceAll("\\", "/")}`;
     if (SOURCE_FILE.test(path) && path !== MARKER_SOURCE) legalPages[path] = await read(path);
   }
-  // Comme la construction (Vite) : une variable de l'environnement, même vide, l'emporte sur `.env.production`.
-  const siteKey = process.env[SITE_KEY_NAME] ?? envValue(await read(".env.production").catch(() => ""), SITE_KEY_NAME) ?? "";
+  // Importé ici et non en tête de fichier : Vitest charge ce module dans workerd, qui n'a pas besoin de `node:util` pour le reste.
+  const { parseEnv } = await import("node:util");
+  const siteKey = siteKeyFrom(process.env, await read(".env.production").catch(() => ""), parseEnv);
   const realPaymentWired = await access(join(root, REAL_PAYMENT_FILE)).then(() => true, () => false);
   return {
     offer: JSON.parse(await read("config/offer.json")),

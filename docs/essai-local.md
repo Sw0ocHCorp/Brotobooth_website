@@ -2,6 +2,11 @@
 
 Ce guide fait parcourir tout le site sur votre ordinateur, sans rien publier ni dépenser. Rien ne sort de la machine : ni e-mail, ni message, ni paiement.
 
+## Avant de commencer
+
+- **Node.js 24 ou plus récent.** `node --version` doit afficher `v24` ou plus ; sinon, installez la version 24 depuis https://nodejs.org.
+- **Les dépendances du projet**, une seule fois, depuis le dossier du projet : `npm install`.
+
 ## Lancer l'essai
 
 Dans le dossier du projet :
