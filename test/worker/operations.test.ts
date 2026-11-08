@@ -25,7 +25,7 @@ import {
   type Booking,
   type NewBooking,
 } from "../../worker/repository";
-import { T0, fakeDeps, insert, newBooking, resetDb, type FakeDeps } from "../support";
+import { T0, fakeDeps, insert, newBooking, resetDb, strictStripe, type FakeDeps } from "../support";
 
 const STALE = { ok: false, reason: "stale" };
 
@@ -69,15 +69,6 @@ async function validatedWithSession(): Promise<Booking> {
   });
   const expires = new Date(session.expiresAt * 1000).toISOString();
   return (await patchBooking(env.DB, v.id, { stripe_session: session.id, stripe_session_expires: expires }, "system", "session_opened", T0))!;
-}
-
-/** Comme le vrai Stripe, la doublure lève quand on expire une session qui n'est plus ouverte. */
-function strictStripe(d: FakeDeps) {
-  const expire = d.stripe.expireSession;
-  d.stripe.expireSession = async (id) => {
-    if (d.stripe.sessions.get(id)?.status !== "open") throw new Error("Stripe : la session n'est plus ouverte");
-    await expire(id);
-  };
 }
 
 type Queued = { template: string; channel: string; due_at: string; cancelled_at: string | null; dedupe_key: string };

@@ -17,6 +17,12 @@ const LAST_ANONYMIZE_KEY = "last_anonymize";
 const isDue = (b: Booking, nowIso: string): boolean =>
   nextStatus(b.status, "expire") !== null && b.hold_until !== null && b.hold_until <= nowIso;
 
+/** La réservation `id`, relue, si elle est toujours une demande en cours dont l'échéance est atteinte. */
+async function dueBooking(deps: Deps, id: string): Promise<Booking | null> {
+  const booking = await getBooking(deps.env.DB, id);
+  return booking && isDue(booking, deps.now().toISOString()) ? booking : null;
+}
+
 /**
  * Libère la réservation `id` si son échéance est atteinte. La liste de `releaseDueHolds` peut dater de quelques
  * instants : le client a pu prolonger la date ou payer depuis, d'où la relecture. Une session de paiement est
@@ -24,12 +30,17 @@ const isDue = (b: Booking, nowIso: string): boolean =>
  * pas, ou ne ferme pas la session, la fonction lève sans rien écrire : la date reste tenue au passage suivant.
  */
 async function releaseHold(deps: Deps, id: string): Promise<void> {
-  const booking = await getBooking(deps.env.DB, id);
-  if (!booking || !isDue(booking, deps.now().toISOString())) return;
+  let booking = await dueBooking(deps, id);
+  if (!booking) return;
 
-  if (booking.stripe_session) {
-    const session = await closeSession(deps.stripe, booking.stripe_session);
+  const sessionId = booking.stripe_session;
+  if (sessionId) {
+    const session = await closeSession(deps.stripe, sessionId);
     if (session.paymentStatus === "paid") return recordPayment(deps, session);
+    // Les appels à Stripe ont pris du temps : un client parti avant l'échéance a pu ouvrir une autre session,
+    // ou le propriétaire changer le prix. Sa date reste tenue, la suite se décide au passage suivant.
+    booking = await dueBooking(deps, id);
+    if (booking?.stripe_session !== sessionId) return;
   }
   await expireHold(deps, booking);
 }

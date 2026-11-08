@@ -10,10 +10,11 @@ import {
   getState,
   listDueNotifications,
   listUnavailableDates,
+  patchBooking,
   type Booking,
   type NewBooking,
 } from "../../worker/repository";
-import { T0, fakeDeps, insert, newBooking, request, resetDb, validatedBooking, type FakeDeps } from "../support";
+import { T0, fakeDeps, insert, newBooking, request, resetDb, strictStripe, validatedBooking, type FakeDeps } from "../support";
 
 const DEADLINE = "2026-11-10T10:00:00.000Z";
 /** Lundi 9 h à Paris, un an et un jour après `T0` : de quoi libérer, annoncer le point et anonymiser dans un même passage. */
@@ -30,15 +31,6 @@ beforeEach(async () => {
   logged = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => logged.mockRestore());
-
-/** Comme le vrai Stripe, la doublure lève quand on expire une session qui n'est plus ouverte. */
-function strictStripe(d: FakeDeps) {
-  const expire = d.stripe.expireSession;
-  d.stripe.expireSession = async (id) => {
-    if (d.stripe.sessions.get(id)?.status !== "open") throw new Error("Stripe : la session n'est plus ouverte");
-    await expire(id);
-  };
-}
 
 /** Une session de paiement de 30 minutes ouverte pour `b` à l'heure de `deps`. */
 const openSession = (b: Booking) =>
@@ -194,6 +186,81 @@ describe("releaseDueHolds", () => {
     expect(line).toContain("Error");
     expect(line).not.toContain("camille");
     expect(line).not.toContain("indisponible");
+  });
+
+  it("libère sans appeler Stripe une réservation en attente d'acompte qui n'a pas de session", async () => {
+    const v = await validatedBooking(deps);
+    expect(v.stripe_session).toBeNull();
+    const retrieve = vi.spyOn(deps.stripe, "retrieveSession");
+    const expire = vi.spyOn(deps.stripe, "expireSession");
+    deps.setNow(afterHold(v));
+    await releaseDueHolds(deps);
+    expect((await current(v)).status).toBe("expired");
+    expect(retrieve).not.toHaveBeenCalled();
+    expect(expire).not.toHaveBeenCalled();
+  });
+
+  it("si le client ouvre une nouvelle session pendant la fermeture de la première, la date reste tenue", async () => {
+    const v = await validatedWithSession();
+    const expire = deps.stripe.expireSession;
+    let reopened = "";
+    deps.stripe.expireSession = async (id) => {
+      await expire(id);
+      // Sa requête, partie avant l'échéance, aboutit pendant que la tâche ferme la première session.
+      const session = await openSession(v);
+      reopened = session.id;
+      expect((await attachSession(deps, v.id, session)).ok).toBe(true);
+    };
+    deps.setNow(afterHold(v));
+    await releaseDueHolds(deps);
+
+    const kept = await current(v);
+    expect(kept.status).toBe("awaiting_deposit");
+    expect(kept.stripe_session).toBe(reopened);
+    expect(kept.hold_until).toBe("2026-11-10T10:35:00.000Z");
+    expect(deps.stripe.sessions.get(reopened)!.status).toBe("open");
+    expect(await queued("owner_released")).toEqual([]);
+
+    // Il paie avec la nouvelle session : la date lui appartenait toujours.
+    deps.stripe.completeSession(reopened);
+    deps.setNow(kept.hold_until!);
+    await releaseDueHolds(deps);
+    expect((await current(v)).status).toBe("confirmed");
+  });
+
+  it("si l'échéance recule pendant la fermeture de la session, la date reste tenue", async () => {
+    const v = await validatedWithSession();
+    const expire = deps.stripe.expireSession;
+    deps.stripe.expireSession = async (id) => {
+      await expire(id);
+      await patchBooking(env.DB, v.id, { hold_until: "2026-11-10T11:00:00.000Z" }, "owner", "hold_extended", deps.now().toISOString());
+    };
+    deps.setNow(afterHold(v));
+    await releaseDueHolds(deps);
+    expect((await current(v)).status).toBe("awaiting_deposit");
+  });
+
+  it("si la session est retirée pendant la fermeture sans que l'échéance recule, la réservation attend le passage suivant", async () => {
+    const v = await validatedWithSession();
+    const expire = deps.stripe.expireSession;
+    deps.stripe.expireSession = async (id) => {
+      await expire(id);
+      // Le propriétaire ajuste le prix à cet instant : la session est oubliée, l'échéance ne bouge pas.
+      await patchBooking(
+        env.DB,
+        v.id,
+        { stripe_session: null, stripe_session_expires: null },
+        "owner",
+        "price_adjusted",
+        deps.now().toISOString(),
+      );
+    };
+    deps.setNow(afterHold(v));
+    await releaseDueHolds(deps);
+    expect((await current(v)).status).toBe("awaiting_deposit");
+
+    await releaseDueHolds(deps);
+    expect((await current(v)).status).toBe("expired");
   });
 
   it("relit la réservation avant de la libérer : une date prolongée depuis la liste est laissée", async () => {

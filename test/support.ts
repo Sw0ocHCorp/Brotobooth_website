@@ -203,3 +203,15 @@ export function fakeDeps(over: Partial<Deps> = {}): FakeDeps {
   };
   return Object.assign(base, over);
 }
+
+/**
+ * Rend la doublure aussi stricte que le vrai Stripe sur un point que `fakeDeps` laisse passer : expirer une
+ * session qui n'est plus ouverte (payée, expirée) lève au lieu de ne rien faire.
+ */
+export function strictStripe(d: FakeDeps): void {
+  const expire = d.stripe.expireSession;
+  d.stripe.expireSession = async (id) => {
+    if (d.stripe.sessions.get(id)?.status !== "open") throw new Error("Stripe : la session n'est plus ouverte");
+    await expire(id);
+  };
+}
