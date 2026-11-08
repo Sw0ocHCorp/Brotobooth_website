@@ -30,7 +30,7 @@ Après une minute environ (le temps de construire le site), le terminal affiche 
 
 **4. Valider une demande.** Ouvrez-la, puis « Ajuster le prix » : les formules sont encore à 0 € tant que vous n'avez pas choisi leurs prix, et l'acompte se calcule à partir du prix. Enregistrez, puis « Valider ». La demande passe en « Attente d'acompte ».
 
-**5. Le lien de paiement.** La fiche le montre (« Copier le lien »). Le client le reçoit aussi par e-mail : sur http://localhost:8790/demo, le message « Votre acompte pour le … » contient ce lien.
+**5. Le lien de paiement.** La fiche le montre (« Copier le lien »). Le client le reçoit aussi par e-mail : sur http://localhost:8790/demo, le message « Bonne nouvelle : nous pouvons être là le … » contient ce lien.
 
 **6. Le paiement simulé.** Ouvrez le lien, cliquez sur « Payer l'acompte », puis « Simuler un paiement réussi » (ou « Abandonner » pour voir ce qui se passe quand le client renonce). La page annonce « Votre date est confirmée ». Dans l'administration, la prestation est « Confirmée », et sur la page de réservation la date est barrée.
 

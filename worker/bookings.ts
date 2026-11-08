@@ -90,6 +90,9 @@ export function parisInstant(date: string, hour: number): Date {
   return new Date(wall - parisOffsetMs(estimate));
 }
 
+/** Le rappel envoyé `daysBefore` jours avant l'événement du `date`, à l'heure de rappel de Paris. */
+export const reminderAt = (date: string, daysBefore: number): Date => parisInstant(addDays(date, -daysBefore), offer.reminderHourParis);
+
 /** `AAAA-MM-JJ` qui existe au calendrier. */
 export function isValidDate(date: string): boolean {
   const day = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(date) : null;

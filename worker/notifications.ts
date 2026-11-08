@@ -1,8 +1,7 @@
-import { addDays, parisInstant, parisToday, type BookingStatus } from "./bookings";
+import { parisToday, reminderAt, type BookingStatus } from "./bookings";
 import type { Deps } from "./deps";
 import { chatIds } from "./env";
 import { sha256Hex } from "./http";
-import { offer } from "./offer";
 import {
   cancelNotification,
   claimNotification,
@@ -79,7 +78,7 @@ const recipientOf = (template: Template): NotificationSpec["recipient"] =>
 
 /** Les rappels de J-7 et de J-1, à l'heure de rappel de Paris. */
 function eventReminders(b: Booking): Draft[] {
-  const at = (daysBefore: number) => parisInstant(addDays(b.event_date, -daysBefore), offer.reminderHourParis);
+  const at = (daysBefore: number) => reminderAt(b.event_date, daysBefore);
   return [draft("owner_d7", BOTH, at(7)), draft("client_d7", EMAIL, at(7)), draft("owner_d1", BOTH, at(1))];
 }
 

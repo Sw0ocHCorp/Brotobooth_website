@@ -55,6 +55,9 @@ const EUROS = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximum
 /** « 450,00 € ». Le symbole suit une espace ordinaire : le montant se retrouve tel quel dans un texte. */
 export const formatEuros = (cents: number): string => `${EUROS.format(cents / 100)} €`;
 
+/** « 72 h », le nombre et son unité liés par une espace insécable : une fin de ligne ne les sépare jamais. */
+export const formatHours = (hours: number): string => `${hours}\u00a0h`;
+
 const DAY = { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" } as const;
 const DAY_WITH_YEAR = new Intl.DateTimeFormat("fr-FR", { ...DAY, year: "numeric" });
 const DAY_WITHOUT_YEAR = new Intl.DateTimeFormat("fr-FR", DAY);
