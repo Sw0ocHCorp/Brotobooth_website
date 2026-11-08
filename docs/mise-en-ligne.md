@@ -113,7 +113,7 @@ BASE_URL=https://brotobooth.fr node scripts/set-telegram-webhook.mjs
 
 Tant qu'un contenu manque, `node scripts/check-launch.mjs` refuse la publication et liste ce qui reste. Il faut :
 
-- remplir `config/offer.json` : formules (noms, prix, contenu), pourcentage d'acompte, téléphone, e-mail et réseaux ; puis retirer la ligne `draft`. Les noms et les prix des formules se changent librement, et aucun test n'en dépend : `npm run deploy` ne s'arrête pas pour cela. Leurs identifiants (`formule-1` à `formule-3`) peuvent rester tels quels ; ils ne servent qu'aux liens « Choisir » et aux demandes déjà enregistrées, mieux vaut donc ne plus les changer ensuite ;
+- remplir `config/offer.json` : formules (noms, prix, contenu), pourcentage d'acompte, téléphone, e-mail et réseaux ; puis retirer la ligne `draft`. Les noms et les prix des formules se changent librement, et aucun test n'en dépend : `npm run deploy` ne s'arrête pas pour cela. Leurs identifiants (`formule-1` à `formule-3`) peuvent rester tels quels ; ils ne servent qu'aux liens « Choisir cette formule » et aux demandes déjà enregistrées, mieux vaut donc ne plus les changer ensuite ;
 - renseigner chaque `[À compléter]` des pages légales (informations de l'entreprise, zone et frais de déplacement, médiateur, conservation des photos…) ;
 - faire valider les trois pages légales par un professionnel, puis retirer le commentaire de brouillon de `src/layouts/Legal.astro` ;
 - confirmer la phrase de présentation : « Nous avons construit cette borne nous-mêmes, du meuble en bois au logiciel. C'est notre première, et nous venons l'installer chez vous. » ;

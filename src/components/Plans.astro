@@ -4,8 +4,8 @@ import { offer } from "../../worker/offer";
 
 /**
  * « Les formules » (`#formules`), telles que `config/offer.json` les décrit. Une formule encore sans prix (offre
- * provisoire) n'affiche aucun montant, et ce qu'elle comprend n'apparaît qu'une fois renseigné. « Choisir » ouvre la
- * réservation sur cette formule ; le nom de la formule décrit le lien, pour qui ne voit pas la carte.
+ * provisoire) n'affiche aucun montant, et ce qu'elle comprend n'apparaît qu'une fois renseigné. « Choisir cette formule »
+ * ouvre la réservation sur elle ; le nom de la formule décrit le lien, pour qui ne voit pas la carte.
  */
 ---
 
@@ -25,7 +25,7 @@ import { offer } from "../../worker/offer";
             </ul>
           )}
           <a class="btn ghost" href={`/reserver?formule=${encodeURIComponent(plan.id)}`} aria-describedby={`plan-${plan.id}`}>
-            Choisir
+            Choisir cette formule
           </a>
         </article>
       ))

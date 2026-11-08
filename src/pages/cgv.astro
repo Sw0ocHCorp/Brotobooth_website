@@ -1,10 +1,14 @@
 ---
 import Fact from "../components/Fact.astro";
 import Legal from "../layouts/Legal.astro";
-import { offer } from "../../worker/offer";
+import { finalDepositPercent, offer } from "../../worker/offer";
 
 /** Le pourcentage d'acompte n'est donné qu'une fois l'offre définitive (`draft` à `false`) : avant, le marqueur le remplace. */
-const deposit = offer.draft ? undefined : `${offer.depositPercent} %`;
+const deposit = finalDepositPercent();
+/** « 7 novembre 2026 », « 1er décembre 2026 » : la version des conditions, `AAAA-MM-JJ` dans l'offre, datée pour le lecteur. */
+const version = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+  .format(new Date(offer.termsVersion))
+  .replace(/^1 /, "1er ");
 ---
 
 <Legal
@@ -12,10 +16,11 @@ const deposit = offer.draft ? undefined : `${offer.depositPercent} %`;
   description="Les conditions de réservation de la borne photo Brotobooth : date, acompte, annulation, rétractation, responsabilité et médiation."
 >
   <h1>Conditions générales de vente</h1>
-  <p class="meta">Version {offer.termsVersion}</p>
+  <p class="meta">Version du {version}</p>
   <p>
-    Ces conditions s'appliquent à toute réservation de la borne photo Brotobooth faite sur ce site. En cochant la case prévue à cet effet avant
-    d'envoyer votre demande, vous les acceptez : nous enregistrons alors la version que vous avez acceptée, et la date de votre acceptation.
+    Ces conditions s'appliquent à toute réservation de la borne photo Brotobooth faite sur ce site. En cochant la case «&nbsp;J'accepte les
+    conditions générales de vente&nbsp;» avant d'envoyer votre demande, vous acceptez ces conditions. Nous gardons la trace de la version acceptée
+    et de la date.
   </p>
 
   <section aria-labelledby="prestation">
@@ -55,8 +60,8 @@ const deposit = offer.draft ? undefined : `${offer.depositPercent} %`;
     <h2 id="acompte">L'acompte</h2>
     <p>Pour confirmer votre date, vous versez un acompte de <Fact value={deposit} /> du prix de la prestation, en ligne, sur la page sécurisée de Stripe, dans les {offer.paymentHours} h qui suivent notre réponse.</p>
     <p>
-      Cette somme est un acompte, et non des arrhes : elle engage les deux parties. Une fois l'acompte payé, vous devez régler la prestation et nous
-      devons l'assurer à la date convenue. Vous ne pouvez donc pas vous en défaire en renonçant à l'acompte.
+      Cet acompte n'est pas un simple dépôt que vous pourriez abandonner pour annuler&nbsp;: une fois payé, la réservation vous engage, et nous
+      aussi. Vous réglez le reste du prix, et nous venons à la date convenue.
     </p>
     <p>L'acompte vient en déduction du prix. Le solde reste dû, et se règle comme suit : <Fact />.</p>
   </section>
@@ -64,12 +69,11 @@ const deposit = offer.draft ? undefined : `${offer.depositPercent} %`;
   <section aria-labelledby="annulation-client">
     <h2 id="annulation-client">Annulation par vous</h2>
     <p>
-      Avant le paiement de l'acompte, vous pouvez renoncer à votre demande sans frais : prévenez-nous, ou laissez simplement passer le délai.
-      La date est alors de nouveau libre.
+      Avant le paiement de l'acompte, vous pouvez renoncer à votre demande sans frais&nbsp;: prévenez-nous, ou ne réglez simplement pas
+      l'acompte. La date est alors de nouveau libre.
     </p>
     <p>
-      Après le paiement de l'acompte, votre engagement est ferme. Les cas où une annulation de votre part donne lieu au remboursement de l'acompte,
-      et ce qui reste dû dans les autres : <Fact />.
+      Après le paiement de l'acompte, votre engagement est ferme. Si vous annulez après ce paiement&nbsp;: <Fact />.
     </p>
   </section>
 
@@ -77,8 +81,8 @@ const deposit = offer.draft ? undefined : `${offer.depositPercent} %`;
     <h2 id="annulation-brotobooth">Annulation par Brotobooth</h2>
     <p>Si nous refusons votre demande, vous n'avez rien payé et rien à faire.</p>
     <p>
-      Si, après le paiement de l'acompte, nous ne pouvons plus assurer la prestation, nous vous prévenons dès que possible et nous vous remboursons
-      les sommes déjà versées.
+      Si, après le paiement de l'acompte, nous ne pouvons plus être présents à votre événement, nous vous prévenons dès que possible et nous vous
+      remboursons les sommes déjà versées.
     </p>
   </section>
 
