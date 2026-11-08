@@ -1,0 +1,55 @@
+/* ==========================================================
+   Les pages légales (src/layouts/Legal.astro) : un texte à lire,
+   sur les jetons de tokens.css et la barre de site.css. Les titres
+   gardent Unbounded 800, le texte Outfit ; blanc partout, le
+   citron ne sert qu'à signaler ce qui reste à compléter.
+   ========================================================== */
+
+.legal { padding: calc(var(--bar) + clamp(32px, 5vw, 72px)) var(--gutter) clamp(56px, 8vw, 110px); }
+.legal article { max-width: 46rem; margin: 0 auto; }
+
+.legal h1 { font: 800 clamp(28px, 4vw, 44px) / 1.12 var(--font-title); letter-spacing: -.01em; }
+
+/* Des titres de section à la taille d'un texte suivi, non d'une section d'accueil : l'h2 de site.css est bien plus grand. */
+.legal h2 { margin: 2.2em 0 0; font: 800 clamp(18px, 2vw, 22px) / 1.25 var(--font-title); letter-spacing: 0; }
+
+/* L'espace entre blocs vient du bloc qui suit : un titre n'ajoute pas le sien à celui du texte dessous. */
+.legal p, .legal ul, .legal dl { margin-top: .8em; }
+.legal ul { padding-left: 1.25em; }
+.legal li + li { margin-top: .5em; }
+.legal p, .legal li { color: var(--text-soft); }
+.legal strong, .legal dt { font-weight: 600; color: var(--text); }
+.legal .meta { margin-top: .5em; font-weight: 600; }
+
+/* Les liens au milieu d'une phrase : soulignés pour se voir, 44 px de haut pour le doigt. */
+.legal a {
+  display: inline-flex;
+  align-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Les faits de l'entreprise, un par ligne : le nom à gauche, sa valeur à droite, l'un sous l'autre sur un téléphone. */
+.legal dl { display: grid; grid-template-columns: max-content 1fr; gap: 10px 24px; }
+.legal dd { color: var(--text); overflow-wrap: anywhere; }
+
+@media (max-width: 560px) {
+  .legal dl { grid-template-columns: 1fr; gap: 2px; }
+  .legal dd { margin-bottom: 10px; }
+}
+
+/* Un fait qui manque encore : en blanc comme tout texte, souligné de citron en pointillés. */
+.legal mark.todo { background: none; white-space: nowrap; color: var(--text); font-weight: 600; border-bottom: 1.5px dashed var(--warn); }
+
+/* L'emplacement réservé à la conclusion du professionnel : à part, avec le filet citron des avertissements. */
+.legal .reserved {
+  margin-top: 1em;
+  padding: 12px 16px;
+  border-left: 3px solid var(--warn);
+  border-radius: 0 14px 14px 0;
+  background: var(--warn-soft);
+  color: var(--text);
+}

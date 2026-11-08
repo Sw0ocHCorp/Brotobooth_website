@@ -26,7 +26,9 @@ const PAGE_CSS = `
 
 /**
  * Une page complète, en français, sur la charte sombre du site. `bodyHtml` est du HTML déjà sûr : l'appelant
- * passe par `escapeHtml` pour tout ce qui vient d'un client. Aucune page n'est à indexer ni à garder.
+ * passe par `escapeHtml` pour tout ce qui vient d'un client. Aucune page n'est à indexer ni à garder. Sa feuille de
+ * style est la seule chose écrite dans la page, ce que la politique de sécurité permet (`style-src 'unsafe-inline'`,
+ * voir `CONTENT_SECURITY_POLICY`) : jamais un script, que cette politique refuse.
  */
 export function page(title: string, bodyHtml: string): string {
   return `<!doctype html>

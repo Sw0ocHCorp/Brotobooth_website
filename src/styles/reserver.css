@@ -237,6 +237,18 @@
 .check input:focus-visible { outline: none; }
 .check input:focus-visible::before { outline: 2px solid var(--select); outline-offset: 3px; }
 
+/* Le lien vers les CGV, dans la phrase de la case : 44 px de haut pour le doigt, souligné pour se voir. Il s'ouvre dans un
+   autre onglet (rien de la saisie ne se perd) et ne coche pas la case : un lien d'un libellé garde son propre geste. */
+.check a {
+  display: inline-flex;
+  align-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 #turnstile:not(:empty) { margin: 6px 0 10px; }
 
 /* ---------- les messages ---------- */

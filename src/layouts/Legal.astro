@@ -1,0 +1,32 @@
+---
+import Footer from "../components/Footer.astro";
+import TopBar from "../components/TopBar.astro";
+import "../styles/site.css";
+import "../styles/legal.css";
+import Base from "./Base.astro";
+
+/**
+ * Le gabarit des trois pages légales : la barre et le pied de page du site, puis un texte à lire. Ces pages sont des
+ * brouillons à faire valider par un professionnel : ce statut ne vit que dans un commentaire HTML, en tête de chaque page,
+ * et jamais dans le texte, qui s'adresse au client. Astro retire les commentaires d'un gabarit, d'où `set:html`.
+ * À retirer, avec les marqueurs `[À compléter]` (`Fact.astro`), une fois les textes validés.
+ */
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const DRAFT = "<!-- Brouillon à faire valider par un professionnel avant la mise en ligne. Un fait de l'entreprise encore inconnu porte le marqueur de Fact.astro : ne rien inventer, le renseigner. -->";
+---
+
+<Base title={`${title} – Brotobooth`} description={description}>
+  <TopBar variant="home" />
+  <main class="legal">
+    <article>
+      <Fragment set:html={DRAFT} />
+      <slot />
+    </article>
+  </main>
+  <Footer />
+</Base>

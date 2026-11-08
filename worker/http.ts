@@ -6,8 +6,24 @@ export type Handler = (req: Request, deps: Deps, ctx: ExecutionContext, params: 
 /** `:nom` dans `path` capte un segment du chemin, passé au gestionnaire dans l'ordre. */
 export type Route = { method: string; path: string; handler: Handler };
 
-/** Ni gardées en cache ni indexées, sauf si l'appelant en décide autrement. */
-export const DEFAULT_HEADERS = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
+/**
+ * La politique de sécurité du contenu de tout le site : aucun script écrit dans une page, seuls ceux du site et celui de
+ * Turnstile (avec son cadre) ; les feuilles de style en ligne sont permises (pages du Worker, attributs `style`) ;
+ * `form-action` laisse `/acompte` renvoyer vers la page de paiement de Stripe. `public/_headers` porte la même, pour les
+ * fichiers statiques, que le Worker ne sert pas : `test/worker/headers.test.ts` garde les deux copies d'accord.
+ */
+export const CONTENT_SECURITY_POLICY =
+  "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; " +
+  "style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self'; " +
+  "form-action 'self' https://checkout.stripe.com; frame-ancestors 'none'; base-uri 'self'";
+
+/** Sur toute réponse du Worker : ni gardée en cache ni indexée, sauf si l'appelant en décide autrement, et sous la politique du site. */
+export const DEFAULT_HEADERS = {
+  "Cache-Control": "no-store",
+  "X-Robots-Tag": "noindex",
+  "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+  "X-Content-Type-Options": "nosniff",
+};
 
 export const json = (data: unknown, status = 200, headers: Record<string, string> = {}): Response =>
   Response.json(data, { status, headers: { ...DEFAULT_HEADERS, ...headers } });
@@ -54,7 +70,6 @@ export const html = (body: string, status = 200): Response =>
       ...DEFAULT_HEADERS,
       "Content-Type": "text/html; charset=utf-8",
       "Referrer-Policy": "same-origin",
-      "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
     },
   });

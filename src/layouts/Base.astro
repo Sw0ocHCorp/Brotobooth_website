@@ -5,15 +5,20 @@
  * n'attendent pas leur découverte dans la feuille de style. `noindex` écarte la page des moteurs de recherche.
  * `opening` charge `early.js`, de façon bloquante et avant les feuilles de style, sur la page qui joue l'ouverture
  * (l'accueil) : il dit au CSS, avant le premier affichage, si les scripts tournent et si l'ouverture va jouer.
+ * Une page indexée donne son adresse canonique, celle que le site sert (`/cgv/` : Cloudflare ajoute la barre finale à un
+ * dossier), la même que le plan du site. `jsonLd` : les données structurées de la page, en bloc JSON que la politique de
+ * sécurité n'exécute pas (c'est une donnée, non un script) ; `<` y est échappé pour qu'aucun texte ne referme la balise.
  */
 interface Props {
   title: string;
   description: string;
   noindex?: boolean;
   opening?: boolean;
+  jsonLd?: Record<string, unknown>;
 }
 
-const { title, description, noindex = false, opening = false } = Astro.props;
+const { title, description, noindex = false, opening = false, jsonLd } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const PRELOADED = ["Outfit-latin-400", "Unbounded-latin-800"];
 ---
 
@@ -25,7 +30,8 @@ const PRELOADED = ["Outfit-latin-400", "Unbounded-latin-800"];
     <meta name="theme-color" content="#0B0B0F" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    {noindex && <meta name="robots" content="noindex" />}
+    {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonical} />}
+    {jsonLd && <script is:inline type="application/ld+json" set:html={JSON.stringify(jsonLd).replaceAll("<", "\\u003c")} />}
     {opening && <script is:inline src="/scripts/early.js"></script>}
     {PRELOADED.map((font) => <link rel="preload" href={`/fonts/${font}.woff2`} as="font" type="font/woff2" crossorigin />)}
     <link rel="stylesheet" href="/styles/tokens.css" />

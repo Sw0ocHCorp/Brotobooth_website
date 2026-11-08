@@ -4,7 +4,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import offerJson from "../config/offer.json" with { type: "json" };
 import type { Offer } from "../worker/offer";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { addDays, cleanup, isoDate, pickFreeDate, seed } from "./seed";
+import { addDays, cleanup, isoDate, pickFreeDate, reachDetails, seed } from "./seed";
 
 /** `/reserver` : la date, la formule et les coordonnées, dans la carte posée sur la vidéo de la borne (spec, sections 4 et 7). */
 
@@ -50,17 +50,6 @@ async function fillDetails(page: Page, who = client()) {
   await page.getByLabel("E-mail").fill(who.email);
   await terms(page).check();
   return who;
-}
-
-/** De l'arrivée sur la page à la troisième étape, avec une date libre et la première formule : renvoie la date. */
-async function reachDetails(page: Page): Promise<string> {
-  await page.goto("/reserver");
-  const day = await pickFreeDate(page);
-  await page.getByRole("button", { name: "Continuer" }).click();
-  await page.getByRole("button", { name: /Formule 1/ }).click();
-  await page.getByRole("button", { name: "Continuer" }).click();
-  await expect(page.getByRole("heading", { name: "Vos coordonnées" })).toBeVisible();
-  return (await day.getAttribute("data-date"))!;
 }
 
 /** Avance le calendrier jusqu'au mois de `date`, et renvoie le bouton de ce jour une fois ses disponibilités connues. */

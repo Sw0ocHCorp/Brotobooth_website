@@ -1,0 +1,15 @@
+---
+/**
+ * Un fait de l'entreprise dans une page légale : sa valeur (avec un lien si `href`), ou, tant qu'il manque, le marqueur
+ * littéral `[À compléter]`. Rien n'est jamais inventé ; la vérification d'avant ouverture cherche ce marqueur dans `dist/`,
+ * et ce composant est le seul endroit où il est écrit.
+ */
+interface Props {
+  value?: string;
+  href?: string;
+}
+
+const { value, href } = Astro.props;
+---
+
+{value ? (href ? <a href={href}>{value}</a> : value) : <mark class="todo">[À compléter]</mark>}

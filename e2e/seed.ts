@@ -65,6 +65,17 @@ export async function pickFreeDate(page: Page): Promise<Locator> {
   throw new Error(`Aucune date libre dans le calendrier à partir du ${from}`);
 }
 
+/** De l'arrivée sur `/reserver` à la troisième étape, avec une date libre et la première formule : renvoie la date. */
+export async function reachDetails(page: Page): Promise<string> {
+  await page.goto("/reserver");
+  const day = await pickFreeDate(page);
+  await page.getByRole("button", { name: "Continuer" }).click();
+  await page.getByRole("button", { name: /Formule 1/ }).click();
+  await page.getByRole("button", { name: "Continuer" }).click();
+  await expect(page.getByRole("heading", { name: "Vos coordonnées" })).toBeVisible();
+  return (await day.getAttribute("data-date"))!;
+}
+
 let sequence = 0;
 
 /**

@@ -1,0 +1,122 @@
+---
+import Fact from "../components/Fact.astro";
+import Legal from "../layouts/Legal.astro";
+import { offer } from "../../worker/offer";
+
+const { email } = offer.contact;
+---
+
+<Legal
+  title="Politique de confidentialité"
+  description="Les données que nous recueillons quand vous réservez, pourquoi, combien de temps nous les gardons, et qui les reçoit."
+>
+  <h1>Politique de confidentialité</h1>
+  <p class="meta">Ce que nous faisons de vos données quand vous réservez une date, et vos droits.</p>
+
+  <section aria-labelledby="responsable">
+    <h2 id="responsable">Qui est responsable de vos données</h2>
+    <p>
+      Brotobooth, dont les coordonnées figurent dans les <a href="/mentions-legales">mentions légales</a>, est responsable des données recueillies
+      sur ce site. Pour toute question sur vos données, écrivez-nous : <Fact value={email} href={`mailto:${email}`} />.
+    </p>
+  </section>
+
+  <section aria-labelledby="donnees">
+    <h2 id="donnees">Les données que nous recueillons</h2>
+    <p>Nous ne recueillons que ce qui sert à préparer votre prestation :</p>
+    <ul>
+      <li>votre demande : la date, la formule, le type et les horaires de votre événement, et son lieu ;</li>
+      <li>vos coordonnées : votre nom, votre numéro de téléphone et votre adresse e-mail ;</li>
+      <li>votre acceptation des conditions générales de vente, avec la version acceptée et la date ;</li>
+      <li>
+        une empreinte de votre adresse IP, calculée avec un secret et qui ne permet pas de la retrouver : elle sert seulement à limiter le nombre
+        de demandes envoyées depuis une même connexion.
+      </li>
+    </ul>
+    <p>
+      Vous payez l'acompte sur la page de Stripe : nous ne voyons ni ne gardons votre numéro de carte, nous savons seulement que le paiement a eu lieu.
+      Il n'y a pas de compte à créer ni de mot de passe.
+    </p>
+  </section>
+
+  <section aria-labelledby="finalites">
+    <h2 id="finalites">Pourquoi nous les utilisons</h2>
+    <ul>
+      <li>
+        Répondre à votre demande, vous envoyer le lien de paiement de l'acompte et les rappels, et assurer la prestation : c'est l'exécution du
+        contrat que vous concluez avec nous, et les démarches qui le précèdent.
+      </li>
+      <li>Garder la preuve de votre acceptation des conditions générales de vente, ce qui est notre intérêt légitime.</li>
+      <li>
+        Protéger le site contre les envois automatisés et les abus, par la vérification anti-robots et la limite de demandes : c'est aussi notre
+        intérêt légitime.
+      </li>
+      <li>Respecter nos obligations légales, comptables notamment, pour les prestations réglées.</li>
+    </ul>
+    <p>Nous ne vendons pas vos données et nous ne les utilisons pas pour de la publicité.</p>
+  </section>
+
+  <section aria-labelledby="duree">
+    <h2 id="duree">Combien de temps nous les gardons</h2>
+    <ul>
+      <li>
+        Une demande que nous refusons, ou qui reste sans suite faute de réponse ou d'acompte : votre nom, votre téléphone, votre adresse e-mail,
+        le lieu, les horaires et l'empreinte de votre adresse IP sont effacés automatiquement au bout de 12 mois. Il ne reste alors ni nom ni
+        coordonnées, seulement la date, la formule et les montants.
+      </li>
+      <li>Une réservation confirmée : <Fact />.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="destinataires">
+    <h2 id="destinataires">Qui reçoit vos données</h2>
+    <p>Pour faire fonctionner le site, nous faisons appel à quatre prestataires. Chacun ne reçoit que ce dont il a besoin.</p>
+    <ul>
+      <li>
+        <strong>Cloudflare</strong> héberge le site et la base de données qui garde vos demandes, dans l'Union européenne, et fournit la
+        vérification anti-robots. Il reçoit ce que vous saisissez sur le site.
+      </li>
+      <li>
+        <strong>Stripe</strong> encaisse l'acompte. Vous saisissez vos informations de paiement sur sa page, et nous n'en voyons rien : Stripe
+        nous indique seulement que l'acompte est payé.
+      </li>
+      <li>
+        <strong>Resend</strong> envoie nos e-mails : le récapitulatif de votre demande, le lien de paiement de l'acompte et les rappels. Il
+        reçoit votre adresse e-mail et le contenu des messages, et les traite dans l'Union européenne.
+      </li>
+      <li>
+        <strong>Telegram</strong> est un canal d'alerte réservé à Brotobooth : il nous prévient d'une nouvelle demande et des rappels qui
+        précèdent la prestation. Il reçoit votre nom, le lieu de votre événement et votre numéro de téléphone, avec les détails de votre
+        réservation (date, type d'événement, formule, horaires), mais jamais votre adresse e-mail. Telegram ne vous écrit jamais et vous n'avez
+        aucun compte à y ouvrir.
+      </li>
+    </ul>
+    <p>Certains de ces prestataires peuvent traiter des données hors de l'Union européenne. Les garanties qui encadrent ces transferts : <Fact />.</p>
+  </section>
+
+  <section aria-labelledby="robots">
+    <h2 id="robots">Vérification anti-robots</h2>
+    <p>
+      Avant d'envoyer votre demande, le site fait vérifier par Turnstile, un service de Cloudflare, qu'elle vient bien d'une personne. Turnstile
+      examine des informations techniques de votre navigateur, sans vous demander de résoudre une énigme, et ne sert qu'à cela.
+    </p>
+  </section>
+
+  <section aria-labelledby="cookies">
+    <h2 id="cookies">Cookies</h2>
+    <p>
+      Ce site ne dépose aucun cookie de suivi ni de mesure d'audience : il n'a donc pas de bandeau à vous faire accepter. La page de paiement
+      de Stripe est celle de Stripe, qui suit sa propre politique.
+    </p>
+  </section>
+
+  <section aria-labelledby="droits">
+    <h2 id="droits">Vos droits</h2>
+    <p>
+      Vous pouvez demander l'accès à vos données, leur rectification, leur effacement ou la limitation de leur traitement, vous opposer à leur
+      utilisation, et les recevoir dans un format réutilisable. Écrivez-nous à <Fact value={email} href={`mailto:${email}`} /> : nous vous répondons
+      dans un délai d'un mois. Si vous estimez que vos droits ne sont pas respectés, vous pouvez saisir la CNIL sur
+      <a href="https://www.cnil.fr">cnil.fr</a>.
+    </p>
+  </section>
+</Legal>

@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /admin
+Disallow: /acompte
+Disallow: /agenda
+Disallow: /api
+Disallow: /demo
+
+Sitemap: https://brotobooth.fr/sitemap.xml

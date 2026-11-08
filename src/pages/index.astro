@@ -14,11 +14,21 @@ import "../styles/site.css";
  * L'accueil, dans l'ordre de la maquette validée (`docs/superpowers/specs/2026-11-07-maquette-site.html`) : tout le
  * contenu est dans le HTML, et la page se lit entière sans JavaScript ni animation. Avec JavaScript, ses trois
  * mouvements : l'ouverture du logo (une fois par visite), le mur de tirages et l'arrivée des images des sections.
+ * Les données structurées d'entreprise locale ne portent que des faits qui existent : le nom, l'adresse du site et une
+ * vraie photo. Ni adresse ni téléphone tant que `config/offer.json` et les mentions légales n'en donnent pas.
  */
+const business = {
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  name: "Brotobooth",
+  url: Astro.site!.origin,
+  image: new URL("/media/gros-tirages.webp", Astro.site).href,
+};
 ---
 
 <Base
   opening
+  jsonLd={business}
   title="Brotobooth – Réservez votre photobooth"
   description="Vos invités se prennent en photo, repartent avec leur tirage et se laissent des messages au combiné. Choisissez votre date et vérifiez tout de suite si elle est libre."
 >

@@ -155,7 +155,7 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
           }
           <label class="check">
             <input type="checkbox" id="f-terms" name="terms" required />
-            <span>J'accepte les conditions générales de vente.</span>
+            <span>J'accepte les <a href="/cgv" target="_blank" rel="noopener">conditions générales de vente</a>.</span>
           </label>
           <p class="problem" id="problem-terms" hidden>Acceptez les conditions générales de vente pour envoyer votre demande.</p>
           <div id="turnstile" data-sitekey={turnstileKey}></div>

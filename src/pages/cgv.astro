@@ -1,0 +1,126 @@
+---
+import Fact from "../components/Fact.astro";
+import Legal from "../layouts/Legal.astro";
+import { offer } from "../../worker/offer";
+
+/** Le pourcentage d'acompte n'est donné qu'une fois l'offre définitive (`draft` à `false`) : avant, le marqueur le remplace. */
+const deposit = offer.draft ? undefined : `${offer.depositPercent} %`;
+---
+
+<Legal
+  title="Conditions générales de vente"
+  description="Les conditions de réservation de la borne photo Brotobooth : date, acompte, annulation, rétractation, responsabilité et médiation."
+>
+  <h1>Conditions générales de vente</h1>
+  <p class="meta">Version {offer.termsVersion}</p>
+  <p>
+    Ces conditions s'appliquent à toute réservation de la borne photo Brotobooth faite sur ce site. En cochant la case prévue à cet effet avant
+    d'envoyer votre demande, vous les acceptez : nous enregistrons alors la version que vous avez acceptée, et la date de votre acceptation.
+  </p>
+
+  <section aria-labelledby="prestation">
+    <h2 id="prestation">La prestation</h2>
+    <p>
+      Brotobooth installe sa borne photo sur le lieu de votre événement, à la date que vous avez choisie, pour la formule que vous avez retenue.
+      Le contenu de chaque formule est présenté sur la page d'accueil.
+    </p>
+    <p>Zone de déplacement et frais de déplacement : <Fact />.</p>
+  </section>
+
+  <section aria-labelledby="reservation">
+    <h2 id="reservation">Votre réservation</h2>
+    <p>
+      Vous choisissez une date, une formule, puis vous nous laissez vos coordonnées. Une seule date est réservée par prestation. Elle doit tomber au
+      moins {offer.minLeadDays} jours après votre demande, et au plus {offer.horizonMonths} mois après.
+    </p>
+    <p>
+      Envoyer votre demande ne vous coûte rien et ne vous engage à rien. Nous gardons la date pour vous et nous vous répondons sous {offer.reviewHours} h.
+      Sans réponse de notre part dans ce délai, la date est de nouveau libre.
+    </p>
+    <p>
+      Si nous acceptons, vous recevez un e-mail avec le prix de votre prestation et un lien pour régler l'acompte. Vous avez {offer.paymentHours} h
+      pour le payer : passé ce délai, la date est de nouveau libre, et vous pouvez refaire une demande. Votre date n'est confirmée qu'une fois
+      l'acompte payé.
+    </p>
+  </section>
+
+  <section aria-labelledby="prix">
+    <h2 id="prix">Le prix</h2>
+    <p>
+      Le prix de votre prestation est celui de la formule choisie, confirmé dans l'e-mail qui contient le lien de paiement de l'acompte. Taxes (TVA) : <Fact />.
+    </p>
+  </section>
+
+  <section aria-labelledby="acompte">
+    <h2 id="acompte">L'acompte</h2>
+    <p>Pour confirmer votre date, vous versez un acompte de <Fact value={deposit} /> du prix de la prestation, en ligne, sur la page sécurisée de Stripe, dans les {offer.paymentHours} h qui suivent notre réponse.</p>
+    <p>
+      Cette somme est un acompte, et non des arrhes : elle engage les deux parties. Une fois l'acompte payé, vous devez régler la prestation et nous
+      devons l'assurer à la date convenue. Vous ne pouvez donc pas vous en défaire en renonçant à l'acompte.
+    </p>
+    <p>L'acompte vient en déduction du prix. Le solde reste dû, et se règle comme suit : <Fact />.</p>
+  </section>
+
+  <section aria-labelledby="annulation-client">
+    <h2 id="annulation-client">Annulation par vous</h2>
+    <p>
+      Avant le paiement de l'acompte, vous pouvez renoncer à votre demande sans frais : prévenez-nous, ou laissez simplement passer le délai.
+      La date est alors de nouveau libre.
+    </p>
+    <p>
+      Après le paiement de l'acompte, votre engagement est ferme. Les cas où une annulation de votre part donne lieu au remboursement de l'acompte,
+      et ce qui reste dû dans les autres : <Fact />.
+    </p>
+  </section>
+
+  <section aria-labelledby="annulation-brotobooth">
+    <h2 id="annulation-brotobooth">Annulation par Brotobooth</h2>
+    <p>Si nous refusons votre demande, vous n'avez rien payé et rien à faire.</p>
+    <p>
+      Si, après le paiement de l'acompte, nous ne pouvons plus assurer la prestation, nous vous prévenons dès que possible et nous vous remboursons
+      les sommes déjà versées.
+    </p>
+  </section>
+
+  <section aria-labelledby="retractation">
+    <h2 id="retractation">Droit de rétractation</h2>
+    <p>
+      L'article L221-28, 12° du Code de la consommation écarte le droit de rétractation de quatorze jours pour les activités de loisirs qui doivent
+      être fournies à une date ou selon une périodicité déterminée.
+    </p>
+    <p class="reserved"><strong>Conclusion du professionnel :</strong> <Fact /></p>
+  </section>
+
+  <section aria-labelledby="responsabilite">
+    <h2 id="responsabilite">Responsabilité</h2>
+    <p>Nous nous engageons à installer la borne et à la faire fonctionner pendant la durée convenue pour votre prestation.</p>
+    <p>
+      Nous ne sommes pas responsables d'un manquement qui vient d'un cas de force majeure, de votre fait ou de celui d'un tiers, par exemple si
+      nous ne pouvons pas accéder au lieu de l'événement. Rien dans ces conditions ne limite les droits que la loi vous reconnaît en tant que
+      consommateur.
+    </p>
+  </section>
+
+  <section aria-labelledby="photos">
+    <h2 id="photos">Les photos</h2>
+    <p>Aucune photo prise pendant votre événement n'est publiée par Brotobooth sans l'accord des personnes visibles.</p>
+    <p>Conservation et remise des photos de votre événement : <Fact />.</p>
+  </section>
+
+  <section aria-labelledby="mediation">
+    <h2 id="mediation">Médiation</h2>
+    <p>
+      En cas de désaccord, écrivez-nous d'abord : nous cherchons une solution avec vous. Si elle ne vous convient pas, vous pouvez saisir
+      gratuitement le médiateur de la consommation dont nous relevons : <Fact />.
+    </p>
+  </section>
+
+  <section aria-labelledby="droit">
+    <h2 id="droit">Droit applicable</h2>
+    <p>
+      Ces conditions sont soumises au droit français. À défaut d'accord amiable ou de médiation, le litige est porté devant les juridictions
+      françaises compétentes, dans les conditions prévues par la loi.
+    </p>
+    <p>Ce que nous faisons de vos données est expliqué dans notre <a href="/confidentialite">politique de confidentialité</a>.</p>
+  </section>
+</Legal>
