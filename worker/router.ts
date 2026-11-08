@@ -4,6 +4,7 @@ import type { Deps } from "./deps";
 import { fromOtherOrigin, json, type Handler } from "./http";
 import { paymentPage, startPayment, stripeWebhook } from "./payments";
 import { simulationAction, simulationPage } from "./simulated-payment";
+import { telegramWebhook } from "./telegram";
 
 /** `:nom` dans `path` capte un segment du chemin, passé au gestionnaire dans l'ordre. */
 type Route = { method: string; path: string; handler: Handler };
@@ -21,6 +22,7 @@ const ROUTES: Route[] = [
   { method: "GET", path: "/api/availability", handler: availability },
   { method: "POST", path: "/api/requests", handler: postRequest },
   { method: "POST", path: "/api/stripe/webhook", handler: stripeWebhook },
+  { method: "POST", path: "/api/telegram/webhook", handler: telegramWebhook },
   { method: "GET", path: "/acompte/:token", handler: forToken(paymentPage) },
   { method: "POST", path: "/acompte/:token", handler: forToken(startPayment) },
   { method: "GET", path: "/acompte/:token/simulation", handler: forToken(simulationPage) },
