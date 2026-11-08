@@ -1,14 +1,9 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-// Le chargeur de Playwright n'importe un JSON qu'avec son attribut de type, d'où l'import direct plutôt que `worker/offer.ts`.
-import offerJson from "../config/offer.json" with { type: "json" };
-import type { Offer } from "../worker/offer";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { addDays, cleanup, client, fillDetails, isoDate, pickFreeDate, reachDetails, seed, showDay } from "./seed";
+import { FIRST_PLAN, SECOND_PLAN, addDays, cleanup, client, fillDetails, isoDate, offer, pickFreeDate, planButton, reachDetails, seed, showDay } from "./seed";
 
 /** `/reserver` : la date, la formule et les coordonnées, dans la carte posée sur la vidéo de la borne (spec, sections 4 et 7). */
-
-const offer: Offer = offerJson;
 
 const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
@@ -96,8 +91,8 @@ test("le parcours complet", async ({ page, request }) => {
   await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeVisible();
   await expect(current).toHaveText("2 · Formule");
   await expect(page.getByRole("button", { name: "Continuer" })).toBeDisabled();
-  await page.getByRole("button", { name: /Formule 1/ }).click();
-  await expect(page.getByRole("button", { name: /Formule 1/ })).toHaveAttribute("aria-pressed", "true");
+  await planButton(page, FIRST_PLAN).click();
+  await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Continuer" }).click();
 
   await expect(current).toHaveText("3 · Coordonnées");
@@ -114,7 +109,7 @@ test("le parcours complet", async ({ page, request }) => {
   expect(bookings.filter((booking: { client_email: string }) => booking.client_email === who.email)).toEqual([
     expect.objectContaining({
       status: "pending_review",
-      plan: "formule-1",
+      plan: FIRST_PLAN.id,
       event_type: "Anniversaire",
       event_hours: who.hours,
       venue: who.venue,
@@ -126,15 +121,15 @@ test("le parcours complet", async ({ page, request }) => {
 });
 
 test("une formule présélectionnée passe directement aux coordonnées après la date", async ({ page }) => {
-  await page.goto("/reserver?formule=formule-2");
+  await page.goto(`/reserver?formule=${SECOND_PLAN.id}`);
   await pickFreeDate(page);
   await page.getByRole("button", { name: "Continuer" }).click();
   await expect(page.getByRole("heading", { name: "Vos coordonnées" })).toBeVisible();
 
   // Un retour montre la formule choisie, qui peut encore changer.
   await page.getByRole("button", { name: "Retour" }).click();
-  await expect(page.getByRole("button", { name: /Formule 2/ })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("button", { name: /Formule 1/ })).toHaveAttribute("aria-pressed", "false");
+  await expect(planButton(page, SECOND_PLAN)).toHaveAttribute("aria-pressed", "true");
+  await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("button", { name: "Continuer" })).toBeEnabled();
 
   let sent: Record<string, unknown> | undefined;
@@ -146,7 +141,7 @@ test("une formule présélectionnée passe directement aux coordonnées après l
   await fillDetails(page);
   await send(page).click();
   await expect(confirmed(page)).toBeVisible();
-  expect(sent).toMatchObject({ plan: "formule-2", terms: true, turnstile_token: "" });
+  expect(sent).toMatchObject({ plan: SECOND_PLAN.id, terms: true, turnstile_token: "" });
 });
 
 test("une date prise est barrée et inactive", async ({ page, request }) => {
@@ -314,7 +309,7 @@ test("le bouton Précédent du navigateur revient à l'étape d'avant, sans rien
 
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Formule 1/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "true");
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Choisissez votre date" })).toBeVisible();
   await expect(days(page).locator(`[data-date="${date}"]`)).toHaveAttribute("aria-pressed", "true");
@@ -507,7 +502,7 @@ test("tient sur un téléphone, sans débordement", async ({ page, viewport }) =
   await pickFreeDate(page);
   await page.getByRole("button", { name: "Continuer" }).click();
   await check("formule");
-  await page.getByRole("button", { name: /Formule 1/ }).click();
+  await planButton(page, FIRST_PLAN).click();
   await page.getByRole("button", { name: "Continuer" }).click();
   await check("coordonnées");
   await page.route(REQUESTS, (route) => route.fulfill({ status: 201, json: { status: "created" } }));
@@ -544,7 +539,7 @@ test("le calendrier s'utilise au clavier", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeFocused();
   await page.keyboard.press("Tab");
   await page.keyboard.press("Space");
-  await expect(page.getByRole("button", { name: /Formule 1/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "true");
 });
 
 test("la barre se réduit au logo et à Accueil", async ({ page }) => {
@@ -571,7 +566,7 @@ test("chaque étape passe le contrôle d'accessibilité automatique", async ({ p
   await pickFreeDate(page);
   await page.getByRole("button", { name: "Continuer" }).click();
   await audit("formule");
-  await page.getByRole("button", { name: /Formule 1/ }).click();
+  await planButton(page, FIRST_PLAN).click();
   await page.getByRole("button", { name: "Continuer" }).click();
   await page.route(REQUESTS, (route) => route.fulfill({ status: 422, json: { error: "invalid", fields: ["phone", "email"] } }));
   await fillDetails(page);

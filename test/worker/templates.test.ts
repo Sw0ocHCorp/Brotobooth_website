@@ -1,16 +1,17 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { escapeHtml } from "../../worker/html";
 import { ALL_TEMPLATES } from "../../worker/notifications";
 import { offer } from "../../worker/offer";
 import type { Booking } from "../../worker/repository";
 import { renderEmail, renderTelegram } from "../../worker/templates";
-import { T0, newBooking } from "../support";
+import { SECOND_PLAN, T0, newBooking } from "../support";
 
 const ctx = { baseUrl: "https://brotobooth.fr" };
 const CLIENT_TEMPLATES = ALL_TEMPLATES.filter((t) => t.startsWith("client_"));
 const OWNER_TEMPLATES = ALL_TEMPLATES.filter((t) => t.startsWith("owner_"));
 
 const booking = (over: Partial<Booking> = {}): Booking => ({
-  ...newBooking({ id: "b-42", token: "jeton0123456789abcdef", plan: "formule-2" }),
+  ...newBooking({ id: "b-42", token: "jeton0123456789abcdef" }),
   created_at: T0,
   updated_at: T0,
   ...over,
@@ -112,7 +113,7 @@ describe("messages au client", () => {
 
   it("la confirmation récapitule la formule, le lieu, l'acompte et le solde restant", () => {
     const { text } = renderEmail("client_confirmed", booking({ price_cents: 150_000, deposit_cents: 45_000 }), ctx);
-    expect(text).toContain("Formule 2");
+    expect(text).toContain(SECOND_PLAN.name);
     expect(text).toContain("Domaine des Pins, Lyon");
     expect(text).toContain("18h-02h");
     expect(text).toMatch(/Acompte réglé : 450,00 €/);
@@ -208,7 +209,7 @@ describe("messages au propriétaire", () => {
 
   it("l'alerte de demande donne la date, le type, la formule, le lieu, le client et le téléphone", () => {
     const { html } = renderTelegram("owner_new_request", booking({ event_date: "2026-12-19" }), ctx);
-    for (const part of ["samedi 19 décembre", "Mariage", "Formule 2", "Domaine des Pins, Lyon", "Camille Martin", "0601020304"]) {
+    for (const part of ["samedi 19 décembre", "Mariage", escapeHtml(SECOND_PLAN.name), "Domaine des Pins, Lyon", "Camille Martin", "0601020304"]) {
       expect(html).toContain(part);
     }
   });

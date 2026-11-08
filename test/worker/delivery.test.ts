@@ -11,7 +11,7 @@ import { claimNotification, enqueue, getState, patchBooking, setState, type Noti
 import { handle } from "../../worker/router";
 import { telegramGateway } from "../../worker/telegram";
 import wrangler from "../../wrangler.jsonc?raw";
-import { CHAT_ID, OWNER_EMAIL, T0, fakeDeps, insert, newBooking, notificationRows, resetDb, type FakeDeps } from "../support";
+import { CHAT_ID, FIRST_PLAN, OWNER_EMAIL, T0, fakeDeps, insert, newBooking, notificationRows, resetDb, type FakeDeps } from "../support";
 
 let deps: FakeDeps;
 let logged: MockInstance<Console["error"]>;
@@ -741,7 +741,7 @@ describe("Turnstile réel", () => {
       new Request("https://brotobooth.fr/api/requests", {
         method: "POST",
         body: JSON.stringify({
-          date, plan: "formule-1", event_type: "Mariage", event_hours: "19 h - 1 h", venue: "Salle", name: "Camille",
+          date, plan: FIRST_PLAN.id, event_type: "Mariage", event_hours: "19 h - 1 h", venue: "Salle", name: "Camille",
           phone: "06 12 34 56 78", email: "camille@example.test", terms: true, turnstile_token: "",
         }),
       }),

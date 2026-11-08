@@ -1,14 +1,9 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-// Le chargeur de Playwright n'importe un JSON qu'avec son attribut de type, d'où l'import direct plutôt que `worker/offer.ts`.
-import offerJson from "../config/offer.json" with { type: "json" };
-import type { Offer } from "../worker/offer";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { cleanup, reachDetails, seed } from "./seed";
+import { cleanup, offer, reachDetails, seed } from "./seed";
 
 /** Les pages légales, le référencement et les en-têtes de sécurité (spec, sections 7, 9 et 10). */
-
-const offer: Offer = offerJson;
 
 const SITE = "https://brotobooth.fr";
 /** Le marqueur de tout fait d'entreprise qui manque encore : `scripts/check-launch.mjs` refuse de publier tant qu'il reste. */

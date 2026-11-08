@@ -16,7 +16,7 @@ import {
   type Booking,
 } from "../../worker/repository";
 import { handle } from "../../worker/router";
-import { T0, fakeDeps, insert, newBooking, notificationRows, request, resetDb, spec, validatedBooking, type FakeDeps } from "../support";
+import { T0, depositFor, fakeDeps, insert, newBooking, notificationRows, request, resetDb, spec, validatedBooking, type FakeDeps } from "../support";
 
 const BASE = "https://brotobooth.fr";
 const LEASE_END = "2026-11-07T10:02:00.000Z";
@@ -694,7 +694,7 @@ describe("PATCH /api/admin/bookings/:id", () => {
     const v = await validatedBooking(deps);
     const r = await patch(v.id, { price_cents: 200_000 });
     expect(r.status).toBe(200);
-    expect((await reply(r)).booking).toMatchObject({ status: "awaiting_deposit", price_cents: 200_000, deposit_cents: 60_000 });
+    expect((await reply(r)).booking).toMatchObject({ status: "awaiting_deposit", price_cents: 200_000, deposit_cents: depositFor(200_000) });
     expect(await getHistory(env.DB, v.id)).toMatchObject([{ event: "validated" }, { actor: "owner", event: "price_adjusted" }]);
   });
 
@@ -752,7 +752,7 @@ describe("PATCH /api/admin/bookings/:id", () => {
     const v = await validatedWithSession();
     const r = await patch(v.id, { price_cents: 100_000 });
     expect(r.status).toBe(200);
-    expect((await reply(r)).booking).toMatchObject({ price_cents: 100_000, deposit_cents: 30_000, stripe_session: null });
+    expect((await reply(r)).booking).toMatchObject({ price_cents: 100_000, deposit_cents: depositFor(100_000), stripe_session: null });
     expect(deps.stripe.sessions.get("cs_1")!.status).toBe("expired");
   });
 
@@ -813,7 +813,7 @@ describe("PATCH /api/admin/bookings/:id", () => {
     it("règle le prix et les notes ensemble", async () => {
       const b = await request();
       const r = await patch(b.id, { price_cents: 80_000, notes: "Tarif association" });
-      expect((await reply(r)).booking).toMatchObject({ price_cents: 80_000, deposit_cents: 24_000, notes: "Tarif association" });
+      expect((await reply(r)).booking).toMatchObject({ price_cents: 80_000, deposit_cents: depositFor(80_000), notes: "Tarif association" });
     });
 
     it("refuse des notes sur une réservation déjà anonymisée : ses données ne reviennent pas", async () => {

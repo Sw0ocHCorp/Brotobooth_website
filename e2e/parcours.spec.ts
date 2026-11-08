@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { cleanup, client, fillDetails, ORIGIN, reachDetails, showDay } from "./seed";
+import { cleanup, client, depositFor, euros, fillDetails, ORIGIN, reachDetails, showDay } from "./seed";
 
 /** Une réservation de bout en bout, comme le ferait le propriétaire en essayant le site (docs/essai-local.md). */
 
 test.afterEach(({ request }) => cleanup(request));
+
+/** L'acompte d'un prix de 900 €, au pourcentage de l'offre. */
+const DEPOSIT = euros(depositFor(90_000));
 
 test("une réservation de bout en bout", async ({ page, browser, viewport }) => {
   const who = { ...client(), name: "Léa Bernard" };
@@ -24,7 +27,7 @@ test("une réservation de bout en bout", async ({ page, browser, viewport }) => 
   await sheet.getByRole("button", { name: "Ajuster le prix" }).click();
   await page.getByRole("dialog", { name: "Ajuster le prix" }).getByLabel("Prix (€)").fill("900");
   await page.getByRole("button", { name: "Enregistrer le prix" }).click();
-  await expect(sheet.getByText("270,00 €", { exact: true })).toBeVisible(); // 30 % du prix
+  await expect(sheet.getByText(DEPOSIT, { exact: true })).toBeVisible();
 
   await sheet.getByRole("button", { name: "Valider" }).click();
   await expect(sheet.getByText("Attente d'acompte", { exact: true })).toBeVisible();
@@ -35,10 +38,10 @@ test("une réservation de bout en bout", async ({ page, browser, viewport }) => 
     await page.goto("/demo");
     await expect(message).toBeVisible({ timeout: 1_000 });
   }).toPass();
-  await expect(message).toContainText("270,00 €");
+  await expect(message).toContainText(DEPOSIT);
   await message.getByRole("link", { name: new RegExp(`^${ORIGIN}/acompte/`) }).click();
   await expect(page.getByRole("heading", { name: "Votre acompte" })).toBeVisible();
-  await expect(page.locator(".amount")).toHaveText("270,00 €");
+  await expect(page.locator(".amount")).toHaveText(DEPOSIT);
 
   // 4. Le client paie en simulation, puis sa page confirme la date.
   await page.getByRole("button", { name: /Payer l'acompte/ }).click();

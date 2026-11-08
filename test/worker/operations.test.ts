@@ -25,7 +25,7 @@ import {
   type Booking,
   type NewBooking,
 } from "../../worker/repository";
-import { T0, fakeDeps, insert, newBooking, resetDb, strictStripe, type FakeDeps } from "../support";
+import { T0, depositFor, fakeDeps, insert, newBooking, resetDb, strictStripe, type FakeDeps } from "../support";
 
 const STALE = { ok: false, reason: "stale" };
 
@@ -300,7 +300,7 @@ describe("adjustPrice", () => {
     const v = await validatedWithSession();
     const r = await adjustPrice(deps, v.id, { priceCents: 150_000 });
     expect(r.ok && r.booking.price_cents).toBe(150_000);
-    expect(r.ok && r.booking.deposit_cents).toBe(45_000);
+    expect(r.ok && r.booking.deposit_cents).toBe(depositFor(150_000));
     expect(r.ok && r.booking.stripe_session).toBeNull();
     expect(r.ok && r.booking.stripe_session_expires).toBeNull();
     expect(r.ok && r.booking.status).toBe("awaiting_deposit");
@@ -314,7 +314,7 @@ describe("adjustPrice", () => {
     const retrieve = vi.spyOn(deps.stripe, "retrieveSession");
     const r = await adjustPrice(deps, p.id, { priceCents: 100_000 });
     expect(r.ok && r.booking.price_cents).toBe(100_000);
-    expect(r.ok && r.booking.deposit_cents).toBe(30_000);
+    expect(r.ok && r.booking.deposit_cents).toBe(depositFor(100_000));
     expect(r.ok && r.booking.status).toBe("pending_review");
     expect(retrieve).not.toHaveBeenCalled();
   });
@@ -353,7 +353,7 @@ describe("adjustPrice", () => {
     const expire = vi.spyOn(deps.stripe, "expireSession");
     const r = await adjustPrice(deps, v.id, { priceCents: 150_000 });
     expect(r.ok && r.booking.stripe_session).toBeNull();
-    expect(r.ok && r.booking.deposit_cents).toBe(45_000);
+    expect(r.ok && r.booking.deposit_cents).toBe(depositFor(150_000));
     expect(expire).not.toHaveBeenCalled();
   });
 

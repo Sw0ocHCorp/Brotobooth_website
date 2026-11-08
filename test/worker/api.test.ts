@@ -4,10 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { addDays } from "../../worker/bookings";
 import type { Deps, EmailMessage } from "../../worker/deps";
 import { processDue } from "../../worker/notifications";
-import { planById } from "../../worker/offer";
 import { listRange } from "../../worker/repository";
 import { handle } from "../../worker/router";
-import { CHAT_ID, OWNER_EMAIL, T0, fakeDeps, notificationRows, resetDb, type FakeDeps } from "../support";
+import { CHAT_ID, FIRST_PLAN, OWNER_EMAIL, SECOND_PLAN, T0, depositFor, fakeDeps, notificationRows, resetDb, type FakeDeps } from "../support";
 
 const ctx = createExecutionContext();
 const IP = "203.0.113.5";
@@ -15,7 +14,7 @@ const OTHER_IP = "198.51.100.7";
 const MAX_BODY = 16 * 1024;
 
 const body = (o: Record<string, unknown> = {}) => ({
-  date: "2026-12-19", plan: "formule-1", event_type: "Mariage", event_hours: "19 h - 1 h",
+  date: "2026-12-19", plan: FIRST_PLAN.id, event_type: "Mariage", event_hours: "19 h - 1 h",
   venue: "Salle des fêtes", name: "Camille Durand", phone: "06 12 34 56 78", email: "camille@example.test",
   terms: true, turnstile_token: "t", ...o,
 });
@@ -66,8 +65,8 @@ describe("POST /api/requests : enregistrement", () => {
     expect(b.source).toBe("site");
     expect(b.hold_until).toBe("2026-11-10T10:00:00.000Z");
     expect(b.terms_version).toBe("2026-11-07");
-    expect(b.price_cents).toBe(planById("formule-1")!.priceCents);
-    expect(b.deposit_cents).toBe(0);
+    expect(b.price_cents).toBe(FIRST_PLAN.priceCents);
+    expect(b.deposit_cents).toBe(depositFor(FIRST_PLAN.priceCents));
     expect(b.created_at).toBe(T0);
     expect((await notificationRows()).map((n) => `${n.template}|${n.channel}`).sort()).toEqual([
       "client_received|email",
@@ -79,29 +78,28 @@ describe("POST /api/requests : enregistrement", () => {
   });
 
   it("calcule le prix et l'acompte d'après la formule", async () => {
-    const formule = planById("formule-2")!;
-    const provisional = formule.priceCents;
-    formule.priceCents = 150_000;
+    const provisional = SECOND_PLAN.priceCents;
+    SECOND_PLAN.priceCents = 150_000;
     try {
-      await post(body({ plan: "formule-2" }));
+      await post(body({ plan: SECOND_PLAN.id }));
     } finally {
-      formule.priceCents = provisional;
+      SECOND_PLAN.priceCents = provisional;
     }
     const [b] = await stored();
-    expect(b.plan).toBe("formule-2");
+    expect(b.plan).toBe(SECOND_PLAN.id);
     expect(b.price_cents).toBe(150_000);
-    expect(b.deposit_cents).toBe(45_000);
+    expect(b.deposit_cents).toBe(depositFor(150_000));
   });
 
   it("enregistre les champs rognés, l'e-mail en minuscules, et sans message un message vide", async () => {
     await post(body({
       name: "  Camille Durand ", venue: " Salle des fêtes\n", event_hours: " 19 h - 1 h ", phone: " 06 12 34 56 78 ",
-      email: "  CAMILLE@Example.test ", event_type: " Mariage ", plan: " formule-1 ", date: " 2026-12-19 ",
+      email: "  CAMILLE@Example.test ", event_type: " Mariage ", plan: ` ${FIRST_PLAN.id} `, date: " 2026-12-19 ",
     }));
     const [b] = await stored();
     expect(b).toMatchObject({
       client_name: "Camille Durand", venue: "Salle des fêtes", event_hours: "19 h - 1 h", client_phone: "06 12 34 56 78",
-      client_email: "camille@example.test", event_type: "Mariage", plan: "formule-1", event_date: "2026-12-19",
+      client_email: "camille@example.test", event_type: "Mariage", plan: FIRST_PLAN.id, event_date: "2026-12-19",
       message: null,
     });
   });

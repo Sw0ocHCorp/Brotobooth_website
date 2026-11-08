@@ -6,7 +6,7 @@ import { renderCalendar } from "../../worker/calendar";
 import type { Deps } from "../../worker/deps";
 import type { Booking, NewBooking } from "../../worker/repository";
 import { handle } from "../../worker/router";
-import { T0, fakeDeps, insert, newBooking, resetDb, type FakeDeps } from "../support";
+import { SECOND_PLAN, T0, fakeDeps, insert, newBooking, resetDb, type FakeDeps } from "../support";
 
 const TOKEN = "d3f1c0de5eed";
 const TODAY = "2026-11-07";
@@ -160,9 +160,10 @@ describe("renderCalendar", () => {
   it("décrit la prestation : type, horaires, formule, téléphone et solde restant", () => {
     const ics = unfold(render(confirmed("2026-12-19")));
     expect(ics).toContain("LOCATION:Domaine des Pins\\, Lyon\r\n");
-    expect(ics).toMatch(
-      /DESCRIPTION:Type : Mariage\\nHoraires : 18h-02h\\nFormule : Formule 2\\nTéléphone : 0601020304\\nSolde restant : 1\s050\\,00 €\r\n/,
-    );
+    // Le nom de la formule est celui de l'offre, tel que le calendrier l'écrit (`\`, `;` et `,` échappés).
+    const formule = SECOND_PLAN.name.replace(/[\\;,]/g, "\\$&");
+    expect(ics).toContain(`Formule : ${formule}\\nTéléphone : 0601020304\\nSolde restant : `);
+    expect(ics).toMatch(/DESCRIPTION:Type : Mariage\\nHoraires : 18h-02h\\nFormule : [^\r]+\\nTéléphone : 0601020304\\nSolde restant : 1\s050\\,00 €\r\n/);
   });
 
   it("ne dit rien du solde, du lieu ni du reste quand ils ne sont pas renseignés", () => {

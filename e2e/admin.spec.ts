@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { addDays, cleanup, freeDate, ORIGIN, seed, type Kind } from "./seed";
+import { addDays, cleanup, depositFor, euros, freeDate, ORIGIN, seed, type Kind } from "./seed";
 
 test.afterEach(({ request }) => cleanup(request));
 
@@ -103,8 +103,8 @@ test("ajuster le prix recalcule l'acompte", async ({ page, request }) => {
   await price.getByRole("button", { name: "Enregistrer le prix" }).click();
   await expect(price).toBeHidden();
   await expect(sheet.getByText("1 500,00 €", { exact: true })).toBeVisible();
-  await expect(sheet.getByText("450,00 €", { exact: true })).toBeVisible(); // 30 % du prix
-  await expect(sheet.getByText("1 050,00 €", { exact: true })).toBeVisible(); // le solde
+  await expect(sheet.getByText(euros(depositFor(150_000)), { exact: true })).toBeVisible(); // le pourcentage de l'offre
+  await expect(sheet.getByText(euros(150_000 - depositFor(150_000)), { exact: true })).toBeVisible(); // le solde
   // L'historique garde la trace du changement, en français.
   await expect(historyOf(sheet).getByRole("listitem")).toHaveText([/Demande reçue/, /Prix ajusté.*Vous/]);
   await expect(historyOf(sheet)).not.toContainText("price_adjusted");

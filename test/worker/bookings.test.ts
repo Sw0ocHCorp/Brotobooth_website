@@ -118,13 +118,19 @@ describe("acompte", () => {
 });
 
 describe("offre", () => {
-  it("retrouve une formule par son identifiant", () => {
-    expect(planById("formule-2")?.name).toBe("Formule 2");
+  it("retrouve chaque formule par son identifiant", () => {
+    for (const plan of offer.plans) expect(planById(plan.id)).toBe(plan);
     expect(planById("inconnue")).toBeUndefined();
+  });
+  // Les autres tests choisissent deux formules (`FIRST_PLAN`, `SECOND_PLAN`) : ce test dit pourquoi ils échouent si l'offre n'en a qu'une.
+  it("propose au moins deux formules, chacune avec son identifiant et son nom", () => {
+    expect(offer.plans.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(offer.plans.map((plan) => plan.id)).size).toBe(offer.plans.length);
+    expect(new Set(offer.plans.map((plan) => plan.name)).size).toBe(offer.plans.length);
   });
   it("porte les règles de réservation du plan", () => {
     expect(offer).toMatchObject({
-      depositPercent: 30, reviewHours: 72, paymentHours: 72,
+      reviewHours: 72, paymentHours: 72,
       minLeadDays: 7, horizonMonths: 24, reminderHourParis: 9,
     });
   });

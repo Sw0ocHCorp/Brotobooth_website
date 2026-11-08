@@ -1,6 +1,8 @@
 import { env } from "cloudflare:workers";
+import { depositCents } from "../worker/bookings";
 import type { Button, Deps, EmailMessage, StripeGateway, StripeSession } from "../worker/deps";
 import { plan } from "../worker/notifications";
+import { offer, type Plan } from "../worker/offer";
 import { validateBooking } from "../worker/operations";
 import {
   insertBooking,
@@ -13,6 +15,15 @@ import {
 /** L'instant « maintenant » de tous les tests. */
 export const T0 = "2026-11-07T10:00:00.000Z";
 
+/**
+ * Deux formules de l'offre, lues dans `config/offer.json` : le propriétaire y change les noms, les identifiants et les prix,
+ * et aucun test ne suppose les valeurs d'aujourd'hui.
+ */
+export const [FIRST_PLAN, SECOND_PLAN]: Plan[] = offer.plans;
+
+/** L'acompte que l'offre prévoit pour ce prix, quel que soit son pourcentage. */
+export const depositFor = (priceCents: number): number => depositCents(priceCents, offer.depositPercent);
+
 const randomHex = (): string => crypto.randomUUID().replaceAll("-", "");
 
 /** Une demande du site en attente de réponse, avec toutes les colonnes d'identité renseignées. */
@@ -22,7 +33,7 @@ export const newBooking = (over: Partial<NewBooking> = {}): NewBooking => ({
   event_date: "2026-12-19",
   status: "pending_review",
   source: "site",
-  plan: "formule-2",
+  plan: SECOND_PLAN.id,
   price_cents: 150_000,
   deposit_cents: 45_000,
   client_name: "Camille Martin",

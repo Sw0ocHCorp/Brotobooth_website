@@ -1,12 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-// La configuration que la page affiche. Le chargeur de Playwright n'importe un JSON qu'avec son attribut de type,
-// d'où l'import direct plutôt que `worker/offer.ts`.
-import offerJson from "../config/offer.json" with { type: "json" };
-import type { Offer } from "../worker/offer";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-
-const offer: Offer = offerJson;
+import { FIRST_PLAN, offer } from "./seed";
 
 const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
@@ -77,7 +72,7 @@ test("la barre est claire sur l'ouverture, puis voilée pour rester lisible", as
 
 test("les formules viennent de la configuration et mènent à la réservation", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "Choisir", exact: true }).first()).toHaveAttribute("href", "/reserver?formule=formule-1");
+  await expect(page.getByRole("link", { name: "Choisir", exact: true }).first()).toHaveAttribute("href", `/reserver?formule=${FIRST_PLAN.id}`);
 
   const cards = page.locator("#formules").getByRole("article");
   await expect(cards).toHaveCount(offer.plans.length);

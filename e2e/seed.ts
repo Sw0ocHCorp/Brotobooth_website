@@ -1,4 +1,24 @@
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+// Le chargeur de Playwright n'importe un JSON qu'avec son attribut de type, d'où l'import direct plutôt que `worker/offer.ts`.
+import offerJson from "../config/offer.json" with { type: "json" };
+import type { Offer, Plan } from "../worker/offer";
+
+/**
+ * L'offre telle que le propriétaire l'écrit dans `config/offer.json`. Il y change les noms, les identifiants et les prix :
+ * aucun essai ne suppose ceux d'aujourd'hui, ils passent par `FIRST_PLAN`, `SECOND_PLAN` et `planButton`.
+ */
+export const offer: Offer = offerJson;
+export const [FIRST_PLAN, SECOND_PLAN] = offer.plans;
+
+/**
+ * L'acompte que l'offre prévoit pour ce prix : son pourcentage, arrondi à l'euro le plus proche. Écrit ici plutôt que repris de
+ * `worker/bookings.ts`, que le chargeur de Playwright ne lit pas (il importe `config/offer.json` sans son attribut de type).
+ */
+export const depositFor = (priceCents: number): number => Math.round((priceCents * offer.depositPercent) / 10_000) * 100;
+
+const EUROS = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
+/** Un montant comme l'écran l'écrit (« 1 050,00 € »), avec des espaces ordinaires. */
+export const euros = (cents: number): string => EUROS.format(cents / 100).replace(/\s/g, " ");
 
 /** L'adresse du site d'essai : celle de `BASE_URL` dans `npm run dev:e2e`, avec laquelle l'API compare l'en-tête `Origin`. */
 export const ORIGIN = "http://localhost:8798";
@@ -20,6 +40,9 @@ export type Kind = "pending" | "awaiting" | "confirmed" | "blocked" | "refused" 
 
 /** `name` identifie la réservation à l'écran : le nom du client, ou les notes d'une date bloquée. */
 export type Seeded = { id: string; token: string; date: string; name: string; phone: string };
+
+/** Le bouton de `plan` à la deuxième étape de `/reserver`. */
+export const planButton = (page: Page, plan: Plan): Locator => page.locator(`button[data-plan="${plan.id}"]`);
 
 export const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
 
@@ -83,7 +106,7 @@ export async function reachDetails(page: Page): Promise<string> {
   await page.goto("/reserver");
   const day = await pickFreeDate(page);
   await page.getByRole("button", { name: "Continuer" }).click();
-  await page.getByRole("button", { name: /Formule 1/ }).click();
+  await planButton(page, FIRST_PLAN).click();
   await page.getByRole("button", { name: "Continuer" }).click();
   await expect(page.getByRole("heading", { name: "Vos coordonnées" })).toBeVisible();
   return (await day.getAttribute("data-date"))!;
@@ -147,7 +170,7 @@ export async function seed(
     if (kind === "cancelled") await write(request, "post", `${ADMIN}/${booking.id}/cancel`, {});
   } else {
     const created = await request.post("/api/requests", {
-      data: { date, plan: "formule-1", ...common, message: "Un fond rose, si possible.", terms: true, turnstile_token: "" },
+      data: { date, plan: FIRST_PLAN.id, ...common, message: "Un fond rose, si possible.", terms: true, turnstile_token: "" },
     });
     expect(created.status(), "POST /api/requests").toBe(201);
     const { bookings } = await (await request.get(`${ADMIN}?from=${date}&to=${date}`)).json();
