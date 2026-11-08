@@ -25,6 +25,7 @@ export const ALL_TEMPLATES = [
   "client_deposit_reminder",
   "client_confirmed",
   "client_released",
+  "client_unanswered",
   "client_cancelled",
   "client_d7",
   "owner_new_request",
@@ -107,7 +108,8 @@ function drafts(event: PlanEvent, b: Booking, now: Date): Draft[] {
     case "manual_confirmed":
       return eventReminders(b);
     case "released":
-      return [draft("client_released", EMAIL, now), draft("owner_released", BOTH, now)];
+      // `b` est la réservation d'avant la libération : le client n'a pas à s'entendre dire que le délai est passé quand c'est nous qui n'avons pas répondu.
+      return [draft(b.status === "pending_review" ? "client_unanswered" : "client_released", EMAIL, now), draft("owner_released", BOTH, now)];
     case "cancelled":
       return [draft("client_cancelled", EMAIL, now)];
   }
@@ -115,7 +117,8 @@ function drafts(event: PlanEvent, b: Booking, now: Date): Draft[] {
 
 /**
  * Les notifications à mettre en file pour un événement, clés `b<id>:<modèle>[:<repère>]:<canal>`.
- * Pour `cancelled`, `b` est la réservation avant l'annulation : une date bloquée ne prévient personne.
+ * Pour `cancelled`, `b` est la réservation avant l'annulation : une date bloquée ne prévient personne. Pour `released`,
+ * c'est la réservation avant la libération : le message au client diffère selon qu'il n'a pas payé ou que nous n'avons pas répondu.
  * Rien pour le client sans e-mail ni pour un rappel dont l'heure est déjà passée.
  */
 export function plan(event: PlanEvent, b: Booking, now: Date): NotificationSpec[] {

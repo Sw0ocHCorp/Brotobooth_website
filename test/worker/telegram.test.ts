@@ -74,7 +74,7 @@ describe("telegramWebhook : valider", () => {
 
     const booking = (await getBooking(env.DB, b.id))!;
     expect(booking.status).toBe("awaiting_deposit");
-    expect(toClient().map((m) => m.subject)).toEqual(["Votre acompte pour le samedi 19 décembre"]);
+    expect(toClient().map((m) => m.subject)).toEqual(["Votre acompte pour le samedi 19 décembre 2026"]);
     expect(toClient()[0].text).toContain(`/acompte/${booking.token}`);
     expect(deps.answers).toEqual(["cb"]);
     expect(toast()).toMatch(/Validée/);
@@ -88,7 +88,7 @@ describe("telegramWebhook : valider", () => {
     await tap(`v:${b.id}`);
     const original = renderTelegram("owner_new_request", { ...b, hold_until: null }, { baseUrl: deps.env.BASE_URL }).html;
     expect(lastEdit().html.startsWith(original)).toBe(true);
-    expect(lastEdit().html).toContain("Nouvelle demande pour le samedi 19 décembre");
+    expect(lastEdit().html).toContain("Nouvelle demande pour le samedi 19 décembre 2026");
     expect(lastEdit().html).not.toContain("la date sera libérée");
   });
 
@@ -130,7 +130,7 @@ describe("telegramWebhook : refuser", () => {
     expect(await notificationRows()).toEqual(before);
     expect(deps.emails).toEqual([]);
     expect(buttonsOf(lastEdit())).toEqual([`rc:${b.id}`, `x:${b.id}`]);
-    expect(lastEdit().html).toContain("Nouvelle demande pour le samedi 19 décembre");
+    expect(lastEdit().html).toContain("Nouvelle demande pour le samedi 19 décembre 2026");
     expect(lastEdit().html).toContain("Refuser cette demande ?");
     expect(deps.answers).toEqual(["cb"]);
   });

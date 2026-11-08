@@ -55,11 +55,13 @@ describe("renderCalendar", () => {
     );
   });
 
-  it("alerte la veille de chaque événement", () => {
+  // L'événement commence à minuit : 15 h avant, l'alerte sonne la veille à 9 h, comme les autres rappels (`-P1D` sonnerait à minuit).
+  it("alerte la veille à 9 h de chaque événement", () => {
     const ics = render(confirmed("2026-12-19"), pending("2027-01-09"));
-    expect(ics.match(/^BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-P1D\r\n/gm)).toHaveLength(2);
+    expect(ics.match(/^BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT15H\r\n/gm)).toHaveLength(2);
+    expect(ics).not.toContain("TRIGGER:-P1D");
     // Une alerte d'affichage porte un texte (RFC 5545, 3.6.6) : celui de l'événement.
-    expect(ics).toMatch(/TRIGGER:-P1D\r\nDESCRIPTION:Prestation[^\r]*\r\nEND:VALARM/);
+    expect(ics).toMatch(/TRIGGER:-PT15H\r\nDESCRIPTION:Prestation[^\r]*\r\nEND:VALARM/);
   });
 
   it("garde le même identifiant d'événement d'une lecture à l'autre", () => {

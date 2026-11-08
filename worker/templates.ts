@@ -54,6 +54,7 @@ type Row = [label: string, value: string | null];
 const eventRows = (b: Booking): Row[] => [
   ["Date", day(b)],
   ["Formule", planName(b)],
+  ["Type", b.event_type],
   ["Lieu", b.venue],
   ["Horaires", b.event_hours],
 ];
@@ -109,6 +110,7 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       `Votre demande pour le ${day(b)}`,
       para(`Nous avons bien reçu votre demande pour le ${day(b)}.`),
       para(`Nous gardons cette date pour vous et nous vous répondons sous ${offer.reviewHours} h. Rien à payer pour l'instant.`),
+      facts(eventRows(b)),
     ),
 
   client_refused: (b, ctx) =>
@@ -157,6 +159,15 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       `Votre demande pour le ${day(b)}`,
       para(`Le délai est passé : la date du ${day(b)} n'est plus réservée pour vous.`),
       para("Si elle est encore libre, vous pouvez refaire une demande :"),
+      action("Refaire une demande", absolute(ctx, "/reserver")),
+    ),
+
+  client_unanswered: (b, ctx) =>
+    forClient(
+      b,
+      `Votre demande pour le ${day(b)}`,
+      para(`Nous sommes désolés : nous n'avons pas pu vous répondre à temps, et la date du ${day(b)} n'est plus réservée pour vous.`),
+      para("Si elle est encore libre, vous pouvez refaire une demande ou nous appeler :"),
       action("Refaire une demande", absolute(ctx, "/reserver")),
     ),
 
@@ -285,7 +296,7 @@ const OWNER_STATUS: Partial<Record<BookingStatus, string>> = {
 
 const digestLine = (b: Booking): Piece[] => [
   "• ",
-  `${formatDay(b.event_date)} ${b.event_date.slice(0, 4)}`,
+  day(b),
   " : ",
   b.client_name ?? "client inconnu",
   ...(b.venue ? [`, ${b.venue}`] : []),

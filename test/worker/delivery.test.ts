@@ -49,7 +49,7 @@ describe("processDue : envoi des messages dus", () => {
     expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
     expect(await processDue(deps)).toEqual({ sent: 0, failed: 0 });
     expect(deps.emails).toHaveLength(1);
-    expect(deps.emails[0]).toMatchObject({ to: "camille@example.test", subject: "Votre demande pour le samedi 19 décembre" });
+    expect(deps.emails[0]).toMatchObject({ to: "camille@example.test", subject: "Votre demande pour le samedi 19 décembre 2026" });
     expect(deps.emails[0].text).toContain("Bonjour Camille Martin,");
     expect((await notificationRows())[0].sent_at).toBe(T0);
   });
@@ -75,7 +75,7 @@ describe("processDue : envoi des messages dus", () => {
 
     deps.setNow("2026-11-07T10:00:01.000Z");
     expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
-    expect(deps.emails.map((m) => m.subject)).toEqual(["Votre demande pour le samedi 19 décembre"]);
+    expect(deps.emails.map((m) => m.subject)).toEqual(["Votre demande pour le samedi 19 décembre 2026"]);
     expect((await notificationRows()).find((n) => n.dedupe_key === "cancelled")!.sent_at).toBeNull();
   });
 
@@ -104,7 +104,7 @@ describe("processDue : envoi des messages dus", () => {
     expect((await cancelBooking(deps, b.id, "owner")).ok).toBe(true);
     expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
     // Seul l'avis d'annulation part : le rappel du délai d'acompte a été annulé avec la réservation.
-    expect(deps.emails.map((m) => m.subject)).toEqual(["Votre réservation du samedi 19 décembre"]);
+    expect(deps.emails.map((m) => m.subject)).toEqual(["Votre réservation du samedi 19 décembre 2026"]);
   });
 
   it("rend le message d'après la réservation à jour, juste avant l'envoi", async () => {
@@ -340,7 +340,7 @@ describe("processDue : reprises et alertes", () => {
     expect(rows[0]).toMatchObject({ attempts: 1, sent_at: null });
     expect(rows[1].sent_at).toBe(T0);
     expect(deps.emails).toHaveLength(1);
-    expect(deps.emails[0]).toMatchObject({ to: OWNER_EMAIL, subject: "Dans une semaine : samedi 19 décembre" });
+    expect(deps.emails[0]).toMatchObject({ to: OWNER_EMAIL, subject: "Dans une semaine : samedi 19 décembre 2026" });
 
     // Au passage suivant, Telegram est retenté sans doubler le message de secours.
     await processDue(deps);
@@ -359,7 +359,7 @@ describe("processDue : reprises et alertes", () => {
     await enqueue(env.DB, [mail("client_received", b.id)]);
     for (let i = 0; i < 3; i++) await processDue(deps);
     expect(deps.emails.map((m) => [m.to, m.subject])).toEqual([
-      [OWNER_EMAIL, "Un e-mail n'est pas parti pour la prestation du samedi 19 décembre"],
+      [OWNER_EMAIL, "Un e-mail n'est pas parti pour la prestation du samedi 19 décembre 2026"],
     ]);
   });
 
@@ -966,7 +966,7 @@ describe("GET /demo", () => {
     await enqueue(env.DB, [mail("client_deposit_link", b.id, old), telegram("owner_new_request", b.id, old), mail("owner_new_request", b.id, old)]);
     await processDue(demo);
     const body = await (await open(demo)).text();
-    expect(body).toContain("Votre acompte pour le samedi 19 décembre");
+    expect(body).toContain("Votre acompte pour le samedi 19 décembre 2026");
     expect(body).toContain(`<a href="https://brotobooth.fr/acompte/${b.token}">`);
     expect(body).toContain("Valider");
     expect(body).toContain("Camille Martin");

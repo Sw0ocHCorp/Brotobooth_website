@@ -91,8 +91,8 @@ describe("le parcours complet, sans Stripe", () => {
 
     await send(path, form("paid"));
     expect(deps.emails.map((m) => m.subject).sort()).toEqual([
-      "Acompte reçu pour le samedi 19 décembre",
-      "C'est confirmé pour le samedi 19 décembre",
+      "Acompte reçu pour le samedi 19 décembre 2026",
+      "C'est confirmé pour le samedi 19 décembre 2026",
     ]);
     expect(deps.emails.find((m) => m.subject.startsWith("C'est confirmé"))!.to).toBe(v.client_email);
     await send(`/acompte/${v.token}?paid=1`);

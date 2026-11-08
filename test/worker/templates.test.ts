@@ -50,6 +50,25 @@ describe("champs libres", () => {
   });
 });
 
+describe("la date de la prestation", () => {
+  // Un horizon de 24 mois : « 19 décembre » seul ne dirait pas laquelle des deux années.
+  const sunday = booking({ event_date: "2027-12-19" });
+
+  it.each(ALL_TEMPLATES.filter((t) => t !== "owner_digest"))("%s écrit toujours l'année", (t) => {
+    const mail = renderEmail(t, sunday, ctx);
+    for (const text of [mail.subject + mail.text, renderTelegram(t, sunday, ctx).html]) {
+      expect(text).toContain("dimanche 19 décembre 2027");
+      expect(text).not.toMatch(/décembre(?! 2027)/);
+    }
+  });
+
+  it("le point du lundi n'écrit l'année qu'une fois par prestation", () => {
+    const { html } = renderTelegram("owner_digest", null, { ...ctx, upcoming: [sunday] });
+    expect(html).toContain("dimanche 19 décembre 2027");
+    expect(html).not.toMatch(/2027 2027/);
+  });
+});
+
 describe("messages au client", () => {
   it.each(CLIENT_TEMPLATES)("%s ne contient aucun vocabulaire interne", (t) => {
     const { text, subject, html } = renderEmail(t, booking(), ctx);
@@ -57,13 +76,14 @@ describe("messages au client", () => {
   });
 
   it.each([
-    ["client_received", "Votre demande pour le samedi 19 décembre"],
-    ["client_refused", "Votre demande pour le samedi 19 décembre"],
-    ["client_deposit_link", "Votre acompte pour le samedi 19 décembre"],
+    ["client_received", "Votre demande pour le samedi 19 décembre 2026"],
+    ["client_refused", "Votre demande pour le samedi 19 décembre 2026"],
+    ["client_deposit_link", "Votre acompte pour le samedi 19 décembre 2026"],
     ["client_deposit_reminder", "Plus que 24 h pour votre acompte"],
-    ["client_confirmed", "C'est confirmé pour le samedi 19 décembre"],
-    ["client_released", "Votre demande pour le samedi 19 décembre"],
-    ["client_cancelled", "Votre réservation du samedi 19 décembre"],
+    ["client_confirmed", "C'est confirmé pour le samedi 19 décembre 2026"],
+    ["client_released", "Votre demande pour le samedi 19 décembre 2026"],
+    ["client_unanswered", "Votre demande pour le samedi 19 décembre 2026"],
+    ["client_cancelled", "Votre réservation du samedi 19 décembre 2026"],
     ["client_d7", "Votre photobooth arrive dans une semaine"],
   ])("%s a pour objet « %s »", (t, subject) => {
     expect(renderEmail(t, booking({ event_date: "2026-12-19" }), ctx).subject).toBe(subject);
@@ -79,6 +99,27 @@ describe("messages au client", () => {
     const { text } = renderEmail("client_received", booking(), ctx);
     expect(text).toContain(`${offer.reviewHours} h`);
     expect(text).toMatch(/rien à payer/i);
+  });
+
+  // `/reserver` promet « un e-mail avec le récapitulatif de votre demande » : il doit redire ce que le client a saisi.
+  it("l'accusé de réception récapitule la date, la formule, le type, les horaires et le lieu de la demande", () => {
+    const m = renderEmail("client_received", booking({ event_date: "2026-12-19" }), ctx);
+    for (const [label, value] of [
+      ["Date", "samedi 19 décembre 2026"],
+      ["Formule", SECOND_PLAN.name],
+      ["Type", "Mariage"],
+      ["Horaires", "18h-02h"],
+      ["Lieu", "Domaine des Pins, Lyon"],
+    ]) {
+      expect(m.text).toContain(`${label} : ${value}`);
+      expect(m.html).toContain(`<strong>${label}</strong> : ${escapeHtml(value)}`);
+    }
+  });
+
+  it("l'accusé de réception n'écrit que ce que la demande renseigne", () => {
+    const { text } = renderEmail("client_received", booking({ venue: null, event_hours: null, event_type: null }), ctx);
+    expect(text).not.toMatch(/Lieu|Horaires|Type|null/);
+    expect(text).toContain("Date : ");
   });
 
   it("le lien de paiement contient le jeton, jamais l'identifiant", () => {
@@ -108,7 +149,7 @@ describe("messages au client", () => {
 
   it("formate les dates et les montants en français", () => {
     expect(renderEmail("client_confirmed", booking({ event_date: "2026-12-19", price_cents: 150000 }), ctx).text)
-      .toMatch(/samedi 19 décembre[\s\S]*1\s?500,00\s?€/);
+      .toMatch(/samedi 19 décembre 2026[\s\S]*1\s?500,00\s?€/);
   });
 
   it("la confirmation récapitule la formule, le lieu, l'acompte et le solde restant", () => {
@@ -142,6 +183,23 @@ describe("messages au client", () => {
     const { text } = renderEmail("client_released", booking(), ctx);
     expect(text).toMatch(/n'est plus réservée/);
     expect(text).toContain("https://brotobooth.fr/reserver");
+  });
+
+  // Le propriétaire n'a pas répondu à temps : la faute n'est pas celle du client, le message ne lui dit pas « le délai est passé ».
+  it("l'avis de demande restée sans réponse s'excuse et invite à refaire une demande ou à appeler", () => {
+    const { text, html } = renderEmail("client_unanswered", booking({ event_date: "2026-12-19" }), ctx);
+    expect(text).toMatch(/désolés/);
+    expect(text).toContain("samedi 19 décembre 2026");
+    expect(text).toMatch(/n'est plus réservée/);
+    expect(text).toMatch(/refaire une demande ou nous appeler/);
+    expect(text).toContain("https://brotobooth.fr/reserver");
+    expect(html).toContain('href="https://brotobooth.fr/reserver"');
+    expect(text).not.toMatch(/délai|payer|acompte/i);
+  });
+
+  it("l'avis de libération d'un acompte non payé garde son délai, l'avis sans réponse n'en parle pas", () => {
+    expect(renderEmail("client_released", booking(), ctx).text).toMatch(/Le délai est passé/);
+    expect(renderEmail("client_unanswered", booking(), ctx).text).not.toMatch(/Le délai est passé/);
   });
 
   it("l'avis d'annulation annonce l'annulation", () => {
@@ -209,7 +267,7 @@ describe("messages au propriétaire", () => {
 
   it("l'alerte de demande donne la date, le type, la formule, le lieu, le client et le téléphone", () => {
     const { html } = renderTelegram("owner_new_request", booking({ event_date: "2026-12-19" }), ctx);
-    for (const part of ["samedi 19 décembre", "Mariage", escapeHtml(SECOND_PLAN.name), "Domaine des Pins, Lyon", "Camille Martin", "0601020304"]) {
+    for (const part of ["samedi 19 décembre 2026", "Mariage", escapeHtml(SECOND_PLAN.name), "Domaine des Pins, Lyon", "Camille Martin", "0601020304"]) {
       expect(html).toContain(part);
     }
   });
@@ -250,7 +308,7 @@ describe("messages au propriétaire", () => {
   it("owner_released nomme le client et la date libérée", () => {
     const { html } = renderTelegram("owner_released", booking({ event_date: "2026-12-19" }), ctx);
     expect(html).toContain("Camille Martin");
-    expect(html).toContain("samedi 19 décembre");
+    expect(html).toContain("samedi 19 décembre 2026");
   });
 
   it("owner_review_reminder nomme le client et renvoie à la demande", () => {
@@ -262,7 +320,7 @@ describe("messages au propriétaire", () => {
   it("owner_late_payment donne le client, la date, l'acompte et demande un remboursement par Stripe", () => {
     const m = renderEmail("owner_late_payment", booking({ event_date: "2026-12-19", deposit_cents: 45_000 }), ctx);
     expect(m.text).toContain("Camille Martin");
-    expect(m.text).toContain("samedi 19 décembre");
+    expect(m.text).toContain("samedi 19 décembre 2026");
     expect(m.text).toMatch(/450,00 €/);
     expect(m.text).toMatch(/Stripe/);
     expect(m.text).toMatch(/rembours/i);
@@ -372,7 +430,7 @@ describe("modèles inconnus", () => {
     expect(() => renderEmail("owner_digest", null, ctx)).not.toThrow();
   });
 
-  it("rend les dix-sept modèles, sur les deux canaux", () => {
+  it("rend chaque modèle, sur les deux canaux", () => {
     expect(OWNER_TEMPLATES.length + CLIENT_TEMPLATES.length).toBe(ALL_TEMPLATES.length);
     for (const t of ALL_TEMPLATES) {
       expect(renderEmail(t, booking(), ctx).text.length).toBeGreaterThan(0);

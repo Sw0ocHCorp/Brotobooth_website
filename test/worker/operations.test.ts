@@ -254,7 +254,7 @@ describe("confirmDeposit", () => {
 });
 
 describe("expireHold", () => {
-  it("expirer une demande sans réponse libère la date et prévient le client et le propriétaire", async () => {
+  it("expirer une demande sans réponse libère la date, s'excuse auprès du client et prévient le propriétaire", async () => {
     const p = await request();
     deps.setNow("2026-11-10T10:00:00.000Z");
     const r = await expireHold(deps, p);
@@ -264,12 +264,21 @@ describe("expireHold", () => {
     expect(await cancelledAt(p.id, "owner_review_reminder")).toEqual(["2026-11-10T10:00:00.000Z", "2026-11-10T10:00:00.000Z"]);
     expect(await stillDue(p.id)).toEqual(
       [
-        "client_released|email|2026-11-10T10:00:00.000Z",
+        "client_unanswered|email|2026-11-10T10:00:00.000Z",
         "owner_released|email|2026-11-10T10:00:00.000Z",
         "owner_released|telegram|2026-11-10T10:00:00.000Z",
       ].sort(),
     );
     expect(await getHistory(env.DB, p.id)).toMatchObject([{ actor: "system", event: "released" }]);
+  });
+
+  it("expirer un acompte non payé libère la date et rappelle au client que le délai est passé", async () => {
+    const v = await validated();
+    deps.setNow("2026-11-10T10:00:00.000Z");
+    const r = await expireHold(deps, v);
+    expect(r.ok && r.booking.status).toBe("expired");
+    expect(await cancelledAt(v.id, "client_deposit_reminder")).toEqual(["2026-11-10T10:00:00.000Z"]);
+    expect((await stillDue(v.id)).filter((n) => n.startsWith("client_"))).toEqual(["client_released|email|2026-11-10T10:00:00.000Z"]);
   });
 
   it("expirer une demande en attente d'acompte garde la session Stripe sans la toucher", async () => {

@@ -239,8 +239,9 @@ async function transition(deps: Deps, b: Booking, actor: Actor, action: BookingA
   const { event, patch } = STEPS[action];
   const now = deps.now();
   const fields = patch(now);
-  // `cancelled` lit la réservation d'avant (une date bloquée ne prévient personne) ; les autres, celle d'après.
-  const planned = event === "cancelled" ? b : { ...b, ...fields, status: to };
+  // `cancelled` et `released` lisent la réservation d'avant (une date bloquée ne prévient personne, et le client n'apprend pas
+  // la même chose d'une demande restée sans réponse que d'un acompte non payé) ; les autres, celle d'après.
+  const planned = event === "cancelled" || event === "released" ? b : { ...b, ...fields, status: to };
   return applied(
     await applyTransition(deps.env.DB, {
       id: b.id,

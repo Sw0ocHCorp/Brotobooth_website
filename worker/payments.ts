@@ -86,10 +86,14 @@ function payView(b: Booking): string {
   );
 }
 
-/** Ce que dit la page d'une réservation qui n'attend pas (ou plus) d'acompte. */
-function statusView(b: Booking, verifying: boolean): string {
+/**
+ * Ce que dit la page d'une réservation qui n'attend pas (ou plus) d'acompte. `returning` : le client arrive de la page de
+ * paiement. Sur une date annulée ou libérée, il vient peut-être de payer : la page le dit, et promet le remboursement.
+ */
+function statusView(b: Booking, verifying: boolean, returning: boolean): string {
   const day = formatDay(b.event_date);
   const reserve = (text: string) => `<div class="stack">${link("/reserver", text)}</div>`;
+  const refund = returning ? '<p class="notice">Si vous venez de payer, nous vous recontactons rapidement pour vous rembourser.</p>' : "";
   if (verifying) {
     return view(
       "Nous vérifions votre paiement",
@@ -109,7 +113,7 @@ function statusView(b: Booking, verifying: boolean): string {
         `<p>Nous avons bien reçu votre acompte de <span class="amount">${formatEuros(b.deposit_cents ?? 0)}</span>. La date du ${day} est à vous, un e-mail de confirmation vous est envoyé.</p>`,
       );
     case "cancelled":
-      return view("Cette réservation a été annulée", `<p>La date du ${day} n'est plus réservée.</p>`);
+      return view("Cette réservation a été annulée", `<p>La date du ${day} n'est plus réservée.</p>`, refund);
     case "refused":
       return view(
         "Nous n'avons pas pu retenir cette date",
@@ -120,6 +124,7 @@ function statusView(b: Booking, verifying: boolean): string {
       return view(
         "Cette date n'est plus réservée",
         `<p>Le délai est passé : la date du ${day} n'est plus réservée pour vous. Si elle est encore libre, vous pouvez refaire une demande ou nous appeler.</p>`,
+        refund,
         reserve("Refaire une demande"),
       );
   }
@@ -148,12 +153,13 @@ export async function paymentPage(req: Request, deps: Deps, token: string, ctx: 
   let booking = await getBookingByToken(deps.env.DB, token);
   if (!booking || booking.status === "blocked") return notFoundPage();
 
-  const returning = booking.status === "awaiting_deposit" && new URL(req.url).searchParams.get("paid") === "1";
-  if (returning) booking = await settleReturn(deps, ctx, booking);
+  const returning = new URL(req.url).searchParams.get("paid") === "1";
+  const waiting = returning && booking.status === "awaiting_deposit";
+  if (waiting) booking = await settleReturn(deps, ctx, booking);
 
   // Revenu de la page de paiement sans que Stripe confirme : on ne propose pas de payer une seconde fois.
-  const verifying = returning && booking.status === "awaiting_deposit";
-  return html(!verifying && payable(booking, deps.now()) ? payView(booking) : statusView(booking, verifying));
+  const verifying = waiting && booking.status === "awaiting_deposit";
+  return html(!verifying && payable(booking, deps.now()) ? payView(booking) : statusView(booking, verifying, returning));
 }
 
 // ---------- la session de paiement ----------

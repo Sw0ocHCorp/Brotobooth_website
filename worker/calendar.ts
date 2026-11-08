@@ -1,6 +1,7 @@
 import { ACTIVE_STATUSES, addDays, parisToday, type BookingStatus } from "./bookings";
 import type { Deps } from "./deps";
 import { DEFAULT_HEADERS, json, secretMatches } from "./http";
+import { offer } from "./offer";
 import { listUpcoming, type Booking } from "./repository";
 import { balance, planName } from "./templates";
 
@@ -72,7 +73,10 @@ function details(b: Booking): string[] {
   return rows.flatMap(([label, value]) => (value ? [`${label} : ${value}`] : []));
 }
 
-/** Un événement sur la journée, avec une alerte la veille. */
+/** L'événement d'une journée commence à minuit : l'alerte sonne la veille à l'heure des autres rappels (9 h, soit `-PT15H`), et non à minuit (`-P1D`). */
+const ALARM_TRIGGER = `-PT${24 - offer.reminderHourParis}H`;
+
+/** Un événement sur la journée, avec une alerte la veille à 9 h. */
 function event(b: Booking, title: string, now: Date): string[] {
   // Une date bloquée est l'agenda du propriétaire lui-même : sa note tient lieu de nom, et aucun champ client n'y figure.
   const blocked = b.status === "blocked";
@@ -91,7 +95,7 @@ function event(b: Booking, title: string, now: Date): string[] {
     ...(description.length > 0 ? [`DESCRIPTION:${escapeText(description.join("\n"))}`] : []),
     "BEGIN:VALARM",
     "ACTION:DISPLAY",
-    "TRIGGER:-P1D",
+    `TRIGGER:${ALARM_TRIGGER}`,
     // Une alerte d'affichage porte un texte (RFC 5545, 3.6.6).
     `DESCRIPTION:${summary}`,
     "END:VALARM",

@@ -55,10 +55,12 @@ const EUROS = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximum
 /** « 450,00 € ». Le symbole suit une espace ordinaire : le montant se retrouve tel quel dans un texte. */
 export const formatEuros = (cents: number): string => `${EUROS.format(cents / 100)} €`;
 
-const DAY = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+const DAY = { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" } as const;
+const DAY_WITH_YEAR = new Intl.DateTimeFormat("fr-FR", { ...DAY, year: "numeric" });
+const DAY_WITHOUT_YEAR = new Intl.DateTimeFormat("fr-FR", DAY);
 
-/** « samedi 19 décembre » pour un jour `AAAA-MM-JJ`. */
-export const formatDay = (date: string): string => DAY.format(new Date(date));
+/** « samedi 19 décembre 2026 » pour un jour `AAAA-MM-JJ` : avec 24 mois de réservations, décembre 2027 ne doit pas se lire comme décembre 2026. */
+export const formatDay = (date: string): string => DAY_WITH_YEAR.format(new Date(date));
 
 const CLOCK = new Intl.DateTimeFormat("fr-FR", {
   hour: "numeric",
@@ -67,10 +69,13 @@ const CLOCK = new Intl.DateTimeFormat("fr-FR", {
   timeZone: "Europe/Paris",
 });
 
-/** « mardi 10 novembre à 11 h », ou « à 11 h 25 » hors d'une heure pile : un instant, à l'heure de Paris. */
+/**
+ * « mardi 10 novembre à 11 h », ou « à 11 h 25 » hors d'une heure pile : un instant, à l'heure de Paris. Sans l'année : c'est une
+ * échéance de quelques jours (le délai de réponse, celui du paiement), jamais la date d'une prestation.
+ */
 export function formatMoment(iso: string): string {
   const at = new Date(iso);
   const clock = Object.fromEntries(CLOCK.formatToParts(at).map((part) => [part.type, part.value]));
   const minutes = clock.minute === "00" ? "" : ` ${clock.minute}`;
-  return `${formatDay(parisToday(at))} à ${Number(clock.hour)} h${minutes}`;
+  return `${DAY_WITHOUT_YEAR.format(new Date(parisToday(at)))} à ${Number(clock.hour)} h${minutes}`;
 }

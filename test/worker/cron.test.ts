@@ -88,8 +88,18 @@ describe("releaseDueHolds", () => {
     expect((await current(b)).status).toBe("expired");
     expect(await listUnavailableDates(env.DB, "2026-12-01", "2026-12-31")).toEqual([]);
     expect(await lastEvent(b)).toMatchObject({ actor: "system", event: "released" });
-    expect((await queued("client_released")).length).toBe(1);
+    expect((await queued("client_unanswered")).length).toBe(1);
+    expect((await queued("client_released")).length).toBe(0);
     expect((await queued("owner_released")).map((n) => n.channel).sort()).toEqual(["email", "telegram"]);
+  });
+
+  it("libère un acompte non payé après 72 h en rappelant le délai au client", async () => {
+    const v = await validatedBooking(deps);
+    deps.setNow(afterHold(v));
+    await releaseDueHolds(deps);
+    expect((await current(v)).status).toBe("expired");
+    expect((await queued("client_released")).length).toBe(1);
+    expect((await queued("client_unanswered")).length).toBe(0);
   });
 
   it("ne libère pas avant l'échéance", async () => {
@@ -418,7 +428,7 @@ describe("runCron", () => {
       await request();
       await runCron(deps);
       expect(deps.emails.map((m) => m.subject)).toEqual(
-        expect.arrayContaining(["Votre demande pour le samedi 19 décembre", "Nouvelle demande pour le samedi 19 décembre"]),
+        expect.arrayContaining(["Votre demande pour le samedi 19 décembre 2026", "Nouvelle demande pour le samedi 19 décembre 2026"]),
       );
       expect(deps.telegrams).toHaveLength(1);
       expect(deps.telegrams[0].buttons!.flat()).toHaveLength(3);
@@ -437,7 +447,7 @@ describe("runCron", () => {
       deps.setNow(afterHold(due));
       await runCron(deps);
       expect(deps.emails.map((m) => m.subject)).toEqual(
-        expect.arrayContaining(["Votre demande pour le samedi 19 décembre", "Date libérée : samedi 19 décembre"]),
+        expect.arrayContaining(["Votre demande pour le samedi 19 décembre 2026", "Date libérée : samedi 19 décembre 2026"]),
       );
       expect(deps.emails.some((m) => m.to === "camille@example.test" && /n'est plus réservée/.test(m.text))).toBe(true);
     });

@@ -84,7 +84,7 @@ describe("GET /acompte/<jeton> : récapitulatif", () => {
   it("affiche le récapitulatif avec le montant de l'acompte", async () => {
     const html = await (await open(v.token)).text();
     expect(html).toContain("450,00 €");
-    expect(html).toContain("19 décembre");
+    expect(html).toContain("samedi 19 décembre 2026");
   });
 
   it("annonce la date limite à l'heure de Paris et propose de payer", async () => {
@@ -193,7 +193,7 @@ describe("POST /acompte/<jeton> : session de paiement", () => {
         token: v.token,
         email: "camille@example.test",
         amountCents: 45_000,
-        label: "Acompte pour le samedi 19 décembre",
+        label: "Acompte pour le samedi 19 décembre 2026",
         expiresAt: Date.parse(T0) / 1000 + 1800,
       },
     ]);
@@ -360,6 +360,37 @@ describe("GET /acompte/<jeton>?paid=1 : retour de Stripe", () => {
     deps.stripe.completeSession(s);
     await open(v.token);
     expect((await current()).status).toBe("awaiting_deposit");
+  });
+
+  // Qui revient de la page de paiement sur une date annulée ou libérée vient peut-être de payer : la page le rassure.
+  describe("sur une réservation qui n'est plus payable", () => {
+    const REFUND = "Si vous venez de payer, nous vous recontactons rapidement pour vous rembourser.";
+
+    it.each([
+      ["cancelled", "annulée"],
+      ["expired", "plus réservée"],
+    ] as const)("en état %s, annonce un remboursement à qui vient de payer, et pas aux autres", async (status, text) => {
+      const b = await withStatus(status);
+      const returning = await (await open(`${b.token}?paid=1`)).text();
+      expect(returning).toContain(text);
+      expect(returning).toContain(REFUND);
+      expect(returning).not.toContain('method="post"');
+      expect(await (await open(b.token)).text()).not.toContain("rembours");
+    });
+
+    it("annonce le remboursement quand le propriétaire annule une date que le client vient de payer", async () => {
+      const s = await start();
+      deps.stripe.completeSession(s);
+      await cancelBooking(deps, v.id, "owner");
+      const html = await (await open(`${v.token}?paid=1`)).text();
+      expect(html).toContain("annulée");
+      expect(html).toContain(REFUND);
+    });
+
+    it.each(["pending_review", "confirmed", "refused"] as const)("en état %s, ne parle pas de remboursement", async (status) => {
+      const html = await (await open(`${(await withStatus(status)).token}?paid=1`)).text();
+      expect(html).not.toContain("rembours");
+    });
   });
 });
 
@@ -557,7 +588,7 @@ describe("POST /api/stripe/webhook", () => {
 
 describe("envoi immédiat après un paiement", () => {
   const sentTo = () => deps.emails.map((m) => [m.to, m.subject]);
-  const confirmation = [expect.any(String), "C'est confirmé pour le samedi 19 décembre"];
+  const confirmation = [expect.any(String), "C'est confirmé pour le samedi 19 décembre 2026"];
 
   /** Le client a payé : la session est terminée, mais rien n'a encore enregistré le paiement. */
   async function paid(): Promise<string> {
@@ -571,12 +602,12 @@ describe("envoi immédiat après un paiement", () => {
     expect(sentTo()).toHaveLength(2);
     expect(sentTo()).toEqual(
       expect.arrayContaining([
-        ["camille@example.test", "C'est confirmé pour le samedi 19 décembre"],
-        [OWNER_EMAIL, "Acompte reçu pour le samedi 19 décembre"],
+        ["camille@example.test", "C'est confirmé pour le samedi 19 décembre 2026"],
+        [OWNER_EMAIL, "Acompte reçu pour le samedi 19 décembre 2026"],
       ]),
     );
     expect(deps.telegrams.map((m) => m.chatId)).toEqual([CHAT_ID]);
-    expect(deps.telegrams[0].html).toContain("Acompte reçu pour le samedi 19 décembre");
+    expect(deps.telegrams[0].html).toContain("Acompte reçu pour le samedi 19 décembre 2026");
     // Les rappels de J-7 et de J-1 ne sont pas dus : ils attendent leur heure.
     const reminders = (await queued()).filter((n) => n.template.endsWith("_d7") || n.template.endsWith("_d1"));
     expect(reminders).toHaveLength(5);
@@ -634,7 +665,7 @@ describe("envoi immédiat après un paiement", () => {
     const s = await paid();
     await expireHold(deps, await current());
     await hook(s);
-    const alert = deps.emails.find((m) => m.subject === "Paiement à rembourser : samedi 19 décembre");
+    const alert = deps.emails.find((m) => m.subject === "Paiement à rembourser : samedi 19 décembre 2026");
     expect(alert).toMatchObject({ to: OWNER_EMAIL });
     expect(alert!.text).toMatch(/Stripe/);
     expect(deps.telegrams.some((m) => /rembours/i.test(m.html))).toBe(true);

@@ -22,10 +22,10 @@ const EVENTS = Object.keys({
 } satisfies Record<PlanEvent, 0>) as PlanEvent[];
 
 describe("liste des modèles", () => {
-  it("nomme les dix-sept modèles de la spec", () => {
+  it("nomme les dix-huit modèles de la spec", () => {
     expect([...ALL_TEMPLATES].sort()).toEqual([
       "client_cancelled", "client_confirmed", "client_d7", "client_deposit_link", "client_deposit_reminder",
-      "client_received", "client_refused", "client_released",
+      "client_received", "client_refused", "client_released", "client_unanswered",
       "owner_d1", "owner_d7", "owner_deposit_paid", "owner_digest", "owner_email_failed", "owner_late_payment",
       "owner_new_request", "owner_released", "owner_review_reminder",
     ]);
@@ -112,8 +112,15 @@ describe("plan", () => {
     expect(keys(plan("cancelled", { ...b, status: "confirmed" }, new Date(T0)))).toEqual([`client_cancelled|email|${T0}`]);
   });
 
-  it("la libération prévient les deux parties", () => {
-    expect(plan("released", b, new Date(T0)).map((n) => n.template).sort()).toEqual(["client_released", "owner_released", "owner_released"]);
+  // Le message dépend de l'état que la date quitte : `b` est la réservation d'avant la libération.
+  it("la libération d'une demande restée sans réponse s'excuse auprès du client, et prévient le propriétaire", () => {
+    const unanswered = { ...b, status: "pending_review" as const };
+    expect(plan("released", unanswered, new Date(T0)).map((n) => n.template).sort()).toEqual(["client_unanswered", "owner_released", "owner_released"]);
+  });
+
+  it("la libération d'un acompte non payé rappelle le délai au client, et prévient le propriétaire", () => {
+    const unpaid = { ...b, status: "awaiting_deposit" as const, hold_until: "2026-11-10T10:00:00.000Z" };
+    expect(plan("released", unpaid, new Date(T0)).map((n) => n.template).sort()).toEqual(["client_released", "owner_released", "owner_released"]);
   });
 
   it.each(EVENTS)("%s : une date bloquée ne planifie rien", (event) => {
