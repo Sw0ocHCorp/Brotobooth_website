@@ -22,7 +22,7 @@ const MAX_WEBHOOK_BYTES = 1024 * 1024;
 export const acomptePath = (token: string): string => `/acompte/${token}`;
 
 /** Les pannes sont consignées par leur nom seulement : un message de Stripe peut citer l'adresse du client. */
-const logFailure = (what: string, error: unknown): void =>
+export const logFailure = (what: string, error: unknown): void =>
   console.error(`${what} : ${error instanceof Error ? error.name : "erreur inconnue"}`);
 
 /** Le client peut payer : la réservation attend son acompte et l'échéance n'est pas atteinte. */

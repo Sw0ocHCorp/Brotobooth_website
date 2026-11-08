@@ -293,20 +293,20 @@ const stay = async (
   );
 
 /**
- * Ferme la session d'acompte, ou dit qu'elle est payée. Stripe refuse d'expirer une session qui n'est plus
- * ouverte : on la lit d'abord, et si elle se ferme ou se paie entre la lecture et l'appel, on relit.
+ * Ferme la session d'acompte et rend son dernier état, jamais « ouverte » : expirée, ou payée.
+ * Stripe refuse d'expirer une session qui n'est plus ouverte : on la lit d'abord, et si elle se ferme ou se
+ * paie entre la lecture et l'appel, on relit. Lève si Stripe est en panne et que la session reste ouverte.
  */
-async function closeSession(stripe: StripeGateway, id: string): Promise<"closed" | "paid"> {
-  const outcome = (session: StripeSession): "closed" | "paid" => (session.paymentStatus === "paid" ? "paid" : "closed");
+export async function closeSession(stripe: StripeGateway, id: string): Promise<StripeSession> {
   const session = await stripe.retrieveSession(id);
-  if (session.status !== "open") return outcome(session);
+  if (session.status !== "open") return session;
   try {
     await stripe.expireSession(id);
-    return "closed";
+    return { ...session, status: "expired", url: null };
   } catch (error) {
     const after = await stripe.retrieveSession(id);
     if (after.status === "open") throw error; // vraie panne : la réservation reste intacte
-    return outcome(after);
+    return after;
   }
 }
 
@@ -325,7 +325,7 @@ export const adjustPrice = (
 ): Promise<OpResult> =>
   withBooking(deps, id, async (b) => {
     if (!PRICE_EDITABLE.includes(b.status)) return STALE;
-    if (b.stripe_session && (await closeSession(deps.stripe, b.stripe_session)) === "paid") return STALE;
+    if (b.stripe_session && (await closeSession(deps.stripe, b.stripe_session)).paymentStatus === "paid") return STALE;
     return stay(deps, b, deps.now(), "price_adjusted", {
       patch: {
         price_cents: a.priceCents,

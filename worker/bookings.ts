@@ -72,7 +72,7 @@ export const addDays = (date: string, days: number): string =>
   isoDate(new Date(Date.parse(date) + days * DAY_MS));
 
 /** Ajoute des mois en ramenant le jour au dernier du mois d'arrivée s'il n'y existe pas. */
-function addMonths(date: string, months: number): string {
+export function addMonths(date: string, months: number): string {
   const start = new Date(date);
   const target = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months + 1, 0));
   target.setUTCDate(Math.min(start.getUTCDate(), target.getUTCDate()));
