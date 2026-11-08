@@ -7,7 +7,7 @@
    19 px en gras, le seul corps où le blanc sur rose passe le contraste.
    L'orange ne sert qu'à l'anneau du focus. Le texte est blanc partout.
    Tout se lit sans animation : seuls l'ouverture (html.intro, posé par
-   /scripts/early.js) et les photos pas encore arrivées (.toss) cachent,
+   /scripts/early.js) et les photos pas encore arrivées (.toss) cachent à la vue,
    avec JavaScript, ce qu'ils vont montrer.
    ========================================================== */
 
@@ -182,8 +182,10 @@ main { overflow-x: clip; }
 
 .shot img { display: block; width: 100%; height: auto; }
 
-/* Une photo pas encore arrivée (scripts/toss.ts) : cachée à sa place, hors de l'écran, jusqu'à ce qu'elle y soit lancée. */
-.shot.toss { visibility: hidden; }
+/* Une photo pas encore arrivée (scripts/toss.ts) : transparente à sa place, hors de l'écran, jusqu'à ce qu'elle y soit
+   lancée. Transparente et non cachée : un lecteur d'écran la lit dès le départ, avec son texte alternatif. Aucun fondu :
+   la classe tombe quand le vol commence. */
+.shot.toss { opacity: 0; }
 
 /* Ce que vivent vos invités : la photo et le texte changent de côté à chaque étape. */
 .steps-list { list-style: none; }

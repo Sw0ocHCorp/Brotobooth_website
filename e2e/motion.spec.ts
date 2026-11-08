@@ -144,6 +144,10 @@ test("les images de section arrivent une fois et finissent à leur place", async
   await page.mouse.click(10, 10);
   const shots = page.locator(".shot");
   await expect(shots).toHaveCount(6);
+  // Pas encore arrivée, une image est déjà lue par un lecteur d'écran, avec son texte alternatif.
+  const founders = page.getByRole("img", { name: "Les deux fondateurs dos à dos, photographiés par la borne" });
+  await expect(founders).toHaveCount(1);
+  await expect(founders.locator("xpath=..")).toHaveClass(/\btoss\b/);
   const flown = await watchFlights(page, ".shot");
   for (const shot of await shots.all()) {
     // Dans la page : `scrollIntoViewIfNeeded` attendrait que l'image ne bouge plus.

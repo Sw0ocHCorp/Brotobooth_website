@@ -2,8 +2,8 @@
  * Les vraies photos des sections (`.shot`, de `Shot.astro`) arrivent comme les tirages du mur, une seule fois chacune :
  * quand une photo entre à l'écran, elle est lancée de son côté (`data-from`, -1 la gauche, 1 la droite) et se pose avec
  * un léger rebond à sa place de repos, inclinée de `--r`. Une photo déjà à l'écran au chargement y reste : elle est
- * arrivée. Rien n'est caché avant que ce script ne tourne, et rien ne bouge si le visiteur a demandé de réduire les
- * animations.
+ * arrivée. Rien n'est transparent avant que ce script ne tourne, et rien ne bouge si le visiteur a demandé de réduire
+ * les animations.
  */
 
 const FLY_MS = 660; // le vol des tirages du mur, un peu plus long : les photos viennent de plus loin
@@ -22,7 +22,7 @@ export function initToss(): void {
         const first = !reported.has(shot);
         reported.add(shot);
         if (first && isIntersecting) observer.unobserve(shot);
-        // Hors de l'écran, elle attend d'y entrer, cachée à sa place.
+        // Hors de l'écran, elle attend d'y entrer, transparente à sa place (toujours lue par un lecteur d'écran).
         else if (first) shot.classList.add("toss");
         else if (intersectionRatio >= IN_VIEW) {
           observer.unobserve(shot);
