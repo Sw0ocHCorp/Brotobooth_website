@@ -2,18 +2,18 @@
    BrotoBooth web theme, copy for the site of the photobooth rental.
 
    Same tokens and components as templates/_theme.css (the canonical
-   block, the DA "Sunset" of the kiosk): keep the two in sync. The one
-   difference: no font files are declared here. The site declares
-   Outfit and Unbounded in its own fonts.css, served by the site itself;
-   until a page loads it, the fallbacks of --font-text and --font-title
-   apply.
+   block, the DA "Sunset" of the kiosk): keep the two in sync, except
+   for two things left out on purpose:
+   - no font files are declared here. The site declares Outfit and
+     Unbounded in its own fonts.css, served by the site itself; until a
+     page loads it, the fallbacks of --font-text and --font-title apply;
+   - no light palette. The site is dark only (spec, sections 1 and 7):
+     a phone set to light gets the same noir nuit ground and white text.
+     Do not copy the light media query of the canonical file.
 
    ROSE is the action and the only coloured fill, at most one button
    per screen. ORANGE is the choice made, always a ring or a border.
-   LEMON (a dark amber on the light ground) is a warning, next to its
-   icon. Text follows the scheme, everywhere: white on the dark one,
-   noir nuit on the light one. Dark is the default; phones set to light
-   get the same DA on a light ground, via prefers-color-scheme.
+   LEMON is a warning, next to its icon. Text is white, everywhere.
    ========================================================== */
 
 :root {
@@ -74,49 +74,6 @@
   --font-title: "Unbounded", system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg-a: #ffffff;
-    --bg-b: #ececf1;
-    --text: #0b0b0f;
-    --text-soft: rgba(11, 11, 15, .68);
-    --text-faint: rgba(11, 11, 15, .44);
-
-    --glass: rgba(255, 255, 255, .55);
-    --glass-press: rgba(255, 255, 255, .85);
-    --glass-border: rgba(11, 11, 15, .18);
-    --glass-border-soft: rgba(11, 11, 15, .10);
-
-    --row: rgba(11, 11, 15, .04);
-    --field: rgba(255, 255, 255, .78);
-
-    --accent-text: #0b0b0f;
-    --select-text: #0b0b0f;
-    --mark-bg: rgba(255, 255, 255, .55);
-    --mark-line: rgba(11, 11, 15, .85);
-
-    --ok: #15803d;
-    --ok-soft: rgba(34, 197, 94, .18);
-    --ok-line: rgba(21, 128, 61, .45);
-    --warn: #a16207;
-    --warn-soft: rgba(234, 179, 8, .22);
-    --warn-line: rgba(161, 98, 7, .45);
-    --danger: #dc2626;
-    --danger-soft: rgba(239, 68, 68, .16);
-    --danger-line: rgba(220, 38, 38, .45);
-
-    --veil: rgba(236, 236, 241, .85);
-    --card: rgba(255, 255, 255, .86);
-    --card-top: rgba(255, 255, 255, .96);
-    --card-line: rgba(11, 11, 15, .12);
-    --shadow: 0 6px 24px rgba(11, 11, 15, .12);
-    --btn-line: rgba(11, 11, 15, .35);
-
-    --checker-a: #dcdce2;
-    --checker-b: #cbcbd3;
-  }
-}
-
 /* ---------- base ---------- */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -140,8 +97,7 @@ h1 {
 }
 .sub { color: var(--text-soft); font-size: .88rem; margin-top: 4px; }
 
-/* The brand's logo, above a page's title: white letters on the dark
-   ground, noir nuit on the light one (a <picture>, see the pages). */
+/* The brand's logo, above a page's title: white letters on the dark ground. */
 .brand { display: block; height: 46px; width: auto; margin-bottom: 14px; }
 
 /* ---------- frosted card ---------- */
@@ -267,9 +223,7 @@ h1 {
 
 /* ---------- input well ---------- */
 /* A plain fill; the 2 px border is the orange ring of the active field,
-   a faint rim at rest (on the light ground the fill alone is white on
-   a white card: the well would not show) — it takes its place without
-   a jump. */
+   a faint rim at rest: it takes its place without a jump. */
 
 .field {
   background: var(--field);

@@ -15,6 +15,8 @@ export default defineConfig({
   ],
   test: {
     include: ["test/**/*.test.ts"],
+    // Par défaut vitest vide les fichiers CSS, y compris `?raw` : sans cela, `tokens.css?raw` serait une chaîne vide.
+    css: { include: [/public\/styles\/.*\.css/] },
     setupFiles: ["./test/apply-migrations.ts"],
   },
 });

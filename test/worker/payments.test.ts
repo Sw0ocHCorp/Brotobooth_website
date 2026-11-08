@@ -7,6 +7,7 @@ import { offer } from "../../worker/offer";
 import { cancelBooking, expireHold } from "../../worker/operations";
 import { getBooking, getHistory, listDueNotifications, type Booking } from "../../worker/repository";
 import { handle } from "../../worker/router";
+import tokens from "../../public/styles/tokens.css?raw";
 import { T0, fakeDeps, insert, newBooking, resetDb, validatedBooking, type FakeDeps } from "../support";
 
 const ctx = createExecutionContext();
@@ -546,5 +547,17 @@ describe("POST /api/stripe/webhook", () => {
     const r = await handle(new Request("https://brotobooth.fr/api/stripe/webhook"), deps, ctx);
     expect(r.status).toBe(405);
     expect(r.headers.get("Allow")).toBe("POST");
+  });
+});
+
+describe("public/styles/tokens.css : la charte des pages", () => {
+  it("est sombre seulement : aucune palette claire pour un téléphone réglé en clair", () => {
+    expect(tokens).not.toContain("prefers-color-scheme");
+    expect(tokens).toMatch(/--bg-a: #0b0b0f;/);
+    expect(tokens).toMatch(/--text: #ffffff;/);
+  });
+
+  it("ne déclare aucune police : elles viennent du site", () => {
+    expect(tokens).not.toContain("@font-face");
   });
 });
