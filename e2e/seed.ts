@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext } from "@playwright/test";
+import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
 /** L'adresse du site d'essai : celle de `BASE_URL` dans `npm run dev:e2e`, avec laquelle l'API compare l'en-tête `Origin`. */
 export const ORIGIN = "http://localhost:8798";
@@ -7,6 +7,10 @@ const ADMIN = "/api/admin/bookings";
 const DAY_MS = 86_400_000;
 /** Les dates d'essai commencent à 35 jours : jamais dans le mois affiché à l'ouverture, un mois comptant 31 jours au plus. */
 const FIRST_OFFSET_DAYS = 35;
+/** Une date choisie dans le calendrier est à 30 jours au moins : loin du délai minimum, quel que soit le jour du test. */
+const PICK_OFFSET_DAYS = 30;
+/** Les mois que `pickFreeDate` parcourt avant de renoncer. */
+const PICK_MONTHS = 6;
 const SEARCH_DAYS = 120;
 const CLEANUP_DAYS = 400;
 
@@ -15,7 +19,7 @@ export type Kind = "pending" | "awaiting" | "confirmed" | "blocked" | "refused" 
 /** `name` identifie la réservation à l'écran : le nom du client, ou les notes d'une date bloquée. */
 export type Seeded = { id: string; token: string; date: string; name: string; phone: string };
 
-const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
+export const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
 
 export const addDays = (date: string, days: number): string => isoDate(new Date(Date.parse(date) + days * DAY_MS));
 
@@ -36,6 +40,29 @@ export async function freeDate(request: APIRequestContext): Promise<string> {
     if (!unavailable.includes(day)) return day;
   }
   throw new Error(`Aucune date libre entre ${from} et ${to}`);
+}
+
+/**
+ * Sur `/reserver`, clique la première date libre du calendrier à 30 jours au moins, en avançant d'un mois tant qu'il n'y
+ * en a pas : le test ne dépend pas du jour où il tourne. Renvoie le bouton du jour, dont `data-date` porte la date.
+ */
+export async function pickFreeDate(page: Page): Promise<Locator> {
+  const from = addDays(isoDate(new Date()), PICK_OFFSET_DAYS);
+  const days = page.locator("#days");
+  for (let month = 0; month < PICK_MONTHS; month++) {
+    await expect(days).toHaveAttribute("aria-busy", "false");
+    const free = await days
+      .getByRole("button", { disabled: false })
+      .evaluateAll((buttons) => buttons.map((button) => (button as HTMLElement).dataset.date ?? ""));
+    const date = free.find((day) => day >= from);
+    if (date) {
+      const day = days.locator(`[data-date="${date}"]`);
+      await day.click();
+      return day;
+    }
+    await page.getByRole("button", { name: "Mois suivant" }).click();
+  }
+  throw new Error(`Aucune date libre dans le calendrier à partir du ${from}`);
 }
 
 let sequence = 0;

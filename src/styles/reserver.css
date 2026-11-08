@@ -1,0 +1,271 @@
+/* ==========================================================
+   La réservation (/reserver) : la vidéo de la borne en plein écran,
+   sous un voile, et la carte du parcours en verre dépoli (.glass de
+   tokens.css). Mise en page de la maquette validée (#res), sur les
+   boutons et la barre de site.css.
+
+   Le rose est le bouton de l'étape (« Continuer », « Envoyer ma
+   demande »), un seul à la fois. L'orange est le choix fait (le jour,
+   la formule, la case cochée), toujours en anneau. Le texte est blanc.
+   ========================================================== */
+
+/* ---------- la vidéo et la carte ---------- */
+/* Sur ordinateur, la carte se range à droite et laisse voir la borne ; le voile s'assombrit de son côté. */
+
+.film,
+.res-veil { position: fixed; inset: 0; }
+
+.film { width: 100%; height: 100%; object-fit: cover; }
+
+.res-veil {
+  background:
+    linear-gradient(to right, rgba(11, 11, 15, .1) 0, rgba(11, 11, 15, .3) 45%, rgba(11, 11, 15, .72) 100%),
+    linear-gradient(to bottom, rgba(11, 11, 15, .6) 0, rgba(11, 11, 15, 0) 24%);
+}
+
+.res-in {
+  position: relative;
+  min-height: 100svh;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: calc(var(--bar) + 8px) var(--gutter) 28px;
+}
+
+/* 14 px de marge intérieure sur un téléphone : sept jours de 44 px tiennent dans la carte dès 375 px. */
+.card { width: min(500px, 100%); padding: clamp(14px, 2.2vw, 28px); }
+
+.card h1 {
+  margin-bottom: .25em;
+  font-size: clamp(22px, 2.1vw, 30px);
+  line-height: 1.1;
+  letter-spacing: -.01em;
+}
+
+.card h1:focus { outline: none; }
+
+/* Une étape, un message ou un bloc que le script cache (`hidden`) reste caché, quel que soit son affichage. */
+.card [hidden] { display: none; }
+
+/* Sur un téléphone, la carte descend au bas de l'écran : la borne reste visible au-dessus. */
+@media (max-width: 760px) {
+  .res-in { justify-content: center; align-items: flex-end; padding-top: calc(var(--bar) + 110px); }
+
+  .res-veil {
+    background: linear-gradient(to bottom, rgba(11, 11, 15, .55) 0, rgba(11, 11, 15, .1) 24%, rgba(11, 11, 15, .7) 100%);
+  }
+}
+
+/* ---------- les étapes ---------- */
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 1em;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.crumbs [aria-current] { color: var(--text); }
+
+.res-note { margin: 10px 0 14px; font-size: 14px; color: var(--text-soft); }
+
+.res-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.res-foot span { font-weight: 600; }
+
+.btn:disabled { opacity: .35; cursor: default; }
+
+/* « ← Retour » : un lien d'étape, sans fond. */
+.link {
+  min-height: 44px;
+  white-space: nowrap;
+  padding: 10px 4px;
+  border: 0;
+  background: none;
+  color: var(--text-soft);
+  font-size: inherit;
+  cursor: pointer;
+}
+
+/* ---------- le calendrier ---------- */
+
+.month { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-weight: 600; }
+
+.month button {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.month button:disabled { opacity: .3; cursor: default; }
+
+.weekdays,
+.days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
+
+.weekdays { padding: 4px 0; font-size: 12px; color: var(--text-soft); }
+
+/* Le bord transparent écarte les jours sans réduire la cible : la case garde ses 44 px, le fond s'arrête au bord. */
+.day {
+  height: clamp(44px, 5.4vh, 48px);
+  border: 2px solid transparent;
+  border-radius: 11px;
+  background: none padding-box;
+  color: var(--text);
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.day:not(:disabled) { background-color: var(--row); }
+.day:disabled { color: var(--text-faint); font-weight: 400; cursor: default; }
+.day.taken { text-decoration: line-through; }
+
+/* Le choix fait : l'anneau orange, à l'intérieur ; le focus garde son contour, autour. */
+.day[aria-pressed="true"],
+.choice[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--select); }
+
+.legend { display: flex; gap: 16px; margin: 10px 0 2px; font-size: 13px; color: var(--text-soft); }
+
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .16);
+  vertical-align: -2px;
+}
+
+/* ---------- les formules ---------- */
+
+.choice {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--row);
+  color: var(--text);
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.choice b { display: block; font-weight: 600; }
+.choice span { font-size: 14px; color: var(--text-soft); }
+
+/* ---------- les coordonnées ---------- */
+
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.fld { margin-bottom: 8px; }
+.fld label { display: block; font-size: 14px; color: var(--text-soft); }
+
+.fld input,
+.fld select {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+}
+
+.fld [aria-invalid="true"] { border-color: var(--warn); }
+
+/* La case des CGV : 44 px à toucher, une case de 22 px dessinée au milieu, cochée d'un anneau orange. */
+.check { display: flex; align-items: center; gap: 4px; margin: 4px 0 8px; font-size: 14px; color: var(--text-soft); cursor: pointer; }
+
+.check input {
+  appearance: none;
+  flex: none;
+  display: grid;
+  place-content: center;
+  width: 44px;
+  height: 44px;
+  margin-left: -11px;
+  cursor: pointer;
+}
+
+.check input::before {
+  content: "";
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--btn-line);
+  border-radius: 6px;
+  background: var(--field);
+}
+
+.check input:checked::before {
+  border: 2px solid var(--select);
+  background: var(--field) center / 14px no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M2 7.5l3 3L12 3.5' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.check input:focus-visible { outline: none; }
+.check input:focus-visible::before { outline: 2px solid var(--select); outline-offset: 3px; }
+
+#turnstile:not(:empty) { margin: 6px 0 10px; }
+
+/* ---------- les messages ---------- */
+/* En blanc, comme tout texte, avec le citron de l'avertissement en marge. */
+
+.problem {
+  margin-top: 4px;
+  padding-left: 10px;
+  border-left: 3px solid var(--warn);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.problem:focus { outline: none; }
+
+.notice {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--warn-line);
+  border-radius: 14px;
+  background: var(--warn-soft);
+  font-size: 14px;
+}
+
+.notice:focus { outline: none; }
+.notice .btn { margin-top: 8px; }
+
+/* Les liens du contact, au milieu d'une phrase : 44 px de haut pour le doigt, soulignés pour se voir. */
+.contact a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- sans JavaScript ---------- */
+/* En dernier, pour l'emporter sur l'affichage de chaque bloc. Sans JavaScript, ce qui ne marcherait pas disparaît, et
+   la carte donne le contact (.no-js) ; avec, l'inverse. Un navigateur qui ignore ces requêtes voit les deux jusqu'à ce
+   que le script de la page retire .no-js. Pas de <noscript> : un navigateur aux scripts coupés par un outil (celui des
+   tests, par exemple) peut ne pas l'afficher. Sans script, un navigateur donne ses commandes à la vidéo, que le voile
+   rendrait inutilisables : l'image fixe la remplace. */
+@media (scripting: none) {
+  .needs-js { display: none; }
+  .res { background: url("/media/borne-boucle-poster.webp") center / cover no-repeat; }
+}
+
+@media (scripting: enabled) {
+  .no-js { display: none; }
+}

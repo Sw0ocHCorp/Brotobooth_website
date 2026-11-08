@@ -65,8 +65,9 @@ h2,
 
 /* ---------- la barre ---------- */
 /* Fixée en haut et voilée, pour rester lisible au-dessus de tout ; .clear la laisse transparente sur la vidéo de la
-   réservation. Le logo prend la taille où l'ouverture le pose : 13 % de la largeur, entre 92 et 170 px, et 72 % de la
-   hauteur de la barre au plus (le logo fait 4425 × 1684), à l'opacité où il se pose sur la borne. */
+   réservation, jusqu'à ce que la page défile sous elle (.veiled, posé par son script). Le logo prend la taille où
+   l'ouverture le pose : 13 % de la largeur, entre 92 et 170 px, et 72 % de la hauteur de la barre au plus (le logo fait
+   4425 × 1684), à l'opacité où il se pose sur la borne. */
 
 .bar {
   position: fixed;
@@ -84,7 +85,7 @@ h2,
   backdrop-filter: blur(14px);
 }
 
-.bar.clear { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.bar.clear:not(.veiled) { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
 
 /* L'accueil avec JavaScript : la barre est claire au-dessus de l'ouverture dès le premier affichage, sans attendre son
    script, qui la voile (.veiled) quand elle la quitte. Une règle à part : un navigateur sans :has() garde .clear. */

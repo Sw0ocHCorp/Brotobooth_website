@@ -1,0 +1,181 @@
+---
+import { formatEuros } from "../../worker/html";
+import { offer } from "../../worker/offer";
+import ContactLine from "../components/ContactLine.astro";
+import TopBar from "../components/TopBar.astro";
+import Base from "../layouts/Base.astro";
+import "../styles/site.css";
+import "../styles/reserver.css";
+
+/**
+ * La réservation, dans la carte de la maquette validée (`#res` de `docs/superpowers/specs/2026-11-07-maquette-site.html`),
+ * posée sur la vidéo de la borne : la date, la formule, les coordonnées, puis la confirmation. Tous les textes sont ici ;
+ * `src/scripts/reservation.ts` construit le calendrier, passe d'une étape à l'autre et montre le message qui convient.
+ * Chaque message d'erreur (`problem-<champ>`) se place à côté de ce qu'il concerne ; le nom de chaque champ est celui
+ * du corps JSON de `POST /api/requests`, que le script lit sans autre correspondance. Sans JavaScript, la carte donne le
+ * téléphone et l'e-mail à la place du calendrier.
+ * `PUBLIC_TURNSTILE_SITE_KEY` : la clé du widget anti-robots. Vide (essais), le widget n'est pas chargé.
+ */
+type Field = {
+  name: string;
+  label: string;
+  problem: string;
+  type?: string;
+  autocomplete?: string;
+  placeholder?: string;
+  maxlength?: number;
+  options?: string[];
+};
+
+const rows: Field[][] = [
+  [
+    { name: "event_type", label: "Événement", options: offer.eventTypes, problem: "Choisissez le type d'événement." },
+    { name: "event_hours", label: "Horaires", placeholder: "19 h - 1 h", maxlength: 60, problem: "Indiquez les horaires, par exemple 19 h - 1 h." },
+  ],
+  [{ name: "venue", label: "Lieu", placeholder: "Adresse de l'événement", maxlength: 300, problem: "Indiquez l'adresse de l'événement." }],
+  [
+    { name: "name", label: "Nom", autocomplete: "name", maxlength: 120, problem: "Indiquez votre nom." },
+    { name: "phone", label: "Téléphone", type: "tel", autocomplete: "tel", maxlength: 20, problem: "Vérifiez votre numéro de téléphone." },
+  ],
+  [{ name: "email", label: "E-mail", type: "email", autocomplete: "email", maxlength: 254, problem: "Vérifiez votre adresse e-mail." }],
+];
+
+const STEPS = ["Date", "Formule", "Coordonnées"];
+const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
+const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
+---
+
+<Base
+  title="Réserver votre photobooth – Brotobooth"
+  description={`Choisissez votre date et votre formule, puis laissez vos coordonnées. Rien à payer maintenant : nous vous répondons sous ${offer.reviewHours} h.`}
+>
+  <TopBar variant="reserve" />
+  <main class="res">
+    <video class="film needs-js" muted loop playsinline preload="none" poster="/media/borne-boucle-poster.webp" aria-hidden="true">
+      <source src="/media/borne-boucle.mp4" type='video/mp4; codecs="avc1.64001F"' />
+    </video>
+    <div class="res-veil"></div>
+
+    <div class="res-in">
+      <div class="card glass">
+        <ol class="crumbs needs-js" id="crumbs" aria-label="Étapes">
+          {STEPS.map((step, index) => <li aria-current={index === 0 ? "step" : undefined}>{index + 1}<span aria-hidden="true"> · </span>{step}</li>)}
+        </ol>
+
+        <section class="pane" id="step-1" aria-labelledby="step-1-title">
+          <h1 id="step-1-title" tabindex="-1">Choisissez votre date</h1>
+          <p class="res-note no-js" id="no-js">Le calendrier a besoin de JavaScript : activez-le pour choisir votre date. <ContactLine /></p>
+          <div id="calendar" class="needs-js">
+            <div class="month">
+              <button type="button" id="prev" aria-label="Mois précédent">←</button>
+              <span id="month-name" aria-live="polite"></span>
+              <button type="button" id="next" aria-label="Mois suivant">→</button>
+            </div>
+            <div class="weekdays" aria-hidden="true">{WEEKDAYS.map((day) => <span>{day}</span>)}</div>
+            <div class="days" id="days" role="group" aria-labelledby="month-name" aria-busy="true"></div>
+            <p class="legend"><span><i class="swatch"></i>Libre</span><span><s aria-hidden="true">12</s> Déjà réservée</span></p>
+          </div>
+          <div id="calendar-down" class="notice needs-js" role="alert" hidden>
+            <p>Le calendrier ne répond pas pour le moment. <ContactLine /></p>
+            <button type="button" class="btn ghost" id="retry">Réessayer</button>
+          </div>
+          <p class="problem" id="problem-taken" role="alert" tabindex="-1" hidden>Cette date vient d'être prise. Choisissez-en une autre : ce que vous avez saisi est gardé.</p>
+          <p class="problem" id="problem-date" role="alert" tabindex="-1" hidden>Cette date ne peut plus être demandée. Choisissez-en une autre : ce que vous avez saisi est gardé.</p>
+          <p class="res-note">
+            Rien à payer maintenant. Nous gardons cette date pour vous et vous répondons sous {offer.reviewHours} h. Si tout est bon, vous recevrez un lien pour régler l'acompte.
+          </p>
+          <div class="res-foot needs-js">
+            <span id="picked">Aucune date choisie</span>
+            <button type="button" class="btn primary" id="go-date" disabled>Continuer</button>
+          </div>
+        </section>
+
+        <section class="pane" id="step-2" aria-labelledby="step-2-title" hidden>
+          <h1 id="step-2-title" tabindex="-1">Choisissez votre formule</h1>
+          <div role="group" aria-labelledby="step-2-title">
+            {
+              offer.plans.map((plan) => (
+                <button type="button" class="choice" data-plan={plan.id} aria-pressed="false">
+                  <b>{plan.name}</b>
+                  {plan.priceCents > 0 && <span>{formatEuros(plan.priceCents)}</span>}
+                </button>
+              ))
+            }
+          </div>
+          <p class="problem" id="problem-plan" role="alert" tabindex="-1" hidden>Cette formule n'est plus proposée. Choisissez-en une autre.</p>
+          <div class="res-foot">
+            <button type="button" class="link" data-back="1"><span aria-hidden="true">←</span> Retour</button>
+            <button type="button" class="btn primary" id="go-plan" disabled>Continuer</button>
+          </div>
+        </section>
+
+        <form class="pane" id="step-3" aria-labelledby="step-3-title" novalidate hidden>
+          <h1 id="step-3-title" tabindex="-1">Vos coordonnées</h1>
+          {
+            rows.map((row) => (
+              <div class:list={{ two: row.length > 1 }}>
+                {row.map((field) => (
+                  <div class="fld">
+                    <label for={`f-${field.name}`}>{field.label}</label>
+                    {field.options ? (
+                      <select id={`f-${field.name}`} name={field.name} required>
+                        {field.options.map((option) => (
+                          <option>{option}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        id={`f-${field.name}`}
+                        name={field.name}
+                        type={field.type ?? "text"}
+                        autocomplete={field.autocomplete}
+                        placeholder={field.placeholder}
+                        maxlength={field.maxlength}
+                        required
+                      />
+                    )}
+                    <p class="problem" id={`problem-${field.name}`} hidden>
+                      {field.problem}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ))
+          }
+          <label class="check">
+            <input type="checkbox" id="f-terms" name="terms" required />
+            <span>J'accepte les conditions générales de vente.</span>
+          </label>
+          <p class="problem" id="problem-terms" hidden>Acceptez les conditions générales de vente pour envoyer votre demande.</p>
+          <div id="turnstile" data-sitekey={turnstileKey}></div>
+          <div id="send-problem" class="notice" role="alert" tabindex="-1" hidden>
+            <p data-problem="failed">Votre demande n'est pas partie. Ce que vous avez saisi est gardé : réessayez dans un instant.</p>
+            <p data-problem="bot">Nous n'avons pas pu vérifier que cette demande vient bien de vous. Ce que vous avez saisi est gardé : réessayez dans un instant.</p>
+            <p data-problem="too_many">Vous avez déjà plusieurs demandes en cours : nous vous répondons d'abord sur celles-ci, sous {offer.reviewHours} h.</p>
+            <ContactLine />
+          </div>
+          <div class="res-foot">
+            <button type="button" class="link" data-back="2"><span aria-hidden="true">←</span> Retour</button>
+            <button type="submit" class="btn primary" id="send">Envoyer ma demande</button>
+          </div>
+        </form>
+
+        <section class="pane" id="step-4" aria-labelledby="step-4-title" hidden>
+          <h1 id="step-4-title" tabindex="-1">Demande envoyée</h1>
+          <p class="res-note" data-outcome="created" hidden>
+            Nous gardons le <span data-chosen></span> pour vous et vous répondons sous {offer.reviewHours} h. Un e-mail vient de partir avec le récapitulatif de votre demande.
+          </p>
+          <p class="res-note" data-outcome="already_requested" hidden>
+            Nous avions déjà votre demande pour le <span data-chosen></span>. Nous gardons cette date pour vous et vous répondons sous {offer.reviewHours} h : le
+            récapitulatif est dans l'e-mail reçu à votre premier envoi.
+          </p>
+          <a class="btn ghost" href="/">Retour à l'accueil</a>
+        </section>
+      </div>
+    </div>
+  </main>
+</Base>
+
+<script>
+  import "../scripts/reservation";
+</script>
