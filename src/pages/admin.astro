@@ -1,0 +1,199 @@
+---
+import offer from "../../config/offer.json";
+import "../styles/admin.css";
+
+/**
+ * La page d'administration est statique : elle ne contient aucune donnée. `src/scripts/admin.ts` lit tout
+ * par l'API. Seuls les formulaires, qui ne dépendent d'aucune réservation, sont écrits ici. Le nom de chaque
+ * champ est celui du corps JSON de l'API, pour que le script lise un formulaire sans autre correspondance.
+ */
+type Field = {
+  name: string;
+  label: string;
+  type?: string;
+  required?: boolean;
+  maxlength?: number;
+  options?: string[];
+  long?: boolean;
+  money?: boolean;
+  hint?: string;
+};
+
+const date: Field = { name: "date", label: "Date", type: "date", required: true };
+const notes: Field = { name: "notes", label: "Notes", long: true, maxlength: 2000 };
+const price: Field = { name: "price_cents", label: "Prix (€)", money: true, required: true };
+
+const forms: { id: string; title: string; submit: string; fields: Field[] }[] = [
+  {
+    id: "add",
+    title: "Ajouter une réservation",
+    submit: "Enregistrer la réservation",
+    fields: [
+      date,
+      { name: "name", label: "Nom", required: true, maxlength: 120 },
+      { name: "phone", label: "Téléphone", type: "tel", maxlength: 20 },
+      { name: "email", label: "E-mail", type: "email", maxlength: 254 },
+      { name: "event_type", label: "Type d'événement", options: offer.eventTypes },
+      { name: "venue", label: "Lieu", maxlength: 300 },
+      { name: "event_hours", label: "Horaires", maxlength: 60 },
+      price,
+      { name: "deposit_cents", label: "Acompte (€)", money: true, hint: "Il ne peut pas dépasser le prix." },
+      notes,
+    ],
+  },
+  {
+    id: "block",
+    title: "Bloquer une date",
+    submit: "Bloquer la date",
+    fields: [date, notes],
+  },
+  {
+    id: "price",
+    title: "Ajuster le prix",
+    submit: "Enregistrer le prix",
+    fields: [
+      price,
+      {
+        name: "deposit_cents",
+        label: "Acompte (€)",
+        money: true,
+        hint: `Laissez vide pour le recalculer : ${offer.depositPercent} % du prix, arrondi à l'euro.`,
+      },
+    ],
+  },
+];
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Administration – Brotobooth</title>
+    <link rel="stylesheet" href="/styles/tokens.css" />
+  </head>
+  <body>
+    <main class="admin">
+      <div class="top">
+        <header class="admin-head">
+          <h1>Réservations</h1>
+          <div class="admin-tools">
+            <button type="button" class="btn ghost" data-open="add">Ajouter une réservation</button>
+            <button type="button" class="btn ghost" data-open="block">Bloquer une date</button>
+          </div>
+        </header>
+
+        <section id="login" class="glass zone" aria-labelledby="login-title" hidden>
+          <h2 id="login-title">Connexion requise</h2>
+          <p>Votre connexion a expiré ou n'est pas reconnue. Rechargez la page pour vous reconnecter avec votre adresse e-mail.</p>
+          <button type="button" class="btn ghost" data-reload>Recharger la page</button>
+        </section>
+        <p id="problem" role="alert" class="notice error" hidden></p>
+      </div>
+
+      <section id="zone-todo" class="glass zone" aria-labelledby="todo-title">
+        <h2 id="todo-title">À traiter</h2>
+        <div id="todo"><p class="sub">Chargement…</p></div>
+      </section>
+
+      <section id="zone-calendar" class="glass zone" aria-labelledby="calendar-heading">
+        <h2 id="calendar-heading">Calendrier</h2>
+        <div class="cal-head">
+          <button type="button" class="icon-btn" id="month-prev" aria-label="Mois précédent">‹</button>
+          <h3 id="calendar-title"></h3>
+          <button type="button" class="icon-btn" id="month-next" aria-label="Mois suivant">›</button>
+        </div>
+        <div id="calendar"></div>
+        <ul id="legend" class="legend" aria-label="Légende" hidden></ul>
+      </section>
+
+      <section id="zone-health" class="glass zone" aria-labelledby="health-title">
+        <h2 id="health-title">Santé</h2>
+        <div id="health"><p class="sub">Chargement…</p></div>
+      </section>
+    </main>
+
+    <dialog id="sheet" class="glass sheet" aria-labelledby="sheet-title">
+      <header class="sheet-head">
+        <div>
+          <span id="sheet-pill" class="pill"></span>
+          <h2 id="sheet-title"></h2>
+          <p id="sheet-date" class="sub"></p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Fermer">×</button>
+      </header>
+      <div class="sheet-body">
+        <p id="sheet-alert" role="alert" class="notice error" hidden></p>
+        <p id="sheet-status" role="status" class="notice ok" hidden></p>
+        <div id="sheet-content" class="stack"></div>
+      </div>
+    </dialog>
+
+    {
+      forms.map((form) => (
+        <dialog id={form.id} class="glass sheet" aria-labelledby={`${form.id}-title`}>
+          <form data-form={form.id}>
+            <header class="sheet-head">
+              <h2 id={`${form.id}-title`}>{form.title}</h2>
+              <button type="button" class="icon-btn" data-close aria-label="Fermer">×</button>
+            </header>
+            <div class="sheet-body">
+              {form.fields.map((field) => {
+                const id = `${form.id}-${field.name}`;
+                return (
+                  <div class="fld">
+                    <label for={id}>{field.label}</label>
+                    {field.options ? (
+                      <select class="field" id={id} name={field.name}>
+                        <option value="">Non précisé</option>
+                        {field.options.map((option) => (
+                          <option>{option}</option>
+                        ))}
+                      </select>
+                    ) : field.long ? (
+                      <textarea class="field" id={id} name={field.name} rows="3" maxlength={field.maxlength} />
+                    ) : (
+                      <input
+                        class="field"
+                        id={id}
+                        name={field.name}
+                        type={field.type ?? "text"}
+                        required={field.required}
+                        maxlength={field.maxlength}
+                        inputmode={field.money ? "decimal" : undefined}
+                        data-money={field.money ? "" : undefined}
+                        autocomplete="off"
+                        aria-describedby={field.hint ? `${id}-hint` : undefined}
+                      />
+                    )}
+                    {field.hint && (
+                      <small id={`${id}-hint`} class="sub">
+                        {field.hint}
+                      </small>
+                    )}
+                  </div>
+                );
+              })}
+              <p role="alert" class="notice error" data-error hidden />
+              <button type="submit" class="btn primary">{form.submit}</button>
+            </div>
+          </form>
+        </dialog>
+      ))
+    }
+
+    <dialog id="confirm" class="glass dialog" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-text"></p>
+      <div class="stack">
+        <button type="button" class="btn ghost" id="confirm-keep" autofocus></button>
+        <button type="button" class="btn ghost danger" id="confirm-ok"></button>
+      </div>
+    </dialog>
+
+    <script>
+      import "../scripts/admin";
+    </script>
+  </body>
+</html>

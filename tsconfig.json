@@ -1,7 +1,7 @@
 {
   "extends": "astro/tsconfigs/strict",
   "include": [".astro/types.d.ts", "src", "worker", "test", "vitest.config.ts"],
-  "exclude": ["dist", "node_modules"],
+  "exclude": ["dist", "node_modules", "src/scripts", "e2e"],
   "compilerOptions": {
     "lib": ["ESNext"],
     "types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin/types"]
