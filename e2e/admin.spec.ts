@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { hasNoHorizontalOverflow, smallTargets } from "./layout";
 import { addDays, cleanup, freeDate, ORIGIN, seed, type Kind } from "./seed";
 
 test.afterEach(({ request }) => cleanup(request));
@@ -20,16 +21,6 @@ async function showMonth(page: Page, date: string) {
 
 const calendarCell = (page: Page, date: string) => page.locator(`#calendar td[data-date="${date}"]`);
 
-/** Les éléments à toucher de `root` plus petits que 44 px, décrits par leur texte. */
-const smallTargets = (root: Locator): Promise<string[]> =>
-  root.evaluate((element) =>
-    [...element.querySelectorAll<HTMLElement>("button, a[href], input, select, textarea")]
-      .filter((target) => target.getClientRects().length > 0 && !(target instanceof HTMLInputElement && target.type === "hidden"))
-      .map((target) => ({ target, ...target.getBoundingClientRect().toJSON() }))
-      .filter(({ width, height }) => Math.round(width) < 44 || Math.round(height) < 44)
-      .map(({ target, width, height }) => `${target.tagName} ${target.getAttribute("aria-label") ?? target.textContent?.trim().slice(0, 30)} ${width}x${height}`),
-  );
-
 /** Attend la fin de l'animation d'ouverture : axe mesurerait le contraste d'un panneau encore à moitié transparent. */
 const settled = (page: Page) =>
   page.evaluate(async () => {
@@ -37,9 +28,6 @@ const settled = (page: Page) =>
   });
 
 const historyOf = (sheet: Locator) => sheet.getByRole("list", { name: "Historique" });
-
-const hasNoHorizontalOverflow = (page: Page) =>
-  page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
 
 test("traiter une demande depuis le téléphone", async ({ page, request, context, browserName }) => {
   // Chromium sans fenêtre n'accorde pas le presse-papiers de lui-même ; il faut aussi pouvoir y relire le lien.
@@ -312,8 +300,9 @@ test("un événement inconnu s'affiche comme une modification, sans son identifi
 });
 
 test("la santé affiche le dernier passage", async ({ page, request }) => {
-  // `npm run dev:e2e` lance Wrangler avec `--test-scheduled` : cette adresse déclenche un passage de la tâche automatique.
-  expect((await request.get("/__scheduled")).ok()).toBe(true);
+  // Wrangler en local : cette adresse déclenche un passage de la tâche automatique. Elle passe avant les fichiers du site,
+  // contrairement à `/__scheduled` de `--test-scheduled`, que la page 404 intercepte.
+  expect((await request.get("/cdn-cgi/handler/scheduled")).ok()).toBe(true);
   await page.goto("/admin");
   const health = page.getByRole("region", { name: "Santé" });
   await expect(health).toContainText("Dernier passage");

@@ -1,0 +1,22 @@
+---
+import Footer from "../components/Footer.astro";
+import TopBar from "../components/TopBar.astro";
+import Base from "../layouts/Base.astro";
+import "../styles/site.css";
+
+/** La page servie pour toute adresse inconnue (`not_found_handling` de `wrangler.jsonc`), avec le statut 404. */
+---
+
+<Base
+  title="Page introuvable – Brotobooth"
+  description="Cette page n'existe pas. Depuis l'accueil, retrouvez la borne, les formules et les dates libres."
+  noindex
+>
+  <TopBar variant="home" />
+  <main class="block final missing">
+    <h1>Cette page n'existe pas</h1>
+    <p>L'adresse a peut-être changé. Depuis l'accueil, vous retrouverez la borne, les formules et les dates libres.</p>
+    <a class="btn primary" href="/">Retour à l'accueil</a>
+  </main>
+  <Footer />
+</Base>

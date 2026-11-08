@@ -1,0 +1,41 @@
+---
+import Logo from "../../logo-blanc.svg";
+
+/**
+ * La barre du site, fixée en haut : le logo, qui ramène à l'accueil, puis le menu. Sur les pages de la vitrine (`home`),
+ * le menu mène à la borne, aux formules et à la réservation ; sur la réservation (`reserve`), il se réduit à « Accueil »
+ * et la barre reste claire au-dessus de la vidéo. Ailleurs, elle est voilée pour rester lisible au-dessus des sections ;
+ * sur l'accueil, son script la laisse claire tant qu'elle passe sur l'ouverture (`#hero`).
+ */
+interface Props {
+  variant: "home" | "reserve";
+}
+
+const { variant } = Astro.props;
+const MENUS = {
+  home: [
+    { href: "/#borne", label: "La borne" },
+    { href: "/#formules", label: "Formules" },
+    { href: "/reserver", label: "Réserver" },
+  ],
+  reserve: [{ href: "/", label: "Accueil" }],
+};
+---
+
+<header class:list={["bar", { clear: variant === "reserve" }]}>
+  <a class="logo" href="/" aria-label="Brotobooth, accueil"><Logo aria-hidden="true" /></a>
+  <nav aria-label="Menu principal">
+    {MENUS[variant].map(({ href, label }) => <a href={href}>{label}</a>)}
+  </nav>
+</header>
+
+<script>
+  const bar = document.querySelector<HTMLElement>(".bar");
+  const hero = document.getElementById("hero");
+  if (bar && hero) {
+    const update = () => bar.classList.toggle("clear", scrollY < hero.offsetHeight * 0.7);
+    update();
+    addEventListener("scroll", update, { passive: true });
+    addEventListener("resize", update);
+  }
+</script>

@@ -1,14 +1,33 @@
 ---
+import FinalCta from "../components/FinalCta.astro";
+import Footer from "../components/Footer.astro";
+import Founders from "../components/Founders.astro";
+import GuestSteps from "../components/GuestSteps.astro";
+import Handset from "../components/Handset.astro";
+import Hero from "../components/Hero.astro";
+import Plans from "../components/Plans.astro";
+import TopBar from "../components/TopBar.astro";
+import Base from "../layouts/Base.astro";
+import "../styles/site.css";
+
+/**
+ * L'accueil, dans l'ordre de la maquette validée (`docs/superpowers/specs/2026-11-07-maquette-site.html`) : tout le
+ * contenu est dans le HTML, et la page se lit entière sans JavaScript ni animation.
+ */
 ---
 
-<!doctype html>
-<html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Brotobooth</title>
-  </head>
-  <body>
-    <h1>Brotobooth</h1>
-  </body>
-</html>
+<Base
+  title="Brotobooth – Réservez votre photobooth"
+  description="Vos invités se prennent en photo, repartent avec leur tirage et se laissent des messages au combiné. Choisissez votre date et vérifiez tout de suite si elle est libre."
+>
+  <TopBar variant="home" />
+  <main>
+    <Hero />
+    <GuestSteps />
+    <Handset />
+    <Plans />
+    <Founders />
+    <FinalCta />
+  </main>
+  <Footer />
+</Base>

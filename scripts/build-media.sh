@@ -3,6 +3,9 @@
 #   tirage-1 à tirage-8  les tirages du mur de l'accueil (WebP, 1000 px) ;
 #   ecran-*              les écrans de la borne : le compte à rebours, les trois photos, le choix du format (WebP, 1400 px) ;
 #   gros-*               les tirages en main et le combiné, pour les sections de l'accueil (WebP, 1500 px) ;
+#   fondateurs           la photo dos à dos de la présentation des fondateurs (WebP, 1000 px), la même que tirage-1 :
+#                        un fichier à part, pour qu'une photo de soirée puisse remplacer tirage-1 sans changer cette section ;
+#   *-800                chaque image de section (ecran-*, gros-*, fondateurs) en 800 px, pour les téléphones (srcset) ;
 #   borne-boucle.mp4     la vidéo de la réservation : muette, 3 Mo au plus, en boucle aller-retour ;
 #   borne-boucle-poster  son image fixe (économie de données, avant le premier affichage).
 # Rien ne vient d'une banque d'images. Remplacer un tirage par une photo de soirée : copier le fichier sous le même nom.
@@ -15,8 +18,8 @@ source_dir="${SPOT_PUB_DIR:-/home/sw0och/Spot_pub_Brotobooth}"
 target_dir="$root/public/media"
 
 WEBP_QUALITY=78
-# Le film du spot est en 16:9. Le cadre 4:3 de tirage-1 ne garde que la photo à l'écran de la borne, sans ses boutons
-# (Retour, Filtres, Dessiner) : un tirage du mur doit être une photo nette.
+# Le film du spot est en 16:9. Le cadre 4:3 de tirage-1 et de fondateurs ne garde que la photo à l'écran de la borne,
+# sans ses boutons (Retour, Filtres, Dessiner) : un tirage du mur doit être une photo nette.
 SPOT=spot_reseau_brotobooth.mp4
 SPOT_FRAME=1286:964:132:70
 # Les rushs de la GoPro sont en 4K 16:9 ; le cadre 4:3 centré sur la borne.
@@ -32,6 +35,8 @@ LOOP_MAX_KB=3072
 LOOP_CRF_FIRST=24
 LOOP_CRF_LAST=40
 POSTER_WIDTH=1280
+# La largeur de la version pour téléphone de chaque image de section.
+SECTION_PHONE_WIDTH=800
 
 if [ ! -d "$source_dir" ]; then
   echo "Dossier des sources introuvable : $source_dir" >&2
@@ -67,6 +72,12 @@ still() {
   echo "$name.webp"
 }
 
+# section NOM SOURCE INSTANT LARGEUR [RECADRAGE] : une image d'une section de l'accueil, à sa largeur puis à celle des téléphones.
+section() {
+  still "$@"
+  still "$1-$SECTION_PHONE_WIDTH" "$2" "$3" "$SECTION_PHONE_WIDTH" "${5:-}"
+}
+
 # loop : l'extrait ralenti, suivi de lui-même à l'envers sans répéter l'image de la jointure, au plus léger CRF qui tient dans le poids permis.
 loop() {
   local out="$work/borne-boucle.mp4" crf size_kb
@@ -96,12 +107,13 @@ still tirage-6 GX011245.MP4 6.8 1000 "$RUSH_FRAME"
 still tirage-7 GX011250.MP4 1.5 1000 "$RUSH_FRAME"
 still tirage-8 GX011241.MP4 2.2 1000 "$RUSH_FRAME"
 
-still ecran-pose "$SPOT" 250 1400
-still ecran-3photos "$SPOT" 260 1400
-still ecran-format "$SPOT" 275 1400
+section ecran-pose "$SPOT" 250 1400
+section ecran-3photos "$SPOT" 260 1400
+section ecran-format "$SPOT" 275 1400
 
-still gros-tirages GX011244.MP4 2.8 1500
-still gros-combine GX011249.MP4 10.7 1500
+section gros-tirages GX011244.MP4 2.8 1500
+section gros-combine GX011249.MP4 10.7 1500
+section fondateurs "$SPOT" 300 1000 "$SPOT_FRAME"
 
 loop
 still borne-boucle-poster "$LOOP_SOURCE" "$LOOP_START" "$POSTER_WIDTH"

@@ -1,0 +1,34 @@
+---
+import { formatEuros } from "../../worker/html";
+import { offer } from "../../worker/offer";
+
+/**
+ * « Les formules » (`#formules`), telles que `config/offer.json` les décrit. Une formule encore sans prix (offre
+ * provisoire) n'affiche aucun montant, et ce qu'elle comprend n'apparaît qu'une fois renseigné. « Choisir » ouvre la
+ * réservation sur cette formule ; le nom de la formule décrit le lien, pour qui ne voit pas la carte.
+ */
+---
+
+<section class="block" id="formules">
+  <div class="head"><h2>Les formules</h2></div>
+  <div class="plans">
+    {
+      offer.plans.map((plan) => (
+        <article class="plan">
+          <h3 id={`plan-${plan.id}`}>{plan.name}</h3>
+          {plan.priceCents > 0 && <p class="price">{formatEuros(plan.priceCents)}</p>}
+          {plan.includes.length > 0 && (
+            <ul class="includes">
+              {plan.includes.map((line) => (
+                <li>{line}</li>
+              ))}
+            </ul>
+          )}
+          <a class="btn ghost" href={`/reserver?formule=${encodeURIComponent(plan.id)}`} aria-describedby={`plan-${plan.id}`}>
+            Choisir
+          </a>
+        </article>
+      ))
+    }
+  </div>
+</section>

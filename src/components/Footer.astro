@@ -1,0 +1,24 @@
+---
+import { offer } from "../../worker/offer";
+
+/**
+ * Le pied de page : les moyens de contact renseignés dans `config/offer.json`, un champ vide n'apparaissant pas,
+ * puis les pages légales.
+ */
+const { phone, email, social } = offer.contact;
+const contacts = [
+  ...(phone ? [{ href: `tel:${phone.replace(/[^\d+]/g, "")}`, label: phone }] : []),
+  ...(email ? [{ href: `mailto:${email}`, label: email }] : []),
+  ...social.map((url) => ({ href: url, label: url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") })),
+];
+const LEGAL = [
+  { href: "/mentions-legales", label: "Mentions légales" },
+  { href: "/cgv", label: "CGV" },
+  { href: "/confidentialite", label: "Confidentialité" },
+];
+---
+
+<footer class="foot">
+  {contacts.length > 0 && <address>{contacts.map(({ href, label }) => <a href={href}>{label}</a>)}</address>}
+  <nav aria-label="Informations légales">{LEGAL.map(({ href, label }) => <a href={href}>{label}</a>)}</nav>
+</footer>

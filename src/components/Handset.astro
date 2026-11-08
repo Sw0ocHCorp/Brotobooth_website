@@ -1,0 +1,37 @@
+---
+import Shot from "./Shot.astro";
+
+/** « Un combiné sur le côté ? » : les messages audio-vidéo des invités, puis ce que la borne propose en plus. */
+const EXTRAS = [
+  { title: "Un cadre à votre image", text: "Préparez-le avant le jour J, il apparaît sur les tirages" },
+  { title: "Filtres et dessin", text: "Vos invités personnalisent leur photo à l'écran" },
+  { title: "Boîte à questions", text: "Bientôt : vos invités répondront en vidéo aux questions de la soirée" },
+];
+---
+
+<section class="block handset">
+  <div class="handset-in">
+    <div>
+      <h2>Un combiné sur le côté&nbsp;?</h2>
+      <p>Vos invités décrochent et se laissent des messages audio-vidéo, à écouter directement à la borne.</p>
+      <ul class="extras">
+        {
+          EXTRAS.map(({ title, text }) => (
+            <li>
+              <b>{title}</b>
+              <span>{text}</span>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+    <Shot
+      name="gros-combine"
+      width={1500}
+      height={844}
+      tilt="-1.6deg"
+      from={1}
+      alt="Le combiné et le bac d'impression sur le côté de la borne"
+    />
+  </div>
+</section>
