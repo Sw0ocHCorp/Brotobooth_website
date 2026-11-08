@@ -4,12 +4,19 @@ import { offer } from "../../worker/offer";
 /**
  * « Appelez-nous au … ou écrivez-nous à … », avec les moyens de contact renseignés dans `config/offer.json` : la phrase
  * se réduit à celui qui existe, et disparaît si aucun ne l'est (offre provisoire). C'est ce que la réservation propose
- * quand elle ne peut pas aboutir en ligne.
+ * quand elle ne peut pas aboutir en ligne. `lead` ouvre la phrase (« Si c'est plus urgent, appelez-nous au … ») et
+ * disparaît avec elle : rien n'invite à nous joindre sans dire comment.
  */
+interface Props {
+  lead?: string;
+}
+
+const { lead } = Astro.props;
 const { phone, email } = offer.contact;
+const opening = (text: string): string => (lead ? `${lead}${text[0].toLowerCase()}${text.slice(1)}` : text);
 const parts = [
-  ...(phone ? [{ lead: "Appelez-nous au ", href: `tel:${phone.replace(/[^\d+]/g, "")}`, label: phone }] : []),
-  ...(email ? [{ lead: phone ? " ou écrivez-nous à " : "Écrivez-nous à ", href: `mailto:${email}`, label: email }] : []),
+  ...(phone ? [{ lead: opening("Appelez-nous au "), href: `tel:${phone.replace(/[^\d+]/g, "")}`, label: phone }] : []),
+  ...(email ? [{ lead: phone ? " ou écrivez-nous à " : opening("Écrivez-nous à "), href: `mailto:${email}`, label: email }] : []),
 ];
 ---
 

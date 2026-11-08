@@ -9,7 +9,7 @@
   "maxPerIpPer24h": 5,
   "reminderHourParis": 9,
   "termsVersion": "2026-11-07",
-  "eventTypes": ["Mariage", "Anniversaire", "Entreprise", "Autre"],
+  "eventTypes": ["Mariage", "Anniversaire", "Événement d'entreprise", "Autre"],
   "contact": { "phone": "", "email": "", "social": [] },
   "plans": [
     { "id": "formule-1", "name": "Formule 1", "priceCents": 0, "includes": [] },

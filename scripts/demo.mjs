@@ -75,7 +75,7 @@ async function seedExamples() {
   await call("PATCH", `/api/admin/bookings/${awaiting.id}`, { price_cents: 90_000 }); // les formules d'essai sont à 0 € : un acompte à payer demande un prix
   await call("POST", `/api/admin/bookings/${awaiting.id}/validate`, {});
   // Une prestation déjà confirmée, et une date bloquée.
-  await call("POST", "/api/admin/bookings", { kind: "manual", date: saturdayAfter(75), name: "Julien Moreau", phone: "06 55 44 33 22", email: "julien.moreau@example.test", event_type: "Entreprise", venue: "Hôtel du Parc, Grenoble", event_hours: "20h-02h", price_cents: 150_000, deposit_cents: 45_000, notes: "Rappeler avant la date." });
+  await call("POST", "/api/admin/bookings", { kind: "manual", date: saturdayAfter(75), name: "Julien Moreau", phone: "06 55 44 33 22", email: "julien.moreau@example.test", event_type: "Événement d'entreprise", venue: "Hôtel du Parc, Grenoble", event_hours: "20h-02h", price_cents: 150_000, deposit_cents: 45_000, notes: "Rappeler avant la date." });
   await call("POST", "/api/admin/bookings", { kind: "blocked", date: saturdayAfter(90), notes: "Congés" });
 }
 

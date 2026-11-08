@@ -1,6 +1,6 @@
 ---
 import { formatEuros } from "../../worker/html";
-import { offer } from "../../worker/offer";
+import { finalDepositPercent, hasContact, offer } from "../../worker/offer";
 import ContactLine from "../components/ContactLine.astro";
 import TopBar from "../components/TopBar.astro";
 import Base from "../layouts/Base.astro";
@@ -13,7 +13,8 @@ import "../styles/reserver.css";
  * `src/scripts/reservation.ts` construit le calendrier, passe d'une étape à l'autre et montre le message qui convient.
  * Chaque message d'erreur (`problem-<champ>`) se place à côté de ce qu'il concerne ; le nom de chaque champ est celui
  * du corps JSON de `POST /api/requests`, que le script lit sans autre correspondance. Sans JavaScript, la carte donne le
- * téléphone et l'e-mail à la place du calendrier.
+ * téléphone et l'e-mail à la place du calendrier. Une phrase qui invite à nous contacter n'est écrite que si l'offre dit
+ * comment (`ContactLine`, `hasContact`) ; les délais, le pourcentage et les limites viennent de `config/offer.json`.
  * `PUBLIC_TURNSTILE_SITE_KEY` : la clé du widget anti-robots. Vide (essais), le widget n'est pas chargé.
  */
 type Field = {
@@ -29,8 +30,15 @@ type Field = {
 
 const rows: Field[][] = [
   [
-    { name: "event_type", label: "Événement", options: offer.eventTypes, problem: "Choisissez le type d'événement." },
-    { name: "event_hours", label: "Horaires", placeholder: "19 h - 1 h", maxlength: 60, problem: "Indiquez les horaires, par exemple 19 h - 1 h." },
+    // Aucun type choisi d'avance : la première option, vide, laisse le champ à remplir (`required`).
+    { name: "event_type", label: "Type d'événement", options: offer.eventTypes, problem: "Choisissez le type d'événement." },
+    {
+      name: "event_hours",
+      label: "Horaires de l'événement",
+      placeholder: "De 19\u00a0h à 1\u00a0h",
+      maxlength: 60,
+      problem: "Indiquez les horaires, par exemple de 19\u00a0h à 1\u00a0h.",
+    },
   ],
   [{ name: "venue", label: "Lieu", placeholder: "Adresse de l'événement", maxlength: 300, problem: "Indiquez l'adresse de l'événement." }],
   [
@@ -41,6 +49,10 @@ const rows: Field[][] = [
 ];
 
 const STEPS = ["Date", "Formule", "Coordonnées"];
+/** « (30 % du prix) », une fois l'offre définitive. */
+const share = finalDepositPercent();
+const active = offer.maxActivePerEmail;
+const several = active > 1 ? "s" : "";
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
 const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
 ---
@@ -75,7 +87,9 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
         <section class="pane" id="step-1" aria-labelledby="step-1-title">
           <h1 id="step-1-title" tabindex="-1">Choisissez votre date</h1>
-          <p class="res-note no-js" id="no-js">Le calendrier a besoin de JavaScript : activez-le pour choisir votre date. <ContactLine /></p>
+          <p class="res-note no-js" id="no-js">
+            Le calendrier ne s'affiche pas sur votre navigateur. Essayez-en un autre. <ContactLine lead="Pour réserver sans le calendrier, " />
+          </p>
           <div id="calendar" class="needs-js">
             <div class="month">
               <button type="button" id="prev" aria-label="Mois précédent">←</button>
@@ -85,15 +99,24 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
             <div class="weekdays" aria-hidden="true">{WEEKDAYS.map((day) => <span>{day}</span>)}</div>
             <div class="days" id="days" role="group" aria-labelledby="month-name" aria-busy="true"></div>
             <p class="legend"><span><i class="swatch"></i>Libre</span><span><s aria-hidden="true">12</s> Déjà réservée</span></p>
+            <p class="lead-days">
+              En ligne, une date se réserve au moins {offer.minLeadDays}&nbsp;jours à l'avance. <ContactLine lead="Si c'est plus urgent, " />
+            </p>
           </div>
           <div id="calendar-down" class="notice needs-js" role="alert" hidden>
-            <p>Le calendrier ne répond pas pour le moment. <ContactLine /></p>
+            <p>Nous n'arrivons pas à afficher le calendrier pour le moment. <ContactLine /></p>
             <button type="button" class="btn ghost" id="retry">Réessayer</button>
           </div>
-          <p class="problem" id="problem-taken" role="alert" tabindex="-1" hidden>Cette date vient d'être prise. Choisissez-en une autre : ce que vous avez saisi est gardé.</p>
-          <p class="problem" id="problem-date" role="alert" tabindex="-1" hidden>Cette date ne peut plus être demandée. Choisissez-en une autre : ce que vous avez saisi est gardé.</p>
+          <p class="problem" id="problem-taken" role="alert" tabindex="-1" hidden>
+            Cette date vient d'être réservée par quelqu'un d'autre. Choisissez-en une autre&nbsp;: vos informations sont conservées.
+          </p>
+          <p class="problem" id="problem-date" role="alert" tabindex="-1" hidden>
+            Cette date n'est plus disponible à la réservation. Choisissez-en une autre&nbsp;: vos informations sont conservées.
+          </p>
           <p class="res-note">
-            Rien à payer maintenant. Nous gardons cette date pour vous et vous répondons sous {offer.reviewHours} h. Si tout est bon, vous recevrez un lien pour régler l'acompte.
+            Rien à payer maintenant. Une fois votre demande envoyée, nous gardons cette date pour vous et nous vous répondons sous {offer.reviewHours}&nbsp;h.
+            Si nous pouvons être là, vous recevez par e-mail un lien pour régler l'acompte{share && ` (${share} du prix)`}, et votre date est confirmée dès
+            qu'il est payé.
           </p>
           <div class="res-foot needs-js">
             <span id="picked">Aucune date choisie</span>
@@ -109,6 +132,7 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
                 <button type="button" class="choice" data-plan={plan.id} aria-pressed="false">
                   <b>{plan.name}</b>
                   {plan.priceCents > 0 && <span>{formatEuros(plan.priceCents)}</span>}
+                  {plan.includes.length > 0 && <span class="includes">{plan.includes.join(" · ")}</span>}
                 </button>
               ))
             }
@@ -130,6 +154,7 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
                     <label for={`f-${field.name}`}>{field.label}</label>
                     {field.options ? (
                       <select id={`f-${field.name}`} name={field.name} required>
+                        <option value="">Choisir…</option>
                         {field.options.map((option) => (
                           <option>{option}</option>
                         ))}
@@ -160,10 +185,17 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
           <p class="problem" id="problem-terms" hidden>Acceptez les conditions générales de vente pour envoyer votre demande.</p>
           <div id="turnstile" data-sitekey={turnstileKey}></div>
           <div id="send-problem" class="notice" role="alert" tabindex="-1" hidden>
-            <p data-problem="failed">Votre demande n'est pas partie. Ce que vous avez saisi est gardé : réessayez dans un instant.</p>
-            <p data-problem="bot">Nous n'avons pas pu vérifier que cette demande vient bien de vous. Ce que vous avez saisi est gardé : réessayez dans un instant.</p>
-            <p data-problem="too_many">Vous avez déjà plusieurs demandes en cours : nous vous répondons d'abord sur celles-ci, sous {offer.reviewHours} h.</p>
-            <p data-problem="too_many_ip">Beaucoup de demandes sont parties de cette connexion ces dernières 24 heures. Vous pouvez réessayer demain, ou nous contacter pour réserver dès maintenant.</p>
+            <p data-problem="failed">Votre demande n'a pas pu partir. Vos informations sont conservées&nbsp;: réessayez dans un instant.</p>
+            <p data-problem="bot">La vérification de sécurité n'a pas abouti. Vos informations sont conservées&nbsp;: réessayez dans un instant.</p>
+            <p data-problem="too_many">
+              Vous avez déjà {active} demande{several} en cours. Nous vous répondons d'abord sur celle{several}-ci, sous {offer.reviewHours}&nbsp;h&nbsp;; vous pourrez
+              ensuite en envoyer une nouvelle.
+            </p>
+            <p data-problem="too_many_ip">
+              Nous ne pouvons pas enregistrer de nouvelle demande depuis cette connexion pour le moment. Réessayez demain{
+                hasContact() ? ", ou contactez-nous pour réserver dès maintenant" : ""
+              }.
+            </p>
             <ContactLine />
           </div>
           <div class="res-foot">
@@ -173,13 +205,14 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
         </form>
 
         <section class="pane" id="step-4" aria-labelledby="step-4-title" hidden>
-          <h1 id="step-4-title" tabindex="-1">Demande envoyée</h1>
+          <h1 id="step-4-title" tabindex="-1">Merci, votre demande est envoyée&nbsp;!</h1>
           <p class="res-note" data-outcome="created" hidden>
-            Nous gardons le <span data-chosen></span> pour vous et vous répondons sous {offer.reviewHours} h. Un e-mail vient de partir avec le récapitulatif de votre demande.
+            Nous gardons le <span data-chosen></span> pour vous et vous répondons sous {offer.reviewHours}&nbsp;h. Un e-mail vient de partir avec le récapitulatif de votre
+            demande. Si vous ne voyez pas l'e-mail, regardez dans vos courriers indésirables.
           </p>
           <p class="res-note" data-outcome="already_requested" hidden>
-            Nous avions déjà votre demande pour le <span data-chosen></span>. Nous gardons cette date pour vous et vous répondons sous {offer.reviewHours} h : le
-            récapitulatif est dans l'e-mail reçu à votre premier envoi.
+            Bonne nouvelle&nbsp;: votre demande pour le <span data-chosen></span> nous est déjà parvenue, inutile de la renvoyer. Vous trouverez dans vos e-mails son
+            récapitulatif, puis notre réponse.
           </p>
           <a class="btn ghost" href="/">Retour à l'accueil</a>
         </section>
