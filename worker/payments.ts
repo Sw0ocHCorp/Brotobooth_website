@@ -1,8 +1,8 @@
 import type { Deps, StripeSession } from "./deps";
-import { escapeHtml, formatDay, formatEuros, formatMoment, page } from "./html";
+import { escapeHtml, formatDay, formatEuros, formatHours, formatMoment, page } from "./html";
 import { html, json, readText, redirect, type Handler } from "./http";
 import { sendSoon } from "./notifications";
-import { offer } from "./offer";
+import { hasContact, offer } from "./offer";
 import { attachSession, confirmDeposit } from "./operations";
 import {
   enqueue,
@@ -11,6 +11,7 @@ import {
   type Booking,
   type NotificationSpec,
 } from "./repository";
+import { leftToPay, planName, totalPrice } from "./templates";
 
 /**
  * Une session Checkout dure 30 minutes (la spec, section 4). Stripe n'en accepte pas moins de 30 minutes à
@@ -53,13 +54,25 @@ const view = (title: string, ...parts: string[]): string =>
 const untilDeadline = (b: Booking): string =>
   b.hold_until ? ` jusqu'au ${formatMoment(b.hold_until)}` : "";
 
+/** « contactez-nous » n'est écrit que si la ligne de contact, en bas de la page, dit comment. */
 export const notFoundPage = (): Response =>
   html(
     view(
       "Page introuvable",
-      "<p>Ce lien ne correspond à aucune réservation. Vérifiez l'adresse reçue par e-mail, ou contactez-nous.</p>",
+      `<p>Ce lien ne mène à aucune réservation. Vérifiez qu'il est complet (copiez-le en entier depuis votre e-mail)${hasContact() ? ", ou contactez-nous" : ""}.</p>`,
+      `<div class="stack">${link("/", "Retour à l'accueil")}</div>`,
     ),
     404,
+  );
+
+/** Un envoi d'un formulaire de `/acompte` qui ne vient pas du site (voir `fromOtherOrigin`). */
+export const otherOriginPage = (): Response =>
+  html(
+    view(
+      "Cette demande n'a pas abouti",
+      "<p>Cette demande ne vient pas de notre site. Revenez à votre lien de paiement et réessayez.</p>",
+    ),
+    403,
   );
 
 const unavailablePage = (b: Booking): Response =>
@@ -75,12 +88,14 @@ const unavailablePage = (b: Booking): Response =>
 const row = (label: string, value: string | null): string =>
   value ? `<dt>${label}</dt><dd>${escapeHtml(value)}</dd>` : "";
 
+/** Le client paie en sachant pour quoi : la formule, le prix total, et ce qui restera à régler une fois l'acompte payé. */
 function payView(b: Booking): string {
   const deposit = formatEuros(b.deposit_cents ?? 0);
+  const hello = b.client_name ? `Bonjour ${escapeHtml(b.client_name)}, bonne nouvelle` : "Bonne nouvelle";
   return view(
     "Votre acompte",
-    `<p>${b.client_name ? `Bonjour ${escapeHtml(b.client_name)}, nous` : "Nous"} pouvons assurer votre prestation. Votre date est gardée pour vous${untilDeadline(b)} : elle sera confirmée dès que l'acompte sera réglé.</p>`,
-    `<div class="card"><dl class="recap">${row("Date", formatDay(b.event_date))}${row("Lieu", b.venue)}<dt>Acompte</dt><dd class="amount">${deposit}</dd></dl></div>`,
+    `<p>${hello}\u00a0: nous pouvons être présents à votre événement. Votre date est gardée pour vous${untilDeadline(b)}, et elle sera confirmée dès que l'acompte sera réglé.</p>`,
+    `<div class="card"><dl class="recap">${row("Date", formatDay(b.event_date))}${row("Lieu", b.venue)}${row("Formule", planName(b))}${row("Prix total", totalPrice(b))}<dt>Acompte à régler</dt><dd class="amount">${deposit}</dd>${row("Reste à régler ensuite", leftToPay(b))}</dl></div>`,
     `<form class="stack" method="post" action="${escapeHtml(acomptePath(b.token))}"><button class="btn primary" type="submit">Payer l'acompte de ${deposit}</button></form>`,
     "<p>Vous serez redirigé vers une page de paiement sécurisée.</p>",
   );
@@ -105,25 +120,31 @@ function statusView(b: Booking, verifying: boolean, returning: boolean): string 
     case "pending_review":
       return view(
         "Votre demande est bien reçue",
-        `<p>Nous étudions votre demande pour le ${day}. Vous recevrez notre réponse par e-mail bientôt, sous ${offer.reviewHours} h au plus tard. Il n'y a rien à payer pour l'instant.</p>`,
+        `<p>Nous étudions votre demande pour le ${day}. Vous recevrez notre réponse par e-mail sous ${formatHours(offer.reviewHours)} au plus tard. Il n'y a rien à payer pour l'instant.</p>`,
       );
     case "confirmed":
       return view(
         "Votre date est confirmée",
-        `<p>Nous avons bien reçu votre acompte de <span class="amount">${formatEuros(b.deposit_cents ?? 0)}</span>. La date du ${day} est à vous, un e-mail de confirmation vous est envoyé.</p>`,
+        `<p>Nous avons bien reçu votre acompte de <span class="amount">${formatEuros(b.deposit_cents ?? 0)}</span>. La date du ${day} est à vous. Un e-mail de confirmation vous a été envoyé.</p>`,
       );
     case "cancelled":
-      return view("Cette réservation a été annulée", `<p>La date du ${day} n'est plus réservée.</p>`, refund);
+      return view(
+        "Cette réservation est annulée",
+        `<p>La date du ${day} n'est plus réservée pour vous. Si vous souhaitez une autre date, vous pouvez faire une nouvelle demande.</p>`,
+        refund,
+        reserve("Faire une nouvelle demande"),
+      );
     case "refused":
       return view(
         "Nous n'avons pas pu retenir cette date",
-        `<p>Nous sommes désolés : nous ne pouvons pas assurer notre prestation le ${day}. Vous pouvez choisir une autre date.</p>`,
+        `<p>Nous sommes désolés\u00a0: nous ne pouvons pas être présents à votre événement le ${day}. Vous pouvez choisir une autre date.</p>`,
         reserve("Choisir une autre date"),
       );
     default:
+      // Le lien de paiement ne part qu'après notre réponse : une date qui n'est plus gardée l'est faute d'acompte.
       return view(
         "Cette date n'est plus réservée",
-        `<p>Le délai est passé : la date du ${day} n'est plus réservée pour vous. Si elle est encore libre, vous pouvez refaire une demande ou nous appeler.</p>`,
+        `<p>Nous n'avons pas reçu votre acompte dans les ${formatHours(offer.paymentHours)} prévues\u00a0: la date du ${day} n'est plus gardée pour vous. Si elle est encore libre, vous pouvez refaire une demande.</p>`,
         refund,
         reserve("Refaire une demande"),
       );

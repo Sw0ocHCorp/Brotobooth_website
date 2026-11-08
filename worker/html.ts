@@ -22,10 +22,13 @@ const PAGE_CSS = `
 .sim { padding: 24px 20px; border: 2px dashed var(--warn-line); border-radius: 22px; }
 .sim h1 { font-size: 2.75rem; }
 .contact { margin-top: 28px; font-size: .88rem; }
+.site { max-width: 34rem; margin: 0 auto; padding: 16px 16px 0; }
+.site .brand { display: inline-flex; align-items: center; min-height: 44px; color: var(--text); font-family: var(--font-title); font-weight: 800; text-decoration: none; }
 `;
 
 /**
- * Une page complète, en français, sur la charte sombre du site. `bodyHtml` est du HTML déjà sûr : l'appelant
+ * Une page complète, en français, sur la charte sombre du site, sous « Brotobooth » qui ramène à l'accueil, comme la barre
+ * du site : le client arrivé d'un e-mail sait où il est. `bodyHtml` est du HTML déjà sûr : l'appelant
  * passe par `escapeHtml` pour tout ce qui vient d'un client. Aucune page n'est à indexer ni à garder. Sa feuille de
  * style est la seule chose écrite dans la page, ce que la politique de sécurité permet (`style-src 'unsafe-inline'`,
  * voir `CONTENT_SECURITY_POLICY`) : jamais un script, que cette politique refuse.
@@ -43,6 +46,7 @@ export function page(title: string, bodyHtml: string): string {
 <style>${PAGE_CSS}</style>
 </head>
 <body>
+<header class="site"><a class="brand" href="/">Brotobooth</a></header>
 <main class="page">
 ${bodyHtml}
 </main>

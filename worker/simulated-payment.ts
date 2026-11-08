@@ -2,7 +2,7 @@ import type { Deps, StripeGateway, StripeSession } from "./deps";
 import type { Env } from "./env";
 import { escapeHtml, formatDay, formatEuros, page } from "./html";
 import { html, json, readText, redirect } from "./http";
-import { acomptePath, settlePayment } from "./payments";
+import { acomptePath, notFoundPage, settlePayment } from "./payments";
 import { getBookingByToken, getState, setState, type Booking } from "./repository";
 
 /** Chaque session vit dans `system_state` : un autre appel du Worker la retrouve, comme chez Stripe. */
@@ -60,8 +60,6 @@ export function simulatedGateway(env: Env, now: () => Date = () => new Date()): 
   };
 }
 
-const notFound = (): Response => json({ error: "not_found" }, 404);
-
 /** La réservation du jeton et sa session, si le paiement simulé est actif et que la session est bien la sienne. */
 async function target(req: Request, deps: Deps, token: string): Promise<{ booking: Booking; session: StripeSession } | null> {
   if (deps.env.PAYMENT_MODE !== "simulated") return null;
@@ -74,7 +72,7 @@ async function target(req: Request, deps: Deps, token: string): Promise<{ bookin
 /** `GET /acompte/<jeton>/simulation?session=<id>` : la page de paiement factice. */
 export async function simulationPage(req: Request, deps: Deps, token: string): Promise<Response> {
   const found = await target(req, deps, token);
-  if (!found) return notFound();
+  if (!found) return notFoundPage();
   const { booking, session } = found;
   if (session.status !== "open") return redirect(acomptePath(token)); // rien à payer sur cette session
 
@@ -109,7 +107,7 @@ async function outcomeOf(req: Request): Promise<"paid" | "abandon" | null> {
  */
 export async function simulationAction(req: Request, deps: Deps, token: string, ctx: ExecutionContext): Promise<Response> {
   const found = await target(req, deps, token);
-  if (!found) return notFound();
+  if (!found) return notFoundPage();
   const outcome = await outcomeOf(req);
   if (!outcome) return json({ error: "invalid_outcome" }, 400);
   if (outcome === "abandon" || found.session.status !== "open") return redirect(acomptePath(token));
