@@ -40,7 +40,7 @@ export const postRequest: Handler = async (req, deps, ctx) => {
     case "date_taken":
       return json({ error: "date_taken" }, 409);
     case "too_many":
-      return json({ error: "too_many" }, 429);
+      return json({ error: "too_many", reason: result.reason }, 429);
     case "bot":
       return json({ error: "bot" }, 403);
   }

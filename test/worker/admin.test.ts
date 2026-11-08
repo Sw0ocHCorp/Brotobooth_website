@@ -76,6 +76,9 @@ const create = (body: unknown, d: Deps = deps) => api("POST", "/api/admin/bookin
 
 const statusOf = async (id: string) => (await getBooking(env.DB, id))!.status;
 
+/** La ligne de la base telle que l'administration la reçoit : sans l'empreinte de l'adresse IP du client. */
+const shown = ({ ip_hash: _ipHash, ...rest }: Booking) => rest;
+
 /** Un échec d'envoi : l'envoi est réservé (ce qui compte l'essai), puis libéré avec son erreur. */
 async function failOnce(key: string) {
   const row = await env.DB.prepare("SELECT id FROM notifications WHERE dedupe_key = ?").bind(key).first<{ id: number }>();
@@ -334,7 +337,7 @@ describe("GET /api/admin/bookings/:id", () => {
     const r = await api("GET", bookingPath(b.id));
     expect(r.status).toBe(200);
     expect(await reply(r)).toEqual({
-      booking: b,
+      booking: shown(b),
       history: [{ at: T0, actor: "client", event: "received" }],
     });
   });
@@ -503,7 +506,7 @@ describe("POST /api/admin/bookings : réservation manuelle", () => {
       notes: "Appel du 3 novembre",
       hold_until: null,
     });
-    expect(await getBooking(env.DB, booking!.id)).toEqual(booking);
+    expect(shown((await getBooking(env.DB, booking!.id))!)).toEqual(booking);
     const reminders = (await notificationRows()).filter((n) => n.booking_id === booking!.id).map((n) => n.template);
     expect(reminders).toContain("client_d7");
     expect(reminders).toContain("owner_d1");
@@ -871,6 +874,30 @@ describe("PATCH /api/admin/bookings/:id", () => {
       expect(r.status).toBe(400);
       expect(await reply(r)).toEqual({ error: "invalid_json" });
     });
+  });
+});
+
+describe("données des réponses", () => {
+  // L'empreinte de l'adresse IP ne sert qu'aux limites de la demande publique : l'administration n'en a pas l'usage.
+  it("ne renvoie jamais l'empreinte de l'adresse IP du client, mais garde le jeton du lien de paiement", async () => {
+    const b = await request();
+    expect(b.ip_hash).toBe("ip-hash-1");
+    const replies = [
+      await api("GET", "/api/admin/overview"),
+      await api("GET", "/api/admin/bookings?from=2026-12-01&to=2026-12-31"),
+      await api("GET", bookingPath(b.id)),
+      await act(b.id, "validate"),
+      await patch(b.id, { notes: "À rappeler" }),
+      await create({ kind: "blocked", date: "2026-12-26" }),
+      await create({ kind: "manual", date: "2026-12-27", name: "Lou Durand", price_cents: 100_000, deposit_cents: 30_000 }),
+    ];
+    expect(replies.map((r) => r.status)).toEqual([200, 200, 200, 200, 200, 201, 201]);
+    for (const r of replies) {
+      const text = await r.text();
+      expect(text).not.toContain("ip_hash");
+      expect(text).not.toContain("ip-hash-1");
+    }
+    expect((await reply(await api("GET", bookingPath(b.id)))).booking).toMatchObject({ token: b.token, client_name: "Camille Martin" });
   });
 });
 

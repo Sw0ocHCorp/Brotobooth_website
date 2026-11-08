@@ -11,7 +11,7 @@ import { dayState, lastDayOf, monthCells, monthOf, shiftMonth, type Availability
  */
 
 type Step = 1 | 2 | 3 | 4;
-type Reply = { status: number; data: { status?: string; error?: string; fields?: string[] } };
+type Reply = { status: number; data: { status?: string; error?: string; reason?: string; fields?: string[] } };
 
 /** Le widget anti-robots de Cloudflare, chargé à la demande (`render=explicit`). */
 type Turnstile = {
@@ -246,7 +246,7 @@ function showProblems(fields: string[]): void {
 }
 
 /** Un envoi qui n'a pas abouti pour une raison qui ne tient pas à un champ : le message, et le contact qui l'accompagne. */
-function sendProblem(kind: "failed" | "bot" | "too_many"): void {
+function sendProblem(kind: "failed" | "bot" | "too_many" | "too_many_ip"): void {
   const box = $("send-problem");
   for (const text of box.querySelectorAll<HTMLElement>("[data-problem]")) text.hidden = text.dataset.problem !== kind;
   box.hidden = false;
@@ -303,7 +303,8 @@ function answer({ status, data }: Reply): void {
   if (status === 200 && data.status === "already_requested") return done("already_requested");
   if (status === 409) return backToCalendar($("problem-taken"), true);
   if (status === 422) return showProblems(data.fields ?? []);
-  sendProblem(status === 429 ? "too_many" : bot ? "bot" : "failed");
+  // Deux limites répondent 429 : celle des demandes en cours de ce client, et celle des demandes parties de sa connexion.
+  sendProblem(status === 429 ? (data.reason === "ip" ? "too_many_ip" : "too_many") : bot ? "bot" : "failed");
 }
 
 /** Le corps de `POST /api/requests`, sous les noms de l'API. */

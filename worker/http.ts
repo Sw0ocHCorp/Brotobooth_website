@@ -91,6 +91,11 @@ export function fromOtherOrigin(req: Request, baseUrl: string): boolean {
 const digest = async (text: string): Promise<Uint8Array> =>
   new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
 
+export const toHex = (bytes: Uint8Array): string => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+/** L'empreinte SHA-256 de `text`, en hexadécimal. */
+export const sha256Hex = async (text: string): Promise<string> => toHex(await digest(text));
+
 /**
  * `true` si `given` est le secret `expected`. Les deux sont réduits à une empreinte de même longueur, comparée
  * octet par octet sans s'arrêter au premier écart : ni la durée, ni la longueur ne disent où ils diffèrent.

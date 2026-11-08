@@ -481,14 +481,19 @@ describe("runCron", () => {
       const row = async (status: NewBooking["status"], event_date: string) =>
         (await insert(newBooking({ status, event_date, hold_until: null, deposit_paid_at: status === "confirmed" ? T0 : null })))
           .booking;
-      return { refused: await row("refused", "2026-12-12"), expired: await row("expired", "2026-12-19"), confirmed: await row("confirmed", "2026-12-26") };
+      return {
+        refused: await row("refused", "2026-12-12"),
+        expired: await row("expired", "2026-12-19"),
+        cancelled: await row("cancelled", "2026-12-05"),
+        confirmed: await row("confirmed", "2026-12-26"),
+      };
     }
 
-    it("anonymise les refus et expirations de plus de 12 mois, pas les prestations confirmées", async () => {
-      const { refused, expired, confirmed } = await seed();
+    it("anonymise les refus, expirations et annulations sans acompte de plus de 12 mois, pas les prestations confirmées", async () => {
+      const { refused, expired, cancelled, confirmed } = await seed();
       deps.setNow("2027-11-09T10:00:00.000Z");
       await runCron(deps);
-      for (const b of [refused, expired]) {
+      for (const b of [refused, expired, cancelled]) {
         expect(await current(b)).toMatchObject({
           client_name: null,
           client_email: null,

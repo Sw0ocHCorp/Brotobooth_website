@@ -97,7 +97,7 @@ const PERSONAL_COLUMNS = [
 /** Demandes en cours : à valider ou en attente d'acompte. */
 const IN_PROGRESS_STATUSES: readonly BookingStatus[] = ["pending_review", "awaiting_deposit"];
 
-/** Refus et expirations : les seules lignes anonymisées avec le temps. */
+/** Refus et expirations, anonymisés avec le temps ; une annulation ne l'est que sans acompte payé (`anonymizeOld`). */
 const ANONYMIZED_STATUSES: readonly BookingStatus[] = ["refused", "expired"];
 
 /** 24 h de reprises toutes les 5 minutes. */
@@ -363,9 +363,10 @@ export const getHistory = (db: D1Database, id: string): Promise<HistoryRow[]> =>
   rows<HistoryRow>(db.prepare("SELECT * FROM booking_history WHERE booking_id = ? ORDER BY id").bind(id));
 
 /**
- * Efface les données personnelles des refus et expirations créés avant `beforeIso`, une seule fois par
- * ligne, et date l'opération à `nowIso`. Le délai court depuis la création : modifier une demande ne
- * prolonge pas la conservation. Renvoie le nombre de lignes anonymisées.
+ * Efface les données personnelles des demandes restées sans suite (refusées, expirées, ou annulées avant tout acompte)
+ * créées avant `beforeIso`, une seule fois par ligne, et date l'opération à `nowIso`. Une annulation après paiement reste
+ * entière. Le délai court depuis la création : modifier une demande ne prolonge pas la conservation. Renvoie le nombre
+ * de lignes anonymisées.
  */
 export async function anonymizeOld(db: D1Database, beforeIso: string, nowIso: string): Promise<number> {
   const erase = PERSONAL_COLUMNS.map((column) => `${column} = NULL`).join(", ");
@@ -373,9 +374,10 @@ export async function anonymizeOld(db: D1Database, beforeIso: string, nowIso: st
   const result = await db
     .prepare(
       `UPDATE bookings SET ${erase}, anonymized_at = ?
-       WHERE status IN ${statuses.sql} AND created_at < ? AND anonymized_at IS NULL`,
+       WHERE (status IN ${statuses.sql} OR (status = ? AND deposit_paid_at IS NULL))
+         AND created_at < ? AND anonymized_at IS NULL`,
     )
-    .bind(nowIso, ...statuses.params, beforeIso)
+    .bind(nowIso, ...statuses.params, "cancelled" satisfies BookingStatus, beforeIso)
     .run();
   return result.meta.changes;
 }

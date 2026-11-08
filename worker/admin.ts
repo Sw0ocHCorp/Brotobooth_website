@@ -54,11 +54,17 @@ const MAX_CENTS = 10_000_000;
 
 const invalid = (fields: string[]): Response => json({ error: "invalid", fields }, 422);
 
+/**
+ * Une réservation telle que l'administration la reçoit : toute la ligne, sauf l'empreinte de l'adresse IP, qui ne sert
+ * qu'aux limites de la demande publique. Le jeton reste, il porte le lien de paiement du client.
+ */
+const forAdmin = ({ ip_hash: _ipHash, ...booking }: Booking): Omit<Booking, "ip_hash"> => booking;
+
 const FAILURE_STATUS = { not_found: 404, stale: 409, date_taken: 409, invalid: 422 } as const;
 
 /** La réponse à une opération : la réservation si elle a réussi, sinon la raison du refus. */
 function reply(result: OpResult, okStatus = 200): Response {
-  if (result.ok) return json({ booking: result.booking }, okStatus);
+  if (result.ok) return json({ booking: forAdmin(result.booking) }, okStatus);
   // Seule la date peut être « invalide » ici : les autres champs sont vérifiés avant l'opération.
   return result.reason === "invalid" ? invalid(["date"]) : json({ error: result.reason }, FAILURE_STATUS[result.reason]);
 }
@@ -159,12 +165,14 @@ const overview: Handler = async (_req, deps) => {
     getState(db, LAST_RUN_KEY),
     listFailedNotifications(db, deps.now().toISOString()),
   ]);
-  return json({ todo, health: { lastCronRun, failedNotifications: failed.length } });
+  return json({ todo: todo.map(forAdmin), health: { lastCronRun, failedNotifications: failed.length } });
 };
 
 const listBookings: Handler = async (req, deps) => {
   const range = readRange(req);
-  return range ? json({ bookings: await listRange(deps.env.DB, range.from, range.to) }) : json({ error: "invalid_range" }, 400);
+  return range
+    ? json({ bookings: (await listRange(deps.env.DB, range.from, range.to)).map(forAdmin) })
+    : json({ error: "invalid_range" }, 400);
 };
 
 /** Ce que l'historique raconte de la réservation : sa réception d'abord, puis chaque changement dans l'ordre. */
@@ -173,7 +181,7 @@ const showBooking: Handler = async (_req, deps, _ctx, [id]) => {
   if (!booking) return json({ error: "not_found" }, 404);
   const received = { at: booking.created_at, actor: booking.source === "site" ? "client" : "owner", event: "received" };
   const changes = (await getHistory(deps.env.DB, id)).map(({ at, actor, event, detail }) => ({ at, actor, event, detail }));
-  return json({ booking, history: [received, ...changes] });
+  return json({ booking: forAdmin(booking), history: [received, ...changes] });
 };
 
 const addBooking: Handler = async (req, deps, ctx) => {

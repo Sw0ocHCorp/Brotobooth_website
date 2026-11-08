@@ -4,7 +4,7 @@ import { calendarFeed } from "./calendar";
 import { demoPage } from "./demo";
 import type { Deps } from "./deps";
 import { findRoute, fromOtherOrigin, json, type Handler, type Route } from "./http";
-import { paymentPage, startPayment, stripeWebhook } from "./payments";
+import { notFoundPage, paymentPage, startPayment, stripeWebhook } from "./payments";
 import { simulationAction, simulationPage } from "./simulated-payment";
 import { telegramWebhook } from "./telegram";
 
@@ -35,7 +35,10 @@ const ROUTES: Route[] = [
   { method: "GET", path: "/demo", handler: demoPage },
 ];
 
-/** Les envois des formulaires de `/acompte` viennent du site lui-même, jamais d'une page d'un autre site. */
+/**
+ * Les envois des formulaires de `/acompte` viennent du site lui-même, jamais d'une page d'un autre site. Une adresse de
+ * `/acompte/` que personne ne reconnaît (un lien mal recopié) est une page à lire, jamais du JSON.
+ */
 const SITE_FORMS = "/acompte/";
 
 /** Tout `/api/admin/` passe par `adminApi`, qui vérifie le propriétaire avant même de chercher la route. */
@@ -61,7 +64,7 @@ export async function handle(req: Request, deps: Deps, ctx: ExecutionContext): P
   }
 
   const found = findRoute(ROUTES, req.method, pathname);
-  if (found instanceof Response) return found;
+  if (found instanceof Response) return found.status === 404 && pathname.startsWith(SITE_FORMS) ? notFoundPage() : found;
   const { route, params } = found;
   return guarded(`${route.method} ${route.path}`, async () => {
     if (req.method === "POST" && pathname.startsWith(SITE_FORMS) && fromOtherOrigin(req, deps.env.BASE_URL)) {

@@ -7,6 +7,7 @@ import type { Deps } from "../../worker/deps";
 import { chatIds, type Env } from "../../worker/env";
 import { resendGateway } from "../../worker/email";
 import { processDue } from "../../worker/notifications";
+import { offer } from "../../worker/offer";
 import { claimNotification, enqueue, getState, patchBooking, setState, type NotificationSpec } from "../../worker/repository";
 import { handle } from "../../worker/router";
 import { telegramGateway } from "../../worker/telegram";
@@ -261,7 +262,50 @@ describe("processDue : passages simultanés", () => {
     const b = await seeded();
     await enqueue(env.DB, [mail("client_received", b.id), mail("owner_new_request", b.id)]);
     await processDue(deps);
-    expect(deps.emails.map((m) => m.idempotencyKey).sort()).toEqual([`${b.id}:client_received:email`, `${b.id}:owner_new_request:email`]);
+    expect(deps.emails.map((m) => m.idempotencyKey).sort()).toEqual([
+      expect.stringMatching(new RegExp(`^${b.id}:client_received:email:[0-9a-f]{16}$`)),
+      expect.stringMatching(new RegExp(`^${b.id}:owner_new_request:email:[0-9a-f]{16}$`)),
+    ]);
+  });
+
+  // Resend refuse une clé réutilisée avec un autre contenu : sans l'empreinte, un e-mail dont la réservation a changé
+  // entre deux tentatives resterait bloqué jusqu'à l'alerte.
+  describe("clé d'idempotence d'une reprise", () => {
+    /** Envoie `client_deposit_link` en échec une fois, modifie la réservation s'il le faut, puis le renvoie : les deux clés tentées. */
+    async function retry(change?: Parameters<typeof patchBooking>[2]) {
+      const b = await seeded({ status: "awaiting_deposit", deposit_cents: 45_000 });
+      await enqueue(env.DB, [mail("client_deposit_link", b.id)]);
+      const keys: (string | undefined)[] = [];
+      let failing = true;
+      deps.email.send = async (m) => {
+        keys.push(m.idempotencyKey);
+        if (failing) throw new Error("panne");
+      };
+      await processDue(deps);
+      if (change) await patchBooking(env.DB, b.id, change, "owner", "price_adjusted", T0);
+      failing = false;
+      deps.setNow("2026-11-07T10:06:00.000Z");
+      await processDue(deps);
+      return { keys, id: b.id };
+    }
+
+    it("garde la même clé tant que le message ne change pas : la reprise ne renvoie pas un message déjà parti", async () => {
+      const { keys } = await retry();
+      expect(keys).toHaveLength(2);
+      expect(keys[0]).toBe(keys[1]);
+    });
+
+    it("prend une clé neuve quand la réservation a changé entre deux tentatives, sur le même préfixe", async () => {
+      const { keys, id } = await retry({ deposit_cents: 30_000 });
+      expect(keys).toHaveLength(2);
+      expect(keys[0]).not.toBe(keys[1]);
+      for (const key of keys) expect(key).toMatch(new RegExp(`^${id}:client_deposit_link:email:[0-9a-f]{16}$`));
+    });
+
+    it("ne met pas le texte du message dans la clé", async () => {
+      const { keys } = await retry();
+      expect(keys.join()).not.toMatch(/Camille|acompte|450/);
+    });
   });
 });
 
@@ -484,7 +528,11 @@ describe("processDue : le point du lundi", () => {
 
 describe("passerelle Resend", () => {
   const message = { to: "camille@example.test", subject: "Objet", text: "Texte", html: "<p>Texte</p>" };
-  const RESEND_ENV = { ...env, RESEND_API_KEY: "re_cle_secrete", FROM_EMAIL: "reservations@example.test" } as Env;
+  const RESEND_ENV = { ...env, RESEND_API_KEY: "re_cle_secrete", FROM_EMAIL: "reservations@example.test", OWNER_EMAIL } as Env;
+  const savedContact = { ...offer.contact };
+  afterEach(() => {
+    Object.assign(offer.contact, savedContact);
+  });
 
   const recorder = (respond: () => Response | Promise<Response>) => {
     const calls: { url: string; init: RequestInit }[] = [];
@@ -505,10 +553,33 @@ describe("passerelle Resend", () => {
     expect(JSON.parse(calls[0].init.body as string)).toEqual({
       from: "reservations@example.test",
       to: ["camille@example.test"],
+      reply_to: expect.any(String),
       subject: "Objet",
       text: "Texte",
       html: "<p>Texte</p>",
     });
+  });
+
+  // L'expéditeur est une adresse d'envoi : un client qui répond à un e-mail doit joindre quelqu'un.
+  it("fait répondre à l'adresse de contact de l'offre quand elle est renseignée", async () => {
+    Object.assign(offer.contact, { email: "contact@example.test" });
+    const { calls, fetchFn } = recorder(() => Response.json({ id: "e1" }));
+    await resendGateway(RESEND_ENV, fetchFn).send(message);
+    expect(JSON.parse(calls[0].init.body as string).reply_to).toBe("contact@example.test");
+  });
+
+  it("fait répondre à l'adresse du propriétaire tant que l'offre n'a pas d'adresse de contact", async () => {
+    Object.assign(offer.contact, { email: "" });
+    const { calls, fetchFn } = recorder(() => Response.json({ id: "e1" }));
+    await resendGateway(RESEND_ENV, fetchFn).send(message);
+    expect(JSON.parse(calls[0].init.body as string).reply_to).toBe(OWNER_EMAIL);
+  });
+
+  it("n'écrit aucune adresse de réponse quand aucune n'est connue", async () => {
+    Object.assign(offer.contact, { email: "" });
+    const { calls, fetchFn } = recorder(() => Response.json({ id: "e1" }));
+    await resendGateway({ ...RESEND_ENV, OWNER_EMAIL: "" }, fetchFn).send(message);
+    expect(JSON.parse(calls[0].init.body as string)).not.toHaveProperty("reply_to");
   });
 
   it("envoie la clé d'idempotence quand le message en porte une, et la garde hors du corps", async () => {

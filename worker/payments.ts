@@ -53,7 +53,7 @@ const view = (title: string, ...parts: string[]): string =>
 const untilDeadline = (b: Booking): string =>
   b.hold_until ? ` jusqu'au ${formatMoment(b.hold_until)}` : "";
 
-const notFoundPage = (): Response =>
+export const notFoundPage = (): Response =>
   html(
     view(
       "Page introuvable",

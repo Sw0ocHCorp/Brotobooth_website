@@ -6,7 +6,7 @@ import { closeSession, expireHold } from "./operations";
 import { logFailure, recordPayment } from "./payments";
 import { anonymizeOld, enqueue, getBooking, getState, listDueHolds, setState, type Booking } from "./repository";
 
-/** Les refus et expirations sont anonymisés au bout de 12 mois (spec, section 9). */
+/** Les demandes restées sans suite (refus, expirations, annulations avant acompte) sont anonymisées au bout de 12 mois (spec, section 9). */
 const RETENTION_MONTHS = 12;
 const MONDAY = 1;
 const DIGEST_CHANNELS = ["telegram", "email"] as const;
@@ -82,7 +82,7 @@ export async function enqueueWeeklyDigest(deps: Deps): Promise<void> {
   );
 }
 
-/** Efface les données personnelles des refus et expirations de plus de 12 mois, au plus une fois par jour de Paris. */
+/** Efface les données personnelles des demandes restées sans suite de plus de 12 mois, au plus une fois par jour de Paris. */
 async function anonymizeExpiredRequests(deps: Deps): Promise<void> {
   const db = deps.env.DB;
   const now = deps.now();

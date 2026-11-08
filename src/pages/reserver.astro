@@ -163,6 +163,7 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
             <p data-problem="failed">Votre demande n'est pas partie. Ce que vous avez saisi est gardé : réessayez dans un instant.</p>
             <p data-problem="bot">Nous n'avons pas pu vérifier que cette demande vient bien de vous. Ce que vous avez saisi est gardé : réessayez dans un instant.</p>
             <p data-problem="too_many">Vous avez déjà plusieurs demandes en cours : nous vous répondons d'abord sur celles-ci, sous {offer.reviewHours} h.</p>
+            <p data-problem="too_many_ip">Beaucoup de demandes sont parties de cette connexion ces dernières 24 heures. Vous pouvez réessayer demain, ou nous contacter pour réserver dès maintenant.</p>
             <ContactLine />
           </div>
           <div class="res-foot">

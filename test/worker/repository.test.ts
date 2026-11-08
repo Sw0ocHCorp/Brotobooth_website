@@ -716,8 +716,8 @@ describe("état du système", () => {
 describe("anonymizeOld", () => {
   const THIRTEEN_MONTHS_AGO = "2025-10-07T10:00:00.000Z";
   const CUTOFF = "2025-11-07T10:00:00.000Z";
-  const seed = async (status: BookingStatus, day: string, createdAt = THIRTEEN_MONTHS_AGO) => {
-    const nb = newBooking({ status, event_date: day });
+  const seed = async (status: BookingStatus, day: string, createdAt = THIRTEEN_MONTHS_AGO, over: Partial<NewBooking> = {}) => {
+    const nb = newBooking({ status, event_date: day, ...over });
     const r = await insertBooking(env.DB, nb, [], createdAt);
     if (!r.ok) throw new Error("seed");
     return r.booking;
@@ -749,15 +749,27 @@ describe("anonymizeOld", () => {
     expect(await getBooking(env.DB, confirmed.id)).toEqual(confirmed);
   });
 
-  it("laisse les demandes récentes et les annulations", async () => {
+  // La politique de confidentialité promet l'effacement d'une demande « restée sans suite faute de réponse ou d'acompte ».
+  it("anonymise aussi une demande annulée avant tout acompte, pas une annulation après paiement", async () => {
+    const unpaid = await seed("cancelled", "2026-12-02");
+    const paid = await seed("cancelled", "2026-12-04", THIRTEEN_MONTHS_AGO, { deposit_paid_at: THIRTEEN_MONTHS_AGO });
+
+    expect(await anonymizeOld(env.DB, CUTOFF, T0)).toBe(1);
+
+    expect(await getBooking(env.DB, unpaid.id)).toEqual({ ...unpaid, ...PERSONAL, anonymized_at: T0 });
+    expect(await getBooking(env.DB, paid.id)).toEqual(paid);
+  });
+
+  it("laisse les demandes récentes, celles en cours et les annulations récentes", async () => {
     const recent = await seed("refused", "2026-12-01", "2026-06-01T10:00:00.000Z");
-    const cancelled = await seed("cancelled", "2026-12-02");
+    const recentCancelled = await seed("cancelled", "2026-12-02", "2026-06-01T10:00:00.000Z");
     const pending = await seed("pending_review", "2026-12-03");
+    const awaiting = await seed("awaiting_deposit", "2026-12-05");
     const edge = await seed("expired", "2026-12-04", CUTOFF);
 
     expect(await anonymizeOld(env.DB, CUTOFF, T0)).toBe(0);
 
-    for (const before of [recent, cancelled, pending, edge]) {
+    for (const before of [recent, recentCancelled, pending, awaiting, edge]) {
       expect(await getBooking(env.DB, before.id)).toEqual(before);
     }
   });

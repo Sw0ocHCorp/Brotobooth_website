@@ -1,6 +1,7 @@
 import { addDays, parisInstant, parisToday, type BookingStatus } from "./bookings";
 import type { Deps } from "./deps";
 import { chatIds } from "./env";
+import { sha256Hex } from "./http";
 import { offer } from "./offer";
 import {
   cancelNotification,
@@ -176,12 +177,20 @@ const report = (n: Pick<NotificationRow, "id" | "template">, error: unknown): vo
 const errorSummary = (error: unknown): string =>
   error instanceof Error ? `${error.name}: ${error.message}`.slice(0, MAX_ERROR_LENGTH) : "erreur inconnue";
 
-/** La clé de dédoublonnage accompagne l'e-mail : Resend n'enverra pas deux fois un message que sa reprise répète. */
+/** Les 16 premiers caractères hexadécimaux de l'empreinte : de quoi distinguer deux contenus, sans citer le message. */
+const FINGERPRINT_LENGTH = 16;
+
+/**
+ * La clé de dédoublonnage accompagne l'e-mail : Resend n'enverra pas deux fois un message que sa reprise répète. Resend
+ * refuse aussi une clé réutilisée avec un autre contenu : la clé porte donc l'empreinte de ce qui est envoyé (objet, texte
+ * et HTML rendus). Une réservation modifiée entre deux tentatives repart sous une clé neuve, au lieu de rester bloquée.
+ */
 async function sendEmail(deps: Deps, n: NotificationRow, booking: Booking | null, context: MessageContext): Promise<void> {
   const message = renderEmail(n.template, booking, context);
   const to = n.recipient === "owner" ? deps.env.OWNER_EMAIL : booking?.client_email;
   if (!to) throw new Error("adresse du destinataire manquante");
-  await deps.email.send({ to, ...message, idempotencyKey: n.dedupe_key });
+  const fingerprint = (await sha256Hex(JSON.stringify([message.subject, message.text, message.html]))).slice(0, FINGERPRINT_LENGTH);
+  await deps.email.send({ to, ...message, idempotencyKey: `${n.dedupe_key}:${fingerprint}` });
 }
 
 /**

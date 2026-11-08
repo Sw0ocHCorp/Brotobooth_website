@@ -162,6 +162,22 @@ describe("GET /acompte/<jeton> : récapitulatif", () => {
     expect(html).toContain(PHONE);
   });
 
+  // Le client arrive sur /acompte/ en recopiant mal son lien : il lit une page, jamais un JSON.
+  it.each([["sans jeton", ""], ["avec un chemin inconnu", "jeton-inconnu/autre/encore"]])(
+    "une adresse /acompte/ %s donne la même page 404 lisible qu'un jeton inconnu",
+    async (_label, path) => {
+      for (const method of ["GET", "POST"]) {
+        const r = await open(path, { method });
+        expect(r.status).toBe(404);
+        expect(r.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+        expect(r.headers.get("Cache-Control")).toBe("no-store");
+        const html = await r.text();
+        expect(html).toContain("Page introuvable");
+        expect(html).toContain(PHONE);
+      }
+    },
+  );
+
   it("une date bloquée par le propriétaire n'a pas de page", async () => {
     const blocked = await withStatus("blocked");
     expect((await open(blocked.token)).status).toBe(404);

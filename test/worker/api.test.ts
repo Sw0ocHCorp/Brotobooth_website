@@ -231,7 +231,10 @@ describe("POST /api/requests : limites", () => {
   it("limite à 2 demandes actives par e-mail, sans tenir compte de la casse", async () => {
     await post(body({ date: "2026-12-19" }));
     await post(body({ date: "2026-12-20" }));
-    expect((await post(body({ date: "2026-12-21", email: "Camille@Example.test" }))).status).toBe(429);
+    const third = await post(body({ date: "2026-12-21", email: "Camille@Example.test" }));
+    expect(third.status).toBe(429);
+    // La page dit « vous avez déjà plusieurs demandes en cours » : vrai pour cette raison-là seulement.
+    expect(await third.json()).toEqual({ error: "too_many", reason: "email" });
     expect(await listRange(env.DB, "2026-12-21", "2026-12-21")).toHaveLength(0);
     expect((await post(body({ date: "2026-12-21", email: "autre@example.test" }))).status).toBe(201);
   });
@@ -249,9 +252,18 @@ describe("POST /api/requests : limites", () => {
     for (let i = 0; i < 5; i++) expect((await one(i)).status).toBe(201);
     const sixth = await one(5);
     expect(sixth.status).toBe(429);
-    expect(await sixth.json()).toEqual({ error: "too_many" });
+    // Derrière une connexion partagée, le client n'a peut-être aucune demande en cours : la raison le dit.
+    expect(await sixth.json()).toEqual({ error: "too_many", reason: "ip" });
     expect(await listRange(env.DB, "2026-12-24", "2026-12-24")).toHaveLength(0);
     expect((await one(6, OTHER_IP)).status).toBe(201);
+  });
+
+  it("donne la raison de l'e-mail à qui dépasse les deux limites : ses demandes en cours sont la cause qu'il peut résoudre", async () => {
+    const one = (i: number, email: string) => post(body({ date: `2026-12-${19 + i}`, email }));
+    for (const [i, email] of ["a", "a", "b", "c", "d"].entries()) expect((await one(i, `${email}@example.test`)).status).toBe(201);
+    const over = await one(5, "a@example.test");
+    expect(over.status).toBe(429);
+    expect(await over.json()).toEqual({ error: "too_many", reason: "email" });
   });
 
   it("oublie les demandes de plus de 24 h pour la limite par adresse IP", async () => {

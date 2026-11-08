@@ -1,6 +1,7 @@
 import { checkDate, depositCents, isValidDate, nextStatus, type BookingAction, type BookingStatus } from "./bookings";
 import type { Deps, StripeGateway, StripeSession } from "./deps";
 import { plan, type PlanEvent } from "./notifications";
+import { sha256Hex, toHex } from "./http";
 import { offer, planById } from "./offer";
 import {
   applyTransition,
@@ -29,9 +30,11 @@ export type RequestInput = {
   turnstile_token: string;
 };
 
+/** `too_many` : trop de demandes en cours pour cette adresse e-mail, ou trop de demandes parties de cette connexion en 24 h. */
 export type CreateRequestResult =
   | { kind: "created" | "already_requested"; booking: Booking }
-  | { kind: "date_taken" | "too_many" | "bot" }
+  | { kind: "date_taken" | "bot" }
+  | { kind: "too_many"; reason: "email" | "ip" }
   | { kind: "invalid"; fields: string[] };
 
 const HOUR_MS = 3_600_000;
@@ -39,14 +42,11 @@ const HOUR_MS = 3_600_000;
 const PHONE = /^[0-9 +.()-]{6,20}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const toHex = (bytes: Uint8Array): string => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-
 /** 256 bits aléatoires, pour les liens que seul le client connaît. */
 const randomToken = (): string => toHex(crypto.getRandomValues(new Uint8Array(32)));
 
 /** L'empreinte salée d'une adresse IP : de quoi la compter, pas de quoi la retrouver. */
-const hashIp = async (salt: string, ip: string): Promise<string> =>
-  toHex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + ip))));
+const hashIp = (salt: string, ip: string): Promise<string> => sha256Hex(salt + ip);
 
 /** L'échéance, en UTC, `hours` heures après `now`. */
 const holdUntil = (now: Date, hours: number): string => new Date(now.getTime() + hours * HOUR_MS).toISOString();
@@ -161,12 +161,9 @@ export async function createRequest(deps: Deps, input: unknown, ip: string | nul
   const salt = deps.env.IP_HASH_SALT;
   const ipHash = ip && salt ? await hashIp(salt, ip) : null;
   const dayAgo = new Date(now.getTime() - 24 * HOUR_MS).toISOString();
-  if (
-    (await countActiveByEmail(db, request.email)) >= offer.maxActivePerEmail ||
-    (ipHash !== null && (await countRecentByIp(db, ipHash, dayAgo)) >= offer.maxPerIpPer24h)
-  ) {
-    return { kind: "too_many" };
-  }
+  // L'adresse e-mail d'abord : ses demandes en cours sont ce que le client peut résoudre, la connexion partagée non.
+  if ((await countActiveByEmail(db, request.email)) >= offer.maxActivePerEmail) return { kind: "too_many", reason: "email" };
+  if (ipHash !== null && (await countRecentByIp(db, ipHash, dayAgo)) >= offer.maxPerIpPer24h) return { kind: "too_many", reason: "ip" };
 
   const chosen = planById(request.plan)!; // validé par parseRequest
   const nowIso = now.toISOString();

@@ -229,14 +229,20 @@ test("une coupure réseau garde la saisie et donne le contact", async ({ page })
 test("un refus anti-robots ou trop de demandes s'expliquent, et un nouvel essai reste possible", async ({ page }) => {
   await reachDetails(page);
   const who = await fillDetails(page);
-  for (const [status, error, text] of [
-    [403, "bot", "Nous n'avons pas pu vérifier"],
-    [429, "too_many", "plusieurs demandes en cours"],
+  // Trop de demandes en cours pour une adresse e-mail, ou trop de demandes parties d'une même connexion : deux phrases, car
+  // la seconde ne dit rien des demandes de ce client, qui peut n'en avoir aucune.
+  const MANY_REQUESTS = "plusieurs demandes en cours";
+  const SHARED_CONNECTION = "Beaucoup de demandes sont parties de cette connexion";
+  for (const [status, json, text, other] of [
+    [403, { error: "bot" }, "Nous n'avons pas pu vérifier", MANY_REQUESTS],
+    [429, { error: "too_many", reason: "email" }, MANY_REQUESTS, SHARED_CONNECTION],
+    [429, { error: "too_many", reason: "ip" }, SHARED_CONNECTION, MANY_REQUESTS],
   ] as const) {
-    await page.route(REQUESTS, (route) => route.fulfill({ status, json: { error } }));
+    await page.route(REQUESTS, (route) => route.fulfill({ status, json }));
     await send(page).click();
     const problem = page.getByRole("alert").filter({ hasText: text });
     await expect(problem).toBeVisible();
+    await expect(problem).not.toContainText(other, { useInnerText: true }); // les autres phrases sont dans la page, masquées
     await expectContact(problem);
     await expectKept(page, who);
     await expect(send(page)).toBeEnabled();

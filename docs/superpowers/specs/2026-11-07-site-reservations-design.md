@@ -326,7 +326,7 @@ Tous viennent de `/home/sw0och/Spot_pub_Brotobooth` et du dossier `brand/` :
 - **En-têtes :** politique de sécurité du contenu sur les pages statiques et dynamiques.
 - **Journaux :** aucune donnée personnelle dans les journaux.
 - **Minimisation :** seules les données utiles à la prestation sont demandées. L'adresse IP n'est conservée que sous forme d'empreinte salée, et seulement pour les limites.
-- **Conservation :** les demandes refusées ou expirées sont anonymisées automatiquement au bout de 12 mois. La durée exacte figure dans la politique de confidentialité.
+- **Conservation :** les demandes refusées, expirées ou annulées avant tout acompte sont anonymisées automatiquement au bout de 12 mois. La durée exacte figure dans la politique de confidentialité.
 - **Hébergement des données :** D1 dans l'Union européenne, Resend en région européenne. Cloudflare, Stripe, Resend et Telegram sont cités dans la politique de confidentialité, Telegram recevant le nom du client et le lieu.
 
 ## 10. Points juridiques à faire valider
