@@ -31,7 +31,8 @@ type Booking = {
   notes: string | null;
 };
 
-type HistoryEntry = { at: string; actor: string; event: string; detail: string | null };
+/** `detail` n'est pas lu : aucun code du Worker ne l'écrit, et rien ne promet qu'il serait lisible pour le propriétaire. */
+type HistoryEntry = { at: string; actor: string; event: string };
 type Health = { lastCronRun: string | null; failedNotifications: number };
 type Problem = { error?: string; fields?: string[] };
 type Reply<T = unknown> = { status: number; data: T & Problem };
@@ -51,7 +52,7 @@ const STATUS_LABEL: Record<Status, string> = {
 /** Les états qui tiennent une date : sur un jour, ils passent avant une réservation terminée. */
 const HOLDING: Status[] = ["pending_review", "awaiting_deposit", "confirmed", "blocked"];
 
-/** Les événements de l'historique que le propriétaire lit en clair ; les autres s'affichent tels quels. */
+/** Chaque événement que le Worker écrit dans l'historique, en français. */
 const EVENT_LABEL: Record<string, string> = {
   received: "Demande reçue",
   validated: "Validée",
@@ -59,7 +60,15 @@ const EVENT_LABEL: Record<string, string> = {
   paid: "Acompte payé",
   released: "Date libérée (délai dépassé)",
   cancelled: "Annulée",
+  price_adjusted: "Prix ajusté",
+  payment_link_resent: "Lien de paiement renvoyé",
+  payment_session_opened: "Paiement ouvert par le client",
+  balance_paid: "Solde réglé",
+  notes_updated: "Notes modifiées",
 };
+
+/** Un événement que cette page ne connaît pas : jamais son identifiant brut, que le propriétaire ne lirait pas. */
+const UNKNOWN_EVENT = "Modification";
 
 const ACTOR_LABEL: Record<string, string> = { client: "Client", owner: "Vous", system: "Automatique", stripe: "Paiement" };
 
@@ -512,8 +521,8 @@ function historyList(history: HistoryEntry[]): HTMLElement {
           "li",
           {},
           h("time", { datetime: entry.at }, formatMoment(entry.at)),
-          h("span", { class: "what" }, EVENT_LABEL[entry.event] ?? entry.event),
-          h("span", { class: "by" }, [ACTOR_LABEL[entry.actor] ?? entry.actor, entry.detail].filter(Boolean).join(" · ")),
+          h("span", { class: "what" }, EVENT_LABEL[entry.event] ?? UNKNOWN_EVENT),
+          h("span", { class: "by" }, ACTOR_LABEL[entry.actor] ?? ""),
         ),
       ),
     ),

@@ -36,6 +36,8 @@ const settled = (page: Page) =>
     await Promise.all(document.getAnimations().map((animation) => animation.finished));
   });
 
+const historyOf = (sheet: Locator) => sheet.getByRole("list", { name: "Historique" });
+
 const hasNoHorizontalOverflow = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
 
@@ -115,6 +117,9 @@ test("ajuster le prix recalcule l'acompte", async ({ page, request }) => {
   await expect(sheet.getByText("1 500,00 €", { exact: true })).toBeVisible();
   await expect(sheet.getByText("450,00 €", { exact: true })).toBeVisible(); // 30 % du prix
   await expect(sheet.getByText("1 050,00 €", { exact: true })).toBeVisible(); // le solde
+  // L'historique garde la trace du changement, en français.
+  await expect(historyOf(sheet).getByRole("listitem")).toHaveText([/Demande reçue/, /Prix ajusté.*Vous/]);
+  await expect(historyOf(sheet)).not.toContainText("price_adjusted");
 
   // Un acompte saisi remplace le calcul.
   await sheet.getByRole("button", { name: "Ajuster le prix" }).click();
@@ -122,6 +127,7 @@ test("ajuster le prix recalcule l'acompte", async ({ page, request }) => {
   await price.getByLabel("Acompte (€)").fill("500,50");
   await price.getByRole("button", { name: "Enregistrer le prix" }).click();
   await expect(sheet.getByText("500,50 €", { exact: true })).toBeVisible();
+  await expect(historyOf(sheet).getByRole("listitem")).toHaveText([/Demande reçue/, /Prix ajusté/, /Prix ajusté/]);
 
   // Le serveur refuse un acompte plus grand que le prix, et le formulaire le dit.
   await sheet.getByRole("button", { name: "Ajuster le prix" }).click();
@@ -258,6 +264,51 @@ test("marquer le solde comme réglé", async ({ page, request }) => {
   await sheet.getByRole("button", { name: "Solde réglé" }).click();
   await expect(sheet.getByRole("button", { name: "Solde réglé" })).toHaveCount(0);
   await expect(sheet.getByText(/Solde réglé le/)).toBeVisible();
+  await expect(historyOf(sheet).getByRole("listitem")).toHaveText([/Demande reçue/, /Solde réglé.*Vous/]);
+  await expect(historyOf(sheet)).not.toContainText("balance_paid");
+});
+
+test("l'historique nomme chaque modification en français", async ({ page, request }) => {
+  const booking = await seed(request, "awaiting");
+  await page.goto(`/admin#${booking.id}`);
+  const sheet = sheetOf(page, booking.name);
+  const history = historyOf(sheet);
+
+  await sheet.getByRole("button", { name: "Renvoyer le lien" }).click();
+  await expect(history.getByRole("listitem")).toHaveText([/Demande reçue/, /Validée/, /Lien de paiement renvoyé.*Vous/]);
+
+  // Le client ouvre la page de paiement : c'est lui qui agit.
+  const opened = await request.post(`/acompte/${booking.token}`, { headers: { Origin: ORIGIN }, maxRedirects: 0 });
+  expect(opened.status()).toBe(303);
+  await page.reload();
+  await expect(history.getByRole("listitem")).toHaveText([
+    /Demande reçue/,
+    /Validée/,
+    /Lien de paiement renvoyé/,
+    /Paiement ouvert par le client.*Client/,
+  ]);
+
+  await sheet.getByLabel("Notes").fill("Rappeler le client lundi.");
+  await sheet.getByRole("button", { name: "Enregistrer les notes" }).click();
+  await expect(history.getByRole("listitem").last()).toContainText(/Notes modifiées.*Vous/);
+
+  // Aucun identifiant du Worker (`payment_link_resent`, `notes_updated`...) ne s'affiche.
+  expect(await history.innerText()).not.toMatch(/[a-z]+_[a-z]+/);
+});
+
+test("un événement inconnu s'affiche comme une modification, sans son identifiant", async ({ page, request }) => {
+  const booking = await seed(request, "confirmed");
+  await page.route(`**/api/admin/bookings/${booking.id}`, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.history.push({ at: "2026-11-08T10:00:00.000Z", actor: "system", event: "futur_evenement", detail: "futur_detail" });
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(`/admin#${booking.id}`);
+  const history = historyOf(sheetOf(page, booking.name));
+  await expect(history.getByRole("listitem").last()).toContainText(/Modification.*Automatique/);
+  await expect(history).not.toContainText("futur_evenement");
+  await expect(history).not.toContainText("futur_detail");
 });
 
 test("la santé affiche le dernier passage", async ({ page, request }) => {
