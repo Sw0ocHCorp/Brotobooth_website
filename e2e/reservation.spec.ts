@@ -23,7 +23,7 @@ const longDate = (date: string) => DAY.format(new Date(`${date}T00:00:00Z`));
 const days = (page: Page) => page.locator("#days");
 const send = (page: Page) => page.getByRole("button", { name: "Envoyer ma demande" });
 const terms = (page: Page) => page.getByLabel("J'accepte les conditions générales de vente");
-const confirmed = (page: Page) => page.getByRole("heading", { name: "Demande envoyée" });
+const confirmed = (page: Page) => page.getByRole("heading", { name: "Merci, votre demande est envoyée !" });
 
 /** Une zone donne le contact de l'offre : un lien par moyen renseigné, aucun pour un moyen encore vide. */
 async function expectContact(zone: Locator) {
@@ -61,10 +61,13 @@ const fakeTurnstile = ({ failOnce = false } = {}) => `
     reset: () => {},
   };`;
 
+/** Une phrase qui invite à nous contacter n'est écrite que si l'offre dit comment. */
+const hasContact = Boolean(offer.contact.phone || offer.contact.email);
+
 /** Ce que le client a saisi est toujours là. */
 async function expectKept(page: Page, who: ReturnType<typeof client>) {
-  await expect(page.getByLabel("Événement")).toHaveValue("Anniversaire");
-  await expect(page.getByLabel("Horaires")).toHaveValue(who.hours);
+  await expect(page.getByLabel("Type d'événement")).toHaveValue("Anniversaire");
+  await expect(page.getByLabel("Horaires de l'événement")).toHaveValue(who.hours);
   await expect(page.getByLabel("Lieu")).toHaveValue(who.venue);
   await expect(page.getByLabel("Nom")).toHaveValue(who.name);
   await expect(page.getByLabel("Téléphone")).toHaveValue(who.phone);
@@ -100,7 +103,9 @@ test("le parcours complet", async ({ page, request }) => {
   await send(page).click();
   await expect(confirmed(page)).toBeVisible();
   await expect(crumbs).toBeHidden();
-  await expect(page.getByText(/répondons sous 72 h/).filter({ visible: true })).toContainText(`Nous gardons le ${longDate(date)} pour vous`);
+  const done = page.getByText(/répondons sous 72\sh/).filter({ visible: true });
+  await expect(done).toContainText(`Nous gardons le ${longDate(date)} pour vous`);
+  await expect(done).toContainText("Si vous ne voyez pas l'e-mail, regardez dans vos courriers indésirables.");
   await expect(page.getByRole("link", { name: "Retour à l'accueil" })).toHaveAttribute("href", "/");
 
   // La demande est arrivée telle que le client l'a saisie, et elle tient la date. Les demandes des tests précédents,
@@ -144,6 +149,20 @@ test("une formule présélectionnée passe directement aux coordonnées après l
   expect(sent).toMatchObject({ plan: SECOND_PLAN.id, terms: true, turnstile_token: "" });
 });
 
+// Le client renvoie une demande déjà reçue (double envoi, autre onglet) : rien n'est en double, et il sait où lire la suite.
+test("une demande déjà reçue rassure le client sans rien envoyer de plus", async ({ page }) => {
+  const date = await reachDetails(page);
+  await fillDetails(page);
+  await page.route(REQUESTS, (route) => route.fulfill({ status: 200, json: { status: "already_requested" } }));
+  await send(page).click();
+  await expect(confirmed(page)).toBeVisible();
+  const note = page.getByText("nous est déjà parvenue").filter({ visible: true });
+  await expect(note).toHaveText(
+    new RegExp(`^Bonne nouvelle\\s: votre demande pour le ${longDate(date)} nous est déjà parvenue, inutile de la renvoyer\\. Vous trouverez dans vos e-mails son récapitulatif, puis notre réponse\\.$`),
+  );
+  await expect(page.getByText(/premier envoi|répondons sous/).filter({ visible: true })).toHaveCount(0);
+});
+
 test("une date prise est barrée et inactive", async ({ page, request }) => {
   const { date } = await seed(request, "pending");
   await page.goto("/reserver");
@@ -156,11 +175,16 @@ test("une date prise est barrée et inactive", async ({ page, request }) => {
   if ((await next.count()) > 0) await expect(next).toHaveAccessibleName(`${longDate(addDays(date, 1))}, libre`);
 });
 
-test("les dates trop proches sont inactives", async ({ page, request }) => {
+test("les dates trop proches sont inactives, et la page dit pourquoi", async ({ page, request }) => {
   const today = isoDate(new Date());
   const { earliest } = await (await request.get(`/api/availability?from=${today}&to=${addDays(today, 31)}`)).json();
   await page.goto("/reserver");
   await expect(days(page)).toHaveAttribute("aria-busy", "false");
+  // Des jours grisés sans un mot laisseraient croire que tout est pris, ou que le site est en panne.
+  const why = page.getByText(new RegExp(`En ligne, une date se réserve au moins ${offer.minLeadDays}\\sjours à l'avance\\.`));
+  await expect(why).toBeVisible();
+  await expect(why).toContainText(hasContact ? "Si c'est plus urgent, appelez-nous" : /avance\.\s*$/);
+  await expectContact(why);
 
   // Le calendrier s'ouvre sur le mois de la première date possible, et ne remonte pas avant.
   await expect(days(page).locator(`[data-date="${earliest}"]`)).toBeEnabled();
@@ -184,7 +208,7 @@ test("si la date vient d'être prise, le client le voit et revient au calendrier
   const refreshed = page.waitForRequest((req) => isAvailability(new URL(req.url())));
   await send(page).click();
   await expect(page.getByRole("heading", { name: "Choisissez votre date" })).toBeVisible();
-  await expect(page.getByText("Cette date vient d'être prise")).toBeVisible();
+  await expect(page.getByText("Cette date vient d'être réservée par quelqu'un d'autre. Choisissez-en une autre : vos informations sont conservées.")).toBeVisible();
   await refreshed;
   const day = days(page).locator(`[data-date="${date}"]`);
   await expect(day).toBeDisabled();
@@ -195,7 +219,7 @@ test("si la date vient d'être prise, le client le voit et revient au calendrier
 
   // Une autre date, et rien n'est à ressaisir : la formule et les coordonnées sont gardées.
   await pickFreeDate(page);
-  await expect(page.getByText("Cette date vient d'être prise")).toBeHidden();
+  await expect(page.getByText("Cette date vient d'être réservée par quelqu'un d'autre")).toBeHidden();
   await page.getByRole("button", { name: "Continuer" }).click();
   await expectKept(page, who);
   await send(page).click();
@@ -205,7 +229,7 @@ test("si la date vient d'être prise, le client le voit et revient au calendrier
 test("une coupure réseau garde la saisie et donne le contact", async ({ page }) => {
   await reachDetails(page);
   const who = await fillDetails(page);
-  const problem = page.getByRole("alert").filter({ hasText: "Votre demande n'est pas partie" });
+  const problem = page.getByRole("alert").filter({ hasText: "Votre demande n'a pas pu partir. Vos informations sont conservées : réessayez dans un instant." });
 
   // La connexion coupée, puis le serveur en panne : à chaque fois, la saisie reste et le contact apparaît.
   await page.route(REQUESTS, (route) => route.abort("internetdisconnected"));
@@ -231,10 +255,10 @@ test("un refus anti-robots ou trop de demandes s'expliquent, et un nouvel essai 
   const who = await fillDetails(page);
   // Trop de demandes en cours pour une adresse e-mail, ou trop de demandes parties d'une même connexion : deux phrases, car
   // la seconde ne dit rien des demandes de ce client, qui peut n'en avoir aucune.
-  const MANY_REQUESTS = "plusieurs demandes en cours";
-  const SHARED_CONNECTION = "Beaucoup de demandes sont parties de cette connexion";
+  const MANY_REQUESTS = `Vous avez déjà ${offer.maxActivePerEmail} demande`;
+  const SHARED_CONNECTION = "Nous ne pouvons pas enregistrer de nouvelle demande depuis cette connexion pour le moment. Réessayez demain";
   for (const [status, json, text, other] of [
-    [403, { error: "bot" }, "Nous n'avons pas pu vérifier", MANY_REQUESTS],
+    [403, { error: "bot" }, "La vérification de sécurité n'a pas abouti. Vos informations sont conservées", MANY_REQUESTS],
     [429, { error: "too_many", reason: "email" }, MANY_REQUESTS, SHARED_CONNECTION],
     [429, { error: "too_many", reason: "ip" }, SHARED_CONNECTION, MANY_REQUESTS],
   ] as const) {
@@ -248,6 +272,15 @@ test("un refus anti-robots ou trop de demandes s'expliquent, et un nouvel essai 
     await expect(send(page)).toBeEnabled();
     await page.unroute(REQUESTS);
   }
+  // La limite de la connexion ne reproche rien au client, et ne l'invite à nous contacter que si l'offre dit comment.
+  const shared = page.locator('[data-problem="too_many_ip"]');
+  await expect(shared).not.toContainText(/beaucoup|24 heures/i);
+  if (hasContact) await expect(shared).toContainText("ou contactez-nous pour réserver dès maintenant.");
+  else await expect(shared).toHaveText(/Réessayez demain\.$/);
+  // La limite par adresse e-mail dit combien de demandes en cours elle permet, et ce qui suit.
+  await expect(page.locator('[data-problem="too_many"]')).toContainText(
+    new RegExp(`déjà ${offer.maxActivePerEmail} demandes? en cours\\. Nous vous répondons d'abord sur celles?-ci, sous 72\\sh\\s; vous pourrez ensuite en envoyer une nouvelle\\.`),
+  );
   await send(page).click();
   await expect(confirmed(page)).toBeVisible();
 });
@@ -278,7 +311,12 @@ test("une erreur de champ se voit à côté du champ", async ({ page }) => {
 
 test("un champ oublié est signalé avant l'envoi, sans rien envoyer", async ({ page }) => {
   await reachDetails(page);
+  // Aucun type d'événement n'est choisi d'avance : un oubli n'envoie pas « Mariage » à la place du client.
+  const type = page.getByLabel("Type d'événement");
+  await expect(type).toHaveValue("");
+  await expect(type.locator("option").first()).toHaveText("Choisir…");
   await fillDetails(page);
+  await type.selectOption({ index: 0 });
   await page.getByLabel("Nom").fill("");
   await terms(page).uncheck();
   let posts = 0;
@@ -287,7 +325,9 @@ test("un champ oublié est signalé avant l'envoi, sans rien envoyer", async ({ 
     return route.fulfill({ status: 201, json: { status: "created" } });
   });
   await send(page).click();
-  await expect(page.getByLabel("Nom")).toBeFocused();
+  await expect(type).toBeFocused();
+  await expect(page.getByText("Choisissez le type d'événement.")).toBeVisible();
+  await expect(type).toHaveAccessibleDescription("Choisissez le type d'événement.");
   await expect(page.getByText("Indiquez votre nom")).toBeVisible();
   await expect(page.getByText("Acceptez les conditions générales de vente")).toBeVisible();
   expect(posts).toBe(0);
@@ -296,7 +336,7 @@ test("un champ oublié est signalé avant l'envoi, sans rien envoyer", async ({ 
 test("si les disponibilités ne répondent pas, le contact remplace le calendrier", async ({ page }) => {
   await page.route(isAvailability, (route) => route.abort("internetdisconnected"));
   await page.goto("/reserver");
-  const down = page.getByRole("alert").filter({ hasText: "Le calendrier ne répond pas" });
+  const down = page.getByRole("alert").filter({ hasText: "Nous n'arrivons pas à afficher le calendrier pour le moment." });
   await expect(down).toBeVisible();
   await expectContact(down);
   await expect(days(page)).toBeHidden();
@@ -349,7 +389,7 @@ test("si le script anti-robots ne se charge pas, un refus le redemande et l'envo
   await expect.poll(() => scripts).toBe(1);
   await fillDetails(page);
   await send(page).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Nous n'avons pas pu vérifier" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "La vérification de sécurité n'a pas abouti" })).toBeVisible();
   await expect.poll(() => scripts).toBe(2);
   await page.waitForFunction(() => "turnstile" in window);
 
@@ -376,7 +416,7 @@ test("une panne pendant l'envoi laisse le formulaire utilisable", async ({ page 
 
   // La lecture du jeton lève : rien n'est parti, le client le sait, et le bouton répond de nouveau.
   await send(page).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Votre demande n'est pas partie" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Votre demande n'a pas pu partir" })).toBeVisible();
   await expect(send(page)).toBeEnabled();
   await expectKept(page, who);
   expect(posts).toBe(0);
@@ -591,8 +631,10 @@ test.describe("sans JavaScript", () => {
 
   test("sans JavaScript, la page donne le téléphone et l'e-mail", async ({ page }) => {
     await page.goto("/reserver");
-    const notice = page.getByText("Le calendrier a besoin de JavaScript");
+    const notice = page.getByText("Le calendrier ne s'affiche pas sur votre navigateur. Essayez-en un autre.");
     await expect(notice).toBeVisible();
+    await expect(notice).toContainText(hasContact ? "Pour réserver sans le calendrier, appelez-nous" : /autre\.\s*$/);
+    await expect(notice).not.toContainText("JavaScript");
     await expectContact(notice);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Choisissez votre date");
     // Rien d'inutilisable : ni calendrier vide, ni bouton qui ne mène nulle part, ni commandes de la vidéo sous le voile.

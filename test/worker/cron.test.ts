@@ -428,7 +428,7 @@ describe("runCron", () => {
       await request();
       await runCron(deps);
       expect(deps.emails.map((m) => m.subject)).toEqual(
-        expect.arrayContaining(["Votre demande pour le samedi 19 décembre 2026", "Nouvelle demande pour le samedi 19 décembre 2026"]),
+        expect.arrayContaining(["Nous avons bien reçu votre demande pour le samedi 19 décembre 2026", "Nouvelle demande pour le samedi 19 décembre 2026"]),
       );
       expect(deps.telegrams).toHaveLength(1);
       expect(deps.telegrams[0].buttons!.flat()).toHaveLength(3);
@@ -447,9 +447,9 @@ describe("runCron", () => {
       deps.setNow(afterHold(due));
       await runCron(deps);
       expect(deps.emails.map((m) => m.subject)).toEqual(
-        expect.arrayContaining(["Votre demande pour le samedi 19 décembre 2026", "Date libérée : samedi 19 décembre 2026"]),
+        expect.arrayContaining(["Désolés de ne pas avoir répondu à temps à votre demande du samedi 19 décembre 2026", "Date libérée : samedi 19 décembre 2026"]),
       );
-      expect(deps.emails.some((m) => m.to === "camille@example.test" && /n'est plus réservée/.test(m.text))).toBe(true);
+      expect(deps.emails.some((m) => m.to === "camille@example.test" && /n'est plus gardée/.test(m.text))).toBe(true);
     });
 
     it("n'envoie qu'une fois un même message, d'un passage à l'autre", async () => {

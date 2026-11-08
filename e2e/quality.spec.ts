@@ -80,16 +80,19 @@ test.describe("pages légales", () => {
     }
   });
 
-  test("les CGV parlent d'acompte et portent leur version", async ({ page }) => {
+  test("les CGV parlent d'acompte et portent leur version, datée en toutes lettres", async ({ page }) => {
     await page.goto("/cgv");
     await expect(page.getByText(/acompte/i).first()).toBeVisible();
-    await expect(page.getByText(offer.termsVersion)).toBeVisible();
+    const [year, month, day] = offer.termsVersion.split("-").map(Number);
+    const monthName = new Intl.DateTimeFormat("fr-FR", { month: "long", timeZone: "UTC" }).format(Date.UTC(year, month - 1, 1));
+    await expect(page.locator(".meta")).toHaveText(`Version du ${day === 1 ? "1er" : day} ${monthName} ${year}`);
   });
 
   test("l'acompte engage les deux parties, laisse le solde dû et porte le pourcentage de l'offre", async ({ page }) => {
     await page.goto("/cgv");
     const deposit = page.getByRole("region", { name: "L'acompte" });
-    await expect(deposit).toContainText("engage les deux parties");
+    await expect(deposit).toContainText("la réservation vous engage, et nous aussi");
+    await expect(deposit).not.toContainText("arrhes");
     await expect(deposit).toContainText("solde reste dû");
     // Tant que l'offre est provisoire, le pourcentage n'est pas inventé.
     await expect(deposit).toContainText(offer.draft ? TODO : `${offer.depositPercent} %`);
@@ -118,12 +121,16 @@ test.describe("pages légales", () => {
     await expect(telegram).toContainText("le lieu de votre événement");
     await expect(telegram).toContainText("votre numéro de téléphone");
     await expect(telegram).toContainText("jamais votre adresse e-mail");
-    await expect(telegram).toContainText("canal d'alerte");
+    await expect(telegram).toContainText("la messagerie que nous utilisons pour être prévenus");
+    await expect(telegram).not.toContainText("canal d'alerte");
   });
 
   test("la confidentialité donne la durée de conservation, les droits et Turnstile", async ({ page }) => {
     await page.goto("/confidentialite");
     await expect(page.getByRole("region", { name: "Combien de temps nous les gardons" })).toContainText("12 mois");
+    // L'adresse IP n'est gardée que brouillée, dit sans vocabulaire de développeur.
+    await expect(page.getByRole("main")).toContainText("une version brouillée de votre adresse IP");
+    await expect(page.getByRole("main")).not.toContainText(/empreinte|secret/);
     await expect(page.getByRole("region", { name: "Vos droits" })).toContainText(/CNIL/);
     await expect(page.getByRole("region", { name: "Vérification anti-robots" })).toContainText("Turnstile");
     await expect(page.getByRole("region", { name: "Cookies" })).toContainText("aucun cookie");

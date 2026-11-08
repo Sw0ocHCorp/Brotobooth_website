@@ -72,14 +72,14 @@ test("la barre est claire sur l'ouverture, puis voilée pour rester lisible", as
 
 test("les formules viennent de la configuration et mènent à la réservation", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "Choisir", exact: true }).first()).toHaveAttribute("href", `/reserver?formule=${FIRST_PLAN.id}`);
+  await expect(page.getByRole("link", { name: "Choisir cette formule", exact: true }).first()).toHaveAttribute("href", `/reserver?formule=${FIRST_PLAN.id}`);
 
   const cards = page.locator("#formules").getByRole("article");
   await expect(cards).toHaveCount(offer.plans.length);
   for (const [index, plan] of offer.plans.entries()) {
     const card = cards.nth(index);
     await expect(card.getByRole("heading", { level: 3 })).toHaveText(plan.name);
-    const choose = card.getByRole("link", { name: "Choisir", exact: true });
+    const choose = card.getByRole("link", { name: "Choisir cette formule", exact: true });
     await expect(choose).toHaveAttribute("href", `/reserver?formule=${plan.id}`);
     await expect(choose).toHaveAccessibleDescription(plan.name);
     // Une formule encore sans prix (offre provisoire) n'affiche aucun montant.
@@ -87,6 +87,17 @@ test("les formules viennent de la configuration et mènent à la réservation", 
     else await expect(card).not.toContainText("€");
     for (const line of plan.includes) await expect(card).toContainText(line);
   }
+});
+
+// Chaque phrase parle à celui qui réserve : ce que vivront ses invités, ce que nous installons chez lui, rien qui n'existe pas encore.
+test("l'accueil parle à celui qui réserve", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#hero p")).toHaveText("Vos invités se prennent en photo, repartent avec leur tirage et se laissent des messages audio-vidéo au combiné.");
+  await expect(page.locator(".founders blockquote")).toHaveText(/^Une borne construite de nos mains, que nous venons installer chez vous\.$/);
+  await expect(page.locator(".founders p")).toHaveText(
+    "Nous avons construit cette borne nous-mêmes, du meuble en bois au logiciel. Nous l'installons chez vous, sur le lieu de votre événement.",
+  );
+  await expect(page.getByRole("main")).not.toContainText(/Bientôt|Boîte à questions|notre premier/);
 });
 
 test("au plus un bouton rose par écran", async ({ page }) => {

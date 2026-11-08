@@ -74,7 +74,7 @@ describe("telegramWebhook : valider", () => {
 
     const booking = (await getBooking(env.DB, b.id))!;
     expect(booking.status).toBe("awaiting_deposit");
-    expect(toClient().map((m) => m.subject)).toEqual(["Votre acompte pour le samedi 19 décembre 2026"]);
+    expect(toClient().map((m) => m.subject)).toEqual(["Bonne nouvelle : nous pouvons être là le samedi 19 décembre 2026"]);
     expect(toClient()[0].text).toContain(`/acompte/${booking.token}`);
     expect(deps.answers).toEqual(["cb"]);
     expect(toast()).toMatch(/Validée/);
@@ -107,7 +107,7 @@ describe("telegramWebhook : valider", () => {
 
   it("deux appuis simultanés n'envoient le lien qu'une fois", async () => {
     await Promise.all([tap(`v:${b.id}`), tap(`v:${b.id}`)]);
-    expect(toClient().filter((m) => m.subject.startsWith("Votre acompte"))).toHaveLength(1);
+    expect(toClient().filter((m) => m.subject.startsWith("Bonne nouvelle"))).toHaveLength(1);
     expect(deps.answerTexts.filter((t) => /déjà traitée/i.test(t ?? ""))).toHaveLength(1);
   });
 
@@ -141,7 +141,7 @@ describe("telegramWebhook : refuser", () => {
     await tap(`rc:${b.id}`);
     expect(await status()).toBe("refused");
     expect(await listUnavailableDates(env.DB, "2026-12-01", "2026-12-31")).not.toContain("2026-12-19");
-    expect(toClient().map((m) => m.text)).toEqual([expect.stringContaining("ne pouvons malheureusement pas assurer")]);
+    expect(toClient().map((m) => m.text)).toEqual([expect.stringContaining("nous ne pouvons pas être présents")]);
     expect(lastEdit().html).toContain("Refusée");
     expect(lastEdit().buttons).toBeUndefined();
     expect(toast()).toMatch(/Refusée/);

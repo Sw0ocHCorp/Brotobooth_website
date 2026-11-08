@@ -153,7 +153,7 @@ describe("POST /api/requests : enregistrement", () => {
     expect((await post(body())).status).toBe(201);
     expect(deps.emails.map((m) => [m.to, m.subject])).toEqual(
       expect.arrayContaining([
-        ["camille@example.test", "Votre demande pour le samedi 19 décembre 2026"],
+        ["camille@example.test", "Nous avons bien reçu votre demande pour le samedi 19 décembre 2026"],
         [OWNER_EMAIL, "Nouvelle demande pour le samedi 19 décembre 2026"],
       ]),
     );
@@ -206,7 +206,7 @@ describe("POST /api/requests : enregistrement", () => {
       d.setNow("2026-11-07T10:05:00.000Z");
       await processDue(d);
       expect(d.emails.map((m) => m.subject)).toEqual(
-        expect.arrayContaining(["Votre demande pour le samedi 19 décembre 2026", "Nouvelle demande pour le samedi 19 décembre 2026"]),
+        expect.arrayContaining(["Nous avons bien reçu votre demande pour le samedi 19 décembre 2026", "Nouvelle demande pour le samedi 19 décembre 2026"]),
       );
     } finally {
       log.mockRestore();

@@ -124,8 +124,8 @@ export const client = () => ({
 
 /** La troisième étape remplie comme un client le ferait, conditions de vente acceptées. */
 export async function fillDetails(page: Page, who = client()) {
-  await page.getByLabel("Événement").selectOption("Anniversaire");
-  await page.getByLabel("Horaires").fill(who.hours);
+  await page.getByLabel("Type d'événement").selectOption("Anniversaire");
+  await page.getByLabel("Horaires de l'événement").fill(who.hours);
   await page.getByLabel("Lieu").fill(who.venue);
   await page.getByLabel("Nom").fill(who.name);
   await page.getByLabel("Téléphone").fill(who.phone);

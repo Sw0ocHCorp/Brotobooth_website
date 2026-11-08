@@ -8,9 +8,12 @@ import { cancelBooking, expireHold } from "../../worker/operations";
 import { getBooking, getHistory, type Booking } from "../../worker/repository";
 import { handle } from "../../worker/router";
 import tokens from "../../public/styles/tokens.css?raw";
-import { CHAT_ID, OWNER_EMAIL, T0, fakeDeps, insert, newBooking, notificationRows, resetDb, validatedBooking, type FakeDeps } from "../support";
+import { CHAT_ID, OWNER_EMAIL, SECOND_PLAN, T0, fakeDeps, insert, newBooking, notificationRows, resetDb, validatedBooking, type FakeDeps } from "../support";
 
 const PHONE = "06 12 34 56 78";
+const NBSP = "\u00a0";
+/** En tête de chaque page, « Brotobooth » ramène au site, comme la barre du site : le client venu d'un e-mail sait où il est. */
+const HOME_LINK = /<header class="site"><a class="brand" href="\/">Brotobooth<\/a><\/header>/;
 const DEADLINE = "2026-11-10T10:00:00.000Z";
 
 let deps: FakeDeps;
@@ -93,6 +96,28 @@ describe("GET /acompte/<jeton> : récapitulatif", () => {
     expect(html).toContain(`method="post" action="/acompte/${v.token}"`);
   });
 
+  it("annonce la bonne nouvelle, et que la date est confirmée au paiement", async () => {
+    const html = await (await open(v.token)).text();
+    expect(html).toContain(`Bonjour Camille Martin, bonne nouvelle${NBSP}: nous pouvons être présents à votre événement.`);
+    expect(html).toContain("elle sera confirmée dès que l'acompte sera réglé");
+  });
+
+  // Le client paie en sachant pour quoi : sa formule, le prix total et ce qui restera à régler.
+  it("récapitule la formule, le prix total, l'acompte à régler et le reste à régler ensuite", async () => {
+    const html = await (await open(v.token)).text();
+    expect(html).toContain(`<dt>Formule</dt><dd>${SECOND_PLAN.name}</dd>`);
+    expect(html).toMatch(/<dt>Prix total<\/dt><dd>1\s?500,00 €<\/dd>/);
+    expect(html).toContain('<dt>Acompte à régler</dt><dd class="amount">450,00 €</dd>');
+    expect(html).toMatch(/<dt>Reste à régler ensuite<\/dt><dd>1\s?050,00 €<\/dd>/);
+  });
+
+  it("n'écrit ni prix ni reste à régler tant que le prix n'est pas fixé", async () => {
+    const { booking } = await insert(newBooking({ status: "awaiting_deposit", event_date: "2026-12-26", price_cents: null }));
+    const html = await (await open(booking.token)).text();
+    expect(html).toContain("Payer l'acompte");
+    expect(html).not.toMatch(/Prix total|Reste à régler/);
+  });
+
   it("répond en HTML, sans cache, sans référent hors du site et sans script", async () => {
     const r = await open(v.token);
     expect(r.status).toBe(200);
@@ -135,15 +160,39 @@ describe("GET /acompte/<jeton> : récapitulatif", () => {
   });
 
   it.each([
-    ["pending_review", "bientôt"],
-    ["confirmed", "date est confirmée"],
-    ["expired", "plus réservée"],
-    ["cancelled", "annulée"],
-    ["refused", "pas pu"],
+    ["pending_review", `Vous recevrez notre réponse par e-mail sous ${offer.reviewHours}${NBSP}h au plus tard.`],
+    ["confirmed", "Un e-mail de confirmation vous a été envoyé."],
+    ["expired", `Nous n'avons pas reçu votre acompte dans les ${offer.paymentHours}${NBSP}h prévues${NBSP}: la date du samedi 26 décembre 2026 n'est plus gardée pour vous.`],
+    ["cancelled", "La date du samedi 26 décembre 2026 n'est plus réservée pour vous. Si vous souhaitez une autre date, vous pouvez faire une nouvelle demande."],
+    ["refused", "nous ne pouvons pas être présents à votre événement le samedi 26 décembre 2026"],
   ] as const)("en état %s, la page l'explique et ne propose pas de payer", async (status, text) => {
     const html = await (await open((await withStatus(status)).token)).text();
     expect(html).toContain(text);
     expect(html).not.toContain('method="post"');
+  });
+
+  it.each([
+    ["expired", "Refaire une demande"],
+    ["cancelled", "Faire une nouvelle demande"],
+    ["refused", "Choisir une autre date"],
+  ] as const)("en état %s, la page propose « %s »", async (status, label) => {
+    const html = await (await open((await withStatus(status)).token)).text();
+    expect(html).toContain(`<a class="btn primary" href="/reserver">${label}</a>`);
+  });
+
+  // Le vocabulaire de l'entreprise, et « le délai » sans dire lequel, que le client ne peut pas relier à sa réservation.
+  it.each(["awaiting_deposit", "pending_review", "confirmed", "expired", "cancelled", "refused"] as const)(
+    "en état %s, la page n'emploie aucun vocabulaire interne",
+    async (status) => {
+      const b = status === "awaiting_deposit" ? v : await withStatus(status);
+      const html = await (await open(b.token)).text();
+      expect(html).not.toMatch(/prestation|assurer|délai|bientôt|libér|solde/i);
+    },
+  );
+
+  it.each(["awaiting_deposit", "confirmed", "expired"] as const)("en état %s, la page ramène au site", async (status) => {
+    const b = status === "awaiting_deposit" ? v : await withStatus(status);
+    expect(await (await open(b.token)).text()).toMatch(HOME_LINK);
   });
 
   it("une date non payée à l'échéance n'est plus proposée, même avant le passage de la tâche automatique", async () => {
@@ -159,14 +208,24 @@ describe("GET /acompte/<jeton> : récapitulatif", () => {
     expect(r.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
     const html = await r.text();
     expect(html).toContain("introuvable");
+    expect(html).toContain("Ce lien ne mène à aucune réservation. Vérifiez qu'il est complet (copiez-le en entier depuis votre e-mail), ou contactez-nous.");
     expect(html).toContain(PHONE);
+    expect(html).toContain(`<a class="btn primary" href="/">Retour à l'accueil</a>`);
+    expect(html).toMatch(HOME_LINK);
+  });
+
+  it("sans contact renseigné, la page 404 n'invite pas à contacter", async () => {
+    Object.assign(offer.contact, { phone: "", email: "" });
+    const html = await (await open("jeton-inconnu")).text();
+    expect(html).toContain("Vérifiez qu'il est complet (copiez-le en entier depuis votre e-mail).");
+    expect(html).not.toMatch(/contactez|appelez|écrivez/i);
   });
 
   // Le client arrive sur /acompte/ en recopiant mal son lien : il lit une page, jamais un JSON.
-  it.each([["sans jeton", ""], ["avec un chemin inconnu", "jeton-inconnu/autre/encore"]])(
+  it.each([["sans jeton", ""], ["avec un chemin inconnu", "jeton-inconnu/autre/encore"], ["avec une méthode inattendue", "jeton-inconnu"]])(
     "une adresse /acompte/ %s donne la même page 404 lisible qu'un jeton inconnu",
     async (_label, path) => {
-      for (const method of ["GET", "POST"]) {
+      for (const method of path === "jeton-inconnu" ? ["PUT", "DELETE"] : ["GET", "POST"]) {
         const r = await open(path, { method });
         expect(r.status).toBe(404);
         expect(r.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
@@ -326,6 +385,9 @@ describe("POST /acompte/<jeton> : session de paiement", () => {
     async (origin) => {
       const r = await post(v.token, { Origin: origin });
       expect(r.status).toBe(403);
+      // Le client lit une page qui lui dit quoi faire, jamais du JSON.
+      expect(r.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+      expect(await r.text()).toContain("Cette demande ne vient pas de notre site. Revenez à votre lien de paiement et réessayez.");
       expect(deps.stripe.sessions.size).toBe(0);
       expect((await current()).stripe_session).toBeNull();
     },

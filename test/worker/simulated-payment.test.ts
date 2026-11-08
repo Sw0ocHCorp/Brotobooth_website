@@ -269,12 +269,16 @@ describe("simulatedGateway", () => {
 });
 
 describe("/acompte/<jeton>/simulation : accès", () => {
+  // En production, l'adresse de simulation n'existe pas : qui l'ouvre lit la page introuvable des liens de paiement, pas du JSON.
   it("la page de simulation répond 404 si PAYMENT_MODE n'est pas simulated", async () => {
     const { path, session } = await start();
     for (const vars of [{}, { PAYMENT_MODE: "" }, { PAYMENT_MODE: "live" }]) {
       const closed = simulatedDeps(vars);
-      expect((await send(path, undefined, closed)).status).toBe(404);
-      expect((await send(path, form("paid"), closed)).status).toBe(404);
+      for (const r of [await send(path, undefined, closed), await send(path, form("paid"), closed)]) {
+        expect(r.status).toBe(404);
+        expect(r.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+        expect(await r.text()).toContain("Page introuvable");
+      }
     }
     expect((await current()).status).toBe("awaiting_deposit");
     expect((await stored(session)).status).toBe("open");

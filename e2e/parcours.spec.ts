@@ -15,7 +15,7 @@ test("une réservation de bout en bout", async ({ page, browser, viewport }) => 
   const date = await reachDetails(page);
   await fillDetails(page, who);
   await page.getByRole("button", { name: "Envoyer ma demande" }).click();
-  await expect(page.getByRole("heading", { name: "Demande envoyée" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Merci, votre demande est envoyée !" })).toBeVisible();
 
   // 2. Le propriétaire fixe le prix et valide la demande dans /admin/.
   await page.goto("/admin/");
@@ -33,7 +33,7 @@ test("une réservation de bout en bout", async ({ page, browser, viewport }) => 
   await expect(sheet.getByText("Attente d'acompte", { exact: true })).toBeVisible();
 
   // 3. Le message au client est lisible sur /demo ; son lien mène à la page de paiement. Il part juste après la validation.
-  const message = page.locator("article.card").filter({ hasText: who.email }).filter({ hasText: "Votre acompte pour le" });
+  const message = page.locator("article.card").filter({ hasText: who.email }).filter({ hasText: "Bonne nouvelle : nous pouvons être là le" });
   await expect(async () => {
     await page.goto("/demo");
     await expect(message).toBeVisible({ timeout: 1_000 });
@@ -42,6 +42,10 @@ test("une réservation de bout en bout", async ({ page, browser, viewport }) => 
   await message.getByRole("link", { name: new RegExp(`^${ORIGIN}/acompte/`) }).click();
   await expect(page.getByRole("heading", { name: "Votre acompte" })).toBeVisible();
   await expect(page.locator(".amount")).toHaveText(DEPOSIT);
+  // Le client paie en sachant pour quoi, et le nom du site le ramène à l'accueil.
+  await expect(page.locator(".recap")).toContainText("Prix total");
+  await expect(page.locator(".recap")).toContainText(euros(90_000));
+  await expect(page.getByRole("banner").getByRole("link", { name: "Brotobooth" })).toHaveAttribute("href", "/");
 
   // 4. Le client paie en simulation, puis sa page confirme la date.
   await page.getByRole("button", { name: /Payer l'acompte/ }).click();
