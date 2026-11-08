@@ -16,6 +16,9 @@ const TRIAL_SETTINGS = {
   FAKE_GATEWAYS: "les e-mails et les messages Telegram ne partiraient pas, et l'anti-robots laisserait tout passer",
 };
 
+/** La variable que `astro build` lit pour poser la clé du widget (`src/pages/reserver.astro`). */
+const SITE_KEY_NAME = "PUBLIC_TURNSTILE_SITE_KEY";
+
 const isBlank = (text) => !text || text.trim() === "";
 
 /**
@@ -27,9 +30,11 @@ const isBlank = (text) => !text || text.trim() === "";
  * @param {Record<string, string>} input.legalPages le texte des fichiers sources, par chemin (`src/pages/cgv.astro`)
  * @param {string} input.databaseId le `database_id` de la base D1 dans `wrangler.jsonc`
  * @param {Record<string, string>} input.vars les `vars` de `wrangler.jsonc`
+ * @param {string} [input.siteKey] la clé publique du widget anti-robots que la construction de la publication utilisera ; non contrôlée si elle n'est pas fournie
+ * @param {boolean} [input.realPaymentWired] `true` une fois le vrai paiement branché ; non contrôlé s'il n'est pas fourni
  * @returns {string[]}
  */
-export function findLaunchBlockers({ offer, legalPages, databaseId, vars }) {
+export function findLaunchBlockers({ offer, legalPages, databaseId, vars, siteKey, realPaymentWired }) {
   const blockers = [];
   if (offer.draft) {
     blockers.push("Les contenus de config/offer.json sont encore provisoires : une fois formules, prix et contacts renseignés, retirez la ligne « draft ».");
@@ -56,7 +61,17 @@ export function findLaunchBlockers({ offer, legalPages, databaseId, vars }) {
   for (const [name, consequence] of Object.entries(TRIAL_SETTINGS)) {
     if (name in vars) blockers.push(`Le réglage d'essai « ${name} » est encore dans wrangler.jsonc, et ${consequence} : retirez-le de « vars ».`);
   }
+  if (siteKey !== undefined && isBlank(siteKey)) {
+    blockers.push(`La clé publique du widget anti-robots manque, et toutes les demandes seraient refusées comme venant d'un robot : écrivez ${SITE_KEY_NAME} dans .env.production (étape 7 de docs/mise-en-ligne.md).`);
+  }
+  if (realPaymentWired === false) blockers.push("Le paiement réel de l'acompte n'est pas encore branché.");
   return blockers;
+}
+
+/** La valeur de `name` dans le texte d'un fichier `.env` (`NOM=valeur`, guillemets et `export` permis), ou `undefined` si la variable n'y est pas. */
+export function envValue(text, name) {
+  const line = text.match(new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=(.*)$`, "m"));
+  return line?.[1].trim().replace(/^(["'])(.*)\1$/, "$2");
 }
 
 const STRINGS_OR_COMMENTS = /("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g;
@@ -72,8 +87,11 @@ export const parseJsonc = (text) =>
 const SOURCE_FILE = /\.(astro|ts)$/;
 const MARKER_SOURCE = "src/components/Fact.astro";
 
+/** Le fichier dont l'existence dit que le vrai paiement est branché : la tâche 20 le crée. */
+const REAL_PAYMENT_FILE = "worker/stripe.ts";
+
 async function readLaunchInput(root) {
-  const { readFile, readdir } = await import("node:fs/promises");
+  const { access, readFile, readdir } = await import("node:fs/promises");
   const { join } = await import("node:path");
   const read = (file) => readFile(join(root, file), "utf8");
 
@@ -85,7 +103,17 @@ async function readLaunchInput(root) {
     const path = `src/${file.replaceAll("\\", "/")}`;
     if (SOURCE_FILE.test(path) && path !== MARKER_SOURCE) legalPages[path] = await read(path);
   }
-  return { offer: JSON.parse(await read("config/offer.json")), legalPages, databaseId: database?.database_id ?? "", vars: wrangler.vars ?? {} };
+  // Comme la construction (Vite) : une variable de l'environnement, même vide, l'emporte sur `.env.production`.
+  const siteKey = process.env[SITE_KEY_NAME] ?? envValue(await read(".env.production").catch(() => ""), SITE_KEY_NAME) ?? "";
+  const realPaymentWired = await access(join(root, REAL_PAYMENT_FILE)).then(() => true, () => false);
+  return {
+    offer: JSON.parse(await read("config/offer.json")),
+    legalPages,
+    databaseId: database?.database_id ?? "",
+    vars: wrangler.vars ?? {},
+    siteKey,
+    realPaymentWired,
+  };
 }
 
 async function main(root) {
@@ -100,16 +128,14 @@ async function main(root) {
 }
 
 /**
- * Lancé par `node`, le script contrôle ; importé par un test (Vitest tourne dans workerd, où `process.argv` n'a pas de
- * deuxième élément), il n'exporte que les fonctions. Une panne de lecture sort en erreur : jamais un « tout est bon » par défaut.
+ * Lancé par `node` (`process.argv[1]` existe), le script contrôle, sans autre condition : aucune comparaison de chemin ne peut
+ * le faire taire, et une panne de lecture sort en erreur plutôt qu'en « tout est bon ». Importé par un test, il n'exporte que
+ * les fonctions : Vitest tourne dans workerd, où `process.argv` n'a pas de deuxième élément.
  */
-const argv = typeof process === "undefined" ? [] : process.argv;
-if (argv[1]) {
-  const [{ realpathSync }, { fileURLToPath }] = await Promise.all([import("node:fs"), import("node:url")]);
-  if (realpathSync(fileURLToPath(import.meta.url)) === realpathSync(argv[1])) {
-    await main(fileURLToPath(new URL("..", import.meta.url))).catch((error) => {
-      console.error(`Contrôle impossible : ${error instanceof Error ? error.message : "erreur inconnue"}.`);
-      process.exitCode = 1;
-    });
-  }
+if (typeof process !== "undefined" && process.argv[1]) {
+  const { fileURLToPath } = await import("node:url");
+  await main(fileURLToPath(new URL("..", import.meta.url))).catch((error) => {
+    console.error(`Contrôle impossible : ${error instanceof Error ? error.message : "erreur inconnue"}.`);
+    process.exitCode = 1;
+  });
 }

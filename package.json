@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p src/scripts && tsc --noEmit -p e2e",
     "demo": "node scripts/demo.mjs",
     "demo:reset": "rm -rf .wrangler/demo",
-    "deploy": "npm test && npx playwright test && node scripts/check-launch.mjs && astro build && wrangler deploy"
+    "deploy": "node scripts/check-launch.mjs && npm test && npx playwright test --project=chromium-telephone --project=chromium-ordinateur && astro build && wrangler deploy"
   },
   "dependencies": {
     "stripe": "^23.1.0"

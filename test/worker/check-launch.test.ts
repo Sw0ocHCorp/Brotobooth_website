@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findLaunchBlockers, parseJsonc } from "../../scripts/check-launch.mjs";
+import { envValue, findLaunchBlockers, parseJsonc } from "../../scripts/check-launch.mjs";
 import type { Offer } from "../../worker/offer";
 
 /** Le contrôle d'avant publication (spec, sections 13 et 14) : il refuse tant qu'un contenu manque ou qu'un réglage d'essai reste. */
@@ -36,6 +36,8 @@ const complete = {
   },
   databaseId: REAL_DATABASE_ID,
   vars: { BASE_URL: "https://brotobooth.fr" } as Record<string, string>,
+  siteKey: "cle-publique-de-test",
+  realPaymentWired: true,
 };
 
 describe("findLaunchBlockers", () => {
@@ -85,6 +87,21 @@ describe("findLaunchBlockers", () => {
     expect(blockers).toEqual([expect.stringMatching(/téléphone/), expect.stringMatching(/e-mail/)]);
   });
 
+  it("refuse une clé publique Turnstile absente ou vide : toutes les demandes seraient prises pour des robots", () => {
+    for (const siteKey of ["", "  ", "\n"]) {
+      expect(findLaunchBlockers({ ...complete, siteKey }), JSON.stringify(siteKey)).toEqual([expect.stringMatching(/anti-robots.*PUBLIC_TURNSTILE_SITE_KEY/)]);
+    }
+  });
+
+  it("ne contrôle la clé et le paiement réel que lorsque l'appelant les fournit", () => {
+    const { siteKey, realPaymentWired, ...withoutThem } = complete;
+    expect(findLaunchBlockers(withoutThem)).toEqual([]);
+  });
+
+  it("bloque tant que le paiement réel de l'acompte n'est pas branché", () => {
+    expect(findLaunchBlockers({ ...complete, realPaymentWired: false })).toEqual(["Le paiement réel de l'acompte n'est pas encore branché."]);
+  });
+
   it("refuse une adresse de base D1 vide ou nulle", () => {
     for (const databaseId of [ZERO_DATABASE_ID, ""]) {
       expect(findLaunchBlockers({ ...complete, databaseId }), databaseId).toEqual([expect.stringMatching(/D1/)]);
@@ -127,8 +144,10 @@ describe("findLaunchBlockers", () => {
       legalPages: { "src/pages/cgv.astro": `[À compléter] ${DRAFT_COMMENT}` },
       databaseId: ZERO_DATABASE_ID,
       vars: { PAYMENT_MODE: "simulated", FAKE_GATEWAYS: "1" },
+      siteKey: "",
+      realPaymentWired: false,
     });
-    expect(blockers.length).toBeGreaterThanOrEqual(8);
+    expect(blockers.length).toBeGreaterThanOrEqual(10);
     for (const blocker of blockers) {
       expect(blocker, blocker).toMatch(/^[A-ZÀ-Ý«].*\.$/);
       expect(blocker, blocker).not.toContain("\n");
@@ -148,5 +167,25 @@ describe("parseJsonc", () => {
       d1_databases: [{ database_id: "http://exemple.test/a//b" }],
       vars: { BASE_URL: "https://brotobooth.fr" },
     });
+  });
+});
+
+describe("envValue", () => {
+  const FILE = `# la clé du widget
+PUBLIC_OTHER=non
+export PUBLIC_TURNSTILE_SITE_KEY = "cle-entre-guillemets"
+`;
+
+  it("lit la valeur d'une variable, sans guillemets ni espaces", () => {
+    expect(envValue(FILE, "PUBLIC_TURNSTILE_SITE_KEY")).toBe("cle-entre-guillemets");
+    expect(envValue("PUBLIC_TURNSTILE_SITE_KEY=abc\r\n", "PUBLIC_TURNSTILE_SITE_KEY")).toBe("abc");
+    expect(envValue("PUBLIC_TURNSTILE_SITE_KEY='abc'", "PUBLIC_TURNSTILE_SITE_KEY")).toBe("abc");
+  });
+
+  it("donne une valeur vide pour une ligne vide, et rien pour une variable absente ou mise en commentaire", () => {
+    expect(envValue("PUBLIC_TURNSTILE_SITE_KEY=\n", "PUBLIC_TURNSTILE_SITE_KEY")).toBe("");
+    expect(envValue("# PUBLIC_TURNSTILE_SITE_KEY=abc", "PUBLIC_TURNSTILE_SITE_KEY")).toBeUndefined();
+    expect(envValue("XPUBLIC_TURNSTILE_SITE_KEY=abc", "PUBLIC_TURNSTILE_SITE_KEY")).toBeUndefined();
+    expect(envValue("", "PUBLIC_TURNSTILE_SITE_KEY")).toBeUndefined();
   });
 });

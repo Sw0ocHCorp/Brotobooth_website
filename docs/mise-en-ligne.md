@@ -4,7 +4,7 @@ La procédure suit l'ordre ci-dessous. Chaque étape se termine par une vérific
 
 **Aucun secret ne s'écrit dans le dépôt ni dans ce guide.** Les secrets se saisissent dans le terminal (`wrangler secret put`) ou dans le tableau de bord du fournisseur, jamais dans un fichier suivi par git.
 
-**Le vrai paiement vient en dernier.** Tant que la tâche 20 (Stripe) n'est pas faite, et sans votre accord pour la lancer, le site ne peut pas encaisser : ne publiez pas avant. Le paiement simulé et les fausses passerelles ne peuvent pas être publiés, le contrôle d'avant publication les refuse.
+**Le vrai paiement vient en dernier.** Tant que la tâche 20 (Stripe) n'est pas faite, et sans votre accord pour la lancer, le site ne peut pas encaisser : ne publiez pas avant. Le contrôle d'avant publication le sait et refuse (« Le paiement réel de l'acompte n'est pas encore branché »). Le paiement simulé et les fausses passerelles ne peuvent pas être publiés, le contrôle d'avant publication les refuse.
 
 ## 1. Les comptes
 
@@ -89,7 +89,7 @@ Créez le widget dans Cloudflare, pour `brotobooth.fr`. La clé secrète va dans
 PUBLIC_TURNSTILE_SITE_KEY=<la clé publique>
 ```
 
-Sans cette clé, le widget n'apparaît pas et les demandes seraient refusées comme venant d'un robot.
+Sans cette clé, le widget n'apparaît pas et les demandes seraient refusées comme venant d'un robot : le contrôle d'avant publication refuse tant qu'elle manque (variable `PUBLIC_TURNSTILE_SITE_KEY` de l'environnement, ou ligne de `.env.production`).
 
 **À contrôler une fois en ligne**, car les essais locaux n'appellent pas Cloudflare : ouvrez `/reserver` avec les outils du navigateur (onglet Console) ; le vrai widget doit se charger sans erreur de politique de sécurité (CSP), et envoyer une demande doit réussir, ce qui prouve qu'un jeton a été délivré.
 
@@ -121,13 +121,22 @@ Tant qu'un contenu manque, `node scripts/check-launch.mjs` refuse la publication
 
 ## 11. La publication
 
-À faire sur une machine où WebKit démarre (`npx playwright install webkit`), car la commande lance toute la suite de tests, Chromium et WebKit :
+**Une fois, avant la première publication**, sur une machine où WebKit (le moteur de Safari) démarre, lancez toute la suite de tests, Chromium et WebKit :
+
+```bash
+npx playwright install webkit
+npx playwright test
+```
+
+`npm run deploy` ne lance que Chromium, car WebKit ne démarre pas partout. Ce passage unique est donc la seule vérification automatique sur le moteur de Safari ; l'essai à la main sur Safari (étape 12) reste à faire.
+
+Puis, sur votre machine :
 
 ```bash
 npm run deploy
 ```
 
-Elle enchaîne les tests, les parcours de bout en bout, le contrôle d'avant publication, la construction du site puis `wrangler deploy`. Elle s'arrête au premier échec.
+Elle commence par le contrôle d'avant publication (elle s'arrête là, en listant ce qui manque), puis lance les tests, les parcours de bout en bout sur Chromium, la construction du site et enfin `wrangler deploy`. Elle s'arrête au premier échec.
 
 Il reste à rattacher le domaine au Worker : dans Cloudflare, Workers puis `brotobooth`, Réglages, Domaines et routes, **Domaine personnalisé** `brotobooth.fr`. Si Cloudflare signale une entrée existante pour `brotobooth.fr` (l'ancien site), retirez seulement celle-là, jamais l'entrée de messagerie.
 

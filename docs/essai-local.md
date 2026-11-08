@@ -13,7 +13,7 @@ npm run demo
 Après une minute environ (le temps de construire le site), le terminal affiche « Le site d'essai est prêt » avec les adresses utiles. Pour arrêter : `Ctrl+C`.
 
 - Au premier lancement, quatre réservations d'exemple sont posées : une demande à valider, une demande validée qui attend son acompte, une prestation confirmée et une date bloquée.
-- La base d'essai est gardée d'un lancement à l'autre. Pour repartir de zéro : `npm run demo:reset`, puis `npm run demo`.
+- La base d'essai est gardée d'un lancement à l'autre, et les exemples vieillissent avec elle : leurs dates se rapprochent et leurs délais de 72 h finissent par passer. Pour repartir d'une base neuve, avec des exemples à jour : `npm run demo:reset`, puis `npm run demo`.
 
 ## Quoi essayer, dans l'ordre
 
