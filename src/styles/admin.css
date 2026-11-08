@@ -74,9 +74,6 @@ body { min-height: 100dvh; }
 
 .btn { line-height: 1.2; overflow-wrap: anywhere; }
 
-/* Le rose : 19,2 px en gras au moins (tokens.css donne 16 px, trop petit pour blanc sur rose). */
-.btn.primary { font-size: 1.2rem; }
-
 .btn.danger { border-color: var(--danger-line); }
 
 .icon-btn {

@@ -37,6 +37,7 @@ export function page(title: string, bodyHtml: string): string {
 <meta name="robots" content="noindex">
 <title>${escapeHtml(title)}</title>
 <link rel="stylesheet" href="/styles/tokens.css">
+<link rel="stylesheet" href="/styles/fonts.css">
 <style>${PAGE_CSS}</style>
 </head>
 <body>

@@ -104,6 +104,7 @@ describe("GET /acompte/<jeton> : récapitulatif", () => {
     const html = await r.text();
     expect(html).toContain('lang="fr"');
     expect(html).toContain('href="/styles/tokens.css"');
+    expect(html).toContain('href="/styles/fonts.css"');
     expect(html).not.toContain("<script");
   });
 
@@ -661,7 +662,17 @@ describe("public/styles/tokens.css : la charte des pages", () => {
     expect(tokens).toMatch(/--text: #ffffff;/);
   });
 
-  it("ne déclare aucune police : elles viennent du site", () => {
+  it("annonce le thème sombre au navigateur", () => {
+    expect(tokens).toMatch(/:root\s*{[^}]*color-scheme: dark;/);
+  });
+
+  it("ne déclare aucune police : elles viennent de fonts.css", () => {
     expect(tokens).not.toContain("@font-face");
+  });
+
+  it("écrit le bouton d'action en grand texte gras, seul moyen de passer le contraste du blanc sur le rose", () => {
+    const rule = tokens.match(/\.btn\.primary\s*{([^}]*)}/)?.[1] ?? "";
+    expect(Number(rule.match(/font-size:\s*([\d.]+)rem/)?.[1])).toBeGreaterThanOrEqual(1.1875);
+    expect(rule).toMatch(/font-weight:\s*(700|800)/);
   });
 });

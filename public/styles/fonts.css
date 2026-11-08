@@ -1,0 +1,42 @@
+/* ==========================================================
+   The site's two families, from public/fonts/ (WOFF2 made by
+   scripts/build-fonts.sh from the OFL files of fonts/, latin subset).
+   Only the four weights the identity uses:
+   - Unbounded 800 for titles, 700 for the action buttons;
+   - Outfit 400 and 600 for everything else.
+   --font-text and --font-title (tokens.css) name these two families.
+   `swap` shows the fallback at once and swaps the font in when it
+   arrives, so the title never waits for a download.
+   ========================================================== */
+
+@font-face {
+  font-family: "Unbounded";
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/Unbounded-latin-800.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Unbounded";
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/Unbounded-latin-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Outfit";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/Outfit-latin-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Outfit";
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/Outfit-latin-600.woff2") format("woff2");
+}
