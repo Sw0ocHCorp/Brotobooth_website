@@ -4,8 +4,8 @@ import { dayState, lastDayOf, monthCells, monthOf, shiftMonth, type Availability
 /**
  * La réservation (`/reserver`) : le calendrier, les trois étapes et l'envoi de la demande. Les textes sont dans la page ;
  * ce script ne fait que les montrer ou les cacher, et y poser les dates. Ce que le client saisit reste dans les champs
- * d'un bout à l'autre : ni un aller-retour entre étapes, ni une erreur ne les vide, et le bouton d'envoi revient
- * toujours. Le calendrier charge le mois affiché et le suivant ; la vidéo de la borne tourne derrière la carte, sauf
+ * d'un bout à l'autre : ni un aller-retour entre étapes (boutons de la carte ou du navigateur), ni une erreur ne les
+ * vide, et le bouton d'envoi revient toujours. Le calendrier charge le mois affiché et le suivant ; la vidéo de la borne tourne derrière la carte, sauf
  * si le visiteur a demandé de réduire les animations ou d'économiser ses données. L'heure vient de l'horloge reçue
  * par `start`.
  */
@@ -65,6 +65,8 @@ let chosenDate: string | null = null;
 let chosenPlan: string | null = null;
 let sending = false;
 let widget: string | null = null;
+/** Le script du widget anti-robots tant qu'il charge ou qu'il est chargé ; `null` avant, ou après un échec de chargement. */
+let turnstileScript: HTMLScriptElement | null = null;
 
 // ---------- le calendrier ----------
 
@@ -166,7 +168,7 @@ function backToCalendar(problem: HTMLElement, taken: boolean): void {
   choose(null);
   renderMonth();
   problem.hidden = false;
-  show(1, problem);
+  go(1, problem);
   void load(true);
 }
 
@@ -183,6 +185,19 @@ function show(step: Step, focus: HTMLElement = $(`step-${step}-title`)): void {
   if (step === 3) startTurnstile();
   scrollTo(0, 0);
   focus.focus({ preventScroll: true });
+}
+
+/** Passe à l'étape avec une entrée d'historique : le bouton Précédent du navigateur ramène à l'étape d'avant. */
+function go(step: Step, focus?: HTMLElement): void {
+  history.pushState({ step }, "");
+  show(step, focus);
+}
+
+/** L'étape d'une entrée d'historique, ou la plus avancée encore possible : pas de formule sans date, ni de coordonnées sans formule. */
+function reachable(step: Step): Step {
+  if (step > 1 && chosenDate === null) return 1;
+  if (step > 2 && chosenPlan === null) return 2;
+  return step;
 }
 
 function choosePlan(choice: HTMLButtonElement | null): void {
@@ -225,7 +240,7 @@ function showProblems(fields: string[]): void {
   if (flagged.includes("plan")) {
     choosePlan(null);
     $("problem-plan").hidden = false;
-    return show(2, $("problem-plan"));
+    return go(2, $("problem-plan"));
   }
   control(FIELDS.find((name) => flagged.includes(name))!)!.focus();
 }
@@ -240,16 +255,22 @@ function sendProblem(kind: "failed" | "bot" | "too_many"): void {
 
 // ---------- l'envoi ----------
 
-/** Le widget anti-robots, chargé à la première arrivée sur les coordonnées. Sans clé (essais), rien n'est chargé. */
+/**
+ * Le widget anti-robots, chargé une fois, à la première arrivée sur les coordonnées. Sans clé (essais), rien n'est
+ * chargé. Un script injoignable est oublié : un refus anti-robots le redemande (`answer`), sans recharger la page.
+ */
 function startTurnstile(): void {
   const box = $("turnstile");
   const sitekey = box.dataset.sitekey;
-  if (!sitekey || box.dataset.started) return;
-  box.dataset.started = "";
-  const script = document.createElement("script");
+  if (!sitekey || turnstileScript !== null) return;
+  const script = (turnstileScript = document.createElement("script"));
   script.src = TURNSTILE_SCRIPT;
   script.addEventListener("load", () => {
     widget = window.turnstile?.render(box, { sitekey, theme: "dark", language: "fr", size: "flexible" }) ?? null;
+  });
+  script.addEventListener("error", () => {
+    script.remove();
+    turnstileScript = null;
   });
   document.head.append(script);
 }
@@ -269,17 +290,31 @@ async function post(body: object): Promise<Reply> {
 function done(outcome: string): void {
   for (const date of document.querySelectorAll("[data-chosen]")) date.textContent = longDate(chosenDate!);
   for (const text of document.querySelectorAll<HTMLElement>("[data-outcome]")) text.hidden = text.dataset.outcome !== outcome;
-  show(4);
+  go(4);
 }
 
 function answer({ status, data }: Reply): void {
+  // Un jeton ne sert qu'une fois : le prochain envoi en demande un nouveau. Sans widget (son script n'a pas pu se
+  // charger), un refus anti-robots redemande le script, pour que « réessayez » puisse aboutir.
+  const bot = status === 403 && data.error === "bot";
+  if (widget !== null) window.turnstile?.reset(widget);
+  else if (bot) startTurnstile();
   if (status === 201) return done("created");
   if (status === 200 && data.status === "already_requested") return done("already_requested");
-  // Un jeton ne sert qu'une fois : le prochain envoi en demande un nouveau.
-  if (widget !== null) window.turnstile?.reset(widget);
   if (status === 409) return backToCalendar($("problem-taken"), true);
   if (status === 422) return showProblems(data.fields ?? []);
-  sendProblem(status === 429 ? "too_many" : status === 403 && data.error === "bot" ? "bot" : "failed");
+  sendProblem(status === 429 ? "too_many" : bot ? "bot" : "failed");
+}
+
+/** Le corps de `POST /api/requests`, sous les noms de l'API. */
+function request(): object {
+  return {
+    ...Object.fromEntries(FIELDS.map((name) => [name, control(name)!.value])),
+    date: chosenDate,
+    plan: chosenPlan,
+    terms: ($("f-terms") as HTMLInputElement).checked,
+    turnstile_token: turnstileToken(),
+  };
 }
 
 async function submit(): Promise<void> {
@@ -291,27 +326,41 @@ async function submit(): Promise<void> {
 
   sending = true;
   sendButton.disabled = true;
-  const values = Object.fromEntries(FIELDS.map((name) => [name, control(name)!.value]));
-  const reply = await post({
-    ...values,
-    date: chosenDate,
-    plan: chosenPlan,
-    terms: ($("f-terms") as HTMLInputElement).checked,
-    turnstile_token: turnstileToken(),
-  });
-  sending = false;
-  sendButton.disabled = false;
-  answer(reply);
+  try {
+    answer(await post(request()));
+  } catch (error) {
+    // Une panne de la page elle-même (le widget qui lève, par exemple) : le client le sait et peut renvoyer ; l'erreur
+    // reste dans la console.
+    sendProblem("failed");
+    throw error;
+  } finally {
+    sending = false;
+    sendButton.disabled = false;
+  }
 }
 
 // ---------- la vidéo ----------
 
+/**
+ * La vidéo tourne sauf si le visiteur a demandé de réduire les animations ou d'économiser ses données. Son bouton de
+ * pause n'apparaît qu'une fois qu'elle tourne : une vidéo que ce navigateur ne lit pas garde l'image fixe, sans bouton.
+ */
 function startFilm(): void {
   const film = document.querySelector<HTMLVideoElement>(".film");
   const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData === true;
   if (!film || saveData || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const toggle = $<HTMLButtonElement>("film-toggle");
+  const label = () => {
+    toggle.toggleAttribute("data-paused", film.paused);
+    toggle.setAttribute("aria-label", (film.paused ? toggle.dataset.play : toggle.dataset.pause) ?? "");
+  };
+  for (const type of ["play", "pause"]) film.addEventListener(type, label);
+  film.addEventListener("playing", () => (toggle.hidden = false), { once: true });
+  toggle.addEventListener("click", () => {
+    if (film.paused) film.play().catch(() => {});
+    else film.pause();
+  });
   film.muted = true;
-  // Un navigateur qui ne lit pas la vidéo, ou refuse de la lancer, garde l'image fixe.
   film.play().catch(() => {});
 }
 
@@ -333,12 +382,15 @@ function start(now: () => Date): void {
     void load();
   });
 
-  goDate.addEventListener("click", () => show(chosenPlan ? 3 : 2));
-  goPlan.addEventListener("click", () => show(3));
+  goDate.addEventListener("click", () => go(chosenPlan ? 3 : 2));
+  goPlan.addEventListener("click", () => go(3));
   for (const choice of choices) choice.addEventListener("click", () => choosePlan(choice));
   for (const back of document.querySelectorAll<HTMLElement>("[data-back]")) {
-    back.addEventListener("click", () => show(Number(back.dataset.back) as Step));
+    back.addEventListener("click", () => go(Number(back.dataset.back) as Step));
   }
+  history.scrollRestoration = "manual";
+  history.replaceState({ step: 1 }, "");
+  addEventListener("popstate", (event) => show(reachable((event.state as { step?: Step } | null)?.step ?? 1)));
   form.addEventListener("input", (event) => unflag((event.target as HTMLInputElement).name));
   form.addEventListener("submit", (event) => {
     event.preventDefault();

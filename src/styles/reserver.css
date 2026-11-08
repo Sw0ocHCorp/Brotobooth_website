@@ -44,8 +44,28 @@
 
 .card h1:focus { outline: none; }
 
-/* Une étape, un message ou un bloc que le script cache (`hidden`) reste caché, quel que soit son affichage. */
-.card [hidden] { display: none; }
+/* Une étape, un message ou un bouton que le script cache (`hidden`) reste caché, quel que soit son affichage. */
+.res [hidden] { display: none; }
+
+/* Le bouton de la vidéo : discret, sous le logo, loin de la carte ; le script ne le montre que si la vidéo tourne. */
+.film-toggle {
+  position: absolute;
+  top: calc(var(--bar) + 8px);
+  left: var(--gutter);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--btn-line);
+  border-radius: 999px;
+  background: rgba(11, 11, 15, .35);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.film-toggle svg { width: 16px; height: 16px; fill: currentColor; }
+.film-toggle[data-paused] .pause,
+.film-toggle:not([data-paused]) .play { display: none; }
 
 /* Sur un téléphone, la carte descend au bas de l'écran : la borne reste visible au-dessus. */
 @media (max-width: 760px) {

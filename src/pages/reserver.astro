@@ -57,6 +57,17 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
     <div class="res-veil"></div>
 
     <div class="res-in">
+      <button
+        type="button"
+        class="film-toggle"
+        id="film-toggle"
+        aria-label="Mettre la vidéo en pause"
+        data-pause="Mettre la vidéo en pause"
+        data-play="Relancer la vidéo"
+        hidden
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path class="pause" d="M4 3h3v10H4zM9 3h3v10H9z" /><path class="play" d="M5 2.5 13.5 8 5 13.5z" /></svg>
+      </button>
       <div class="card glass">
         <ol class="crumbs needs-js" id="crumbs" aria-label="Étapes">
           {STEPS.map((step, index) => <li aria-current={index === 0 ? "step" : undefined}>{index + 1}<span aria-hidden="true"> · </span>{step}</li>)}

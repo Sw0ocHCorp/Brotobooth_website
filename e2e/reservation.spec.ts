@@ -10,12 +10,16 @@ import { addDays, cleanup, isoDate, pickFreeDate, seed } from "./seed";
 
 const offer: Offer = offerJson;
 
+const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
 const CLEAR = "rgba(0, 0, 0, 0)";
 const REQUESTS = "**/api/requests";
 const isAvailability = (url: URL) => url.pathname === "/api/availability";
 const POSTER = /\/media\/borne-boucle-poster\.webp$/;
 const FILM = "/media/borne-boucle.mp4";
+/** La clé de test de Cloudflare : la page servie la reçoit à la place de la clé vide de la construction d'essai. */
+const TEST_SITE_KEY = "1x00000000000000000000AA";
+const isTurnstile = (url: URL) => url.hostname === "challenges.cloudflare.com";
 
 const DAY = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 /** « samedi 12 décembre 2026 ». */
@@ -77,6 +81,33 @@ async function expectContact(zone: Locator) {
   if (phone) await expect(zone.getByRole("link", { name: phone })).toBeVisible();
   if (email) await expect(zone.getByRole("link", { name: email })).toBeVisible();
 }
+
+/** `/reserver` telle qu'une construction avec une clé anti-robots la servirait : la clé de test posée sur le widget. */
+async function withSiteKey(page: Page) {
+  await page.route(
+    (url) => url.pathname === "/reserver",
+    async (route) => {
+      const response = await route.fetch();
+      const body = (await response.text()).replace("data-sitekey>", `data-sitekey="${TEST_SITE_KEY}">`);
+      await route.fulfill({ response, body });
+    },
+  );
+}
+
+/**
+ * Un faux script Turnstile, pour ne dépendre ni du réseau ni de Cloudflare : le widget rend « widget-1 » et donne le
+ * jeton « jeton-de-test ». `failOnce` : la première lecture du jeton lève, comme un widget en panne.
+ */
+const fakeTurnstile = ({ failOnce = false } = {}) => `
+  let failed = ${!failOnce};
+  window.turnstile = {
+    render: () => "widget-1",
+    getResponse: () => {
+      if (!failed) { failed = true; throw new Error("Turnstile en panne"); }
+      return "jeton-de-test";
+    },
+    reset: () => {},
+  };`;
 
 /** Ce que le client a saisi est toujours là. */
 async function expectKept(page: Page, who: ReturnType<typeof client>) {
@@ -320,6 +351,82 @@ test("si les disponibilités ne répondent pas, le contact remplace le calendrie
   await expect(await pickFreeDate(page)).toHaveAttribute("aria-pressed", "true");
 });
 
+test("le bouton Précédent du navigateur revient à l'étape d'avant, sans rien perdre", async ({ page }) => {
+  const date = await reachDetails(page);
+  const who = await fillDetails(page);
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Formule 1/ })).toHaveAttribute("aria-pressed", "true");
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Choisissez votre date" })).toBeVisible();
+  await expect(days(page).locator(`[data-date="${date}"]`)).toHaveAttribute("aria-pressed", "true");
+
+  await page.goForward();
+  await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeVisible();
+  await page.goForward();
+  await expect(page.getByRole("heading", { name: "Vos coordonnées" })).toBeVisible();
+  await expectKept(page, who);
+  expect(new URL(page.url()).pathname).toMatch(/^\/reserver\/?$/); // toujours sur la page (servie en /reserver/)
+  await send(page).click();
+  await expect(confirmed(page)).toBeVisible();
+});
+
+test("si le script anti-robots ne se charge pas, un refus le redemande et l'envoi aboutit", async ({ page }) => {
+  await withSiteKey(page);
+  let scripts = 0;
+  await page.route(isTurnstile, (route) =>
+    ++scripts === 1 ? route.abort("internetdisconnected") : route.fulfill({ contentType: "text/javascript", body: fakeTurnstile() }),
+  );
+  // Le Worker refuse une demande sans jeton (siteverify répond « échec »), et accepte celle qui en porte un.
+  const tokens: string[] = [];
+  await page.route(REQUESTS, (route) => {
+    const token = route.request().postDataJSON().turnstile_token;
+    tokens.push(token);
+    return token ? route.fulfill({ status: 201, json: { status: "created" } }) : route.fulfill({ status: 403, json: { error: "bot" } });
+  });
+
+  await reachDetails(page);
+  await expect(page.locator("#turnstile")).toHaveAttribute("data-sitekey", TEST_SITE_KEY);
+  await expect.poll(() => scripts).toBe(1);
+  await fillDetails(page);
+  await send(page).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Nous n'avons pas pu vérifier" })).toBeVisible();
+  await expect.poll(() => scripts).toBe(2);
+  await page.waitForFunction(() => "turnstile" in window);
+
+  // Revenir aux coordonnées ne charge pas le script une fois de plus.
+  await page.getByRole("button", { name: "Retour" }).click();
+  await page.getByRole("button", { name: "Continuer" }).click();
+  await send(page).click();
+  await expect(confirmed(page)).toBeVisible();
+  expect(tokens).toEqual(["", "jeton-de-test"]);
+  expect(scripts).toBe(2);
+});
+
+test("une panne pendant l'envoi laisse le formulaire utilisable", async ({ page }) => {
+  await withSiteKey(page);
+  await page.route(isTurnstile, (route) => route.fulfill({ contentType: "text/javascript", body: fakeTurnstile({ failOnce: true }) }));
+  let posts = 0;
+  await page.route(REQUESTS, (route) => {
+    posts++;
+    return route.fulfill({ status: 201, json: { status: "created" } });
+  });
+  await reachDetails(page);
+  await page.waitForFunction(() => "turnstile" in window);
+  const who = await fillDetails(page);
+
+  // La lecture du jeton lève : rien n'est parti, le client le sait, et le bouton répond de nouveau.
+  await send(page).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Votre demande n'est pas partie" })).toBeVisible();
+  await expect(send(page)).toBeEnabled();
+  await expectKept(page, who);
+  expect(posts).toBe(0);
+  await send(page).click();
+  await expect(confirmed(page)).toBeVisible();
+  expect(posts).toBe(1);
+});
+
 test("un double clic n'envoie qu'une demande", async ({ page }) => {
   await reachDetails(page);
   await fillDetails(page);
@@ -351,9 +458,11 @@ test("la vidéo tourne derrière la carte, sans son", async ({ page }) => {
   if (playable) {
     await expect.poll(() => video.evaluate((film: HTMLVideoElement) => !film.paused && film.currentTime > 0)).toBe(true);
   } else {
-    // Ce navigateur ne lit pas le H.264 (le Chromium de Playwright) : l'image fixe reste, sans aucun message d'erreur.
+    // Ce navigateur ne lit pas le H.264 (le Chromium de Playwright) : l'image fixe reste, sans aucun message d'erreur,
+    // ni bouton de pause pour une vidéo qui ne tourne pas.
     await expect(video).toHaveAttribute("poster", "/media/borne-boucle-poster.webp");
     await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /vidéo/ })).toHaveCount(0);
   }
 
   // La carte est au-dessus de la vidéo : le centre de la carte appartient à la carte.
@@ -362,6 +471,34 @@ test("la vidéo tourne derrière la carte, sans son", async ({ page }) => {
   expect(
     await card.evaluate((element, [x, y]) => element.contains(document.elementFromPoint(x, y)), [box.x + box.width / 2, box.y + box.height / 2]),
   ).toBe(true);
+});
+
+test("la vidéo se met en pause et repart, au clavier", async ({ page }) => {
+  await page.goto("/reserver");
+  const video = page.locator("video");
+  test.skip(
+    !(await video.evaluate((film: HTMLVideoElement) => film.canPlayType('video/mp4; codecs="avc1.42E01E"') !== "")),
+    "ce navigateur ne lit pas la vidéo : il n'y a rien à mettre en pause",
+  );
+  const pause = page.getByRole("button", { name: "Mettre la vidéo en pause" });
+  const resume = page.getByRole("button", { name: "Relancer la vidéo" });
+  await expect(pause).toBeVisible();
+  // Discret : ni rose, ni sous la carte, et 44 px à toucher.
+  await expect(pause).not.toHaveCSS("background-color", ROSE);
+  const [box, card] = await Promise.all([pause.boundingBox(), page.locator(".card").boundingBox()]);
+  expect(Math.min(box!.width, box!.height)).toBeGreaterThanOrEqual(44);
+  const overlaps = box!.x < card!.x + card!.width && card!.x < box!.x + box!.width && box!.y < card!.y + card!.height && card!.y < box!.y + box!.height;
+  expect(overlaps).toBe(false);
+
+  // Au clavier, dès le haut de la page.
+  for (let step = 0; step < 6 && !(await pause.evaluate((button) => button === document.activeElement)); step++) await page.keyboard.press("Tab");
+  await expect(pause).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => video.evaluate((film: HTMLVideoElement) => film.paused)).toBe(true);
+  await expect(resume).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => video.evaluate((film: HTMLVideoElement) => !film.paused)).toBe(true);
+  await expect(pause).toBeFocused();
 });
 
 test("avec réduction des animations ou économie de données, seule l'image fixe s'affiche", async ({ browser, viewport }) => {
@@ -385,6 +522,8 @@ test("avec réduction des animations ou économie de données, seule l'image fix
     await expect(video, label).toBeVisible();
     expect(await video.evaluate((film: HTMLVideoElement) => film.paused), label).toBe(true);
     expect(films, label).toEqual([]);
+    // Rien ne bouge : pas de bouton pour mettre en pause.
+    await expect(page.getByRole("button", { name: /vidéo/ }), label).toHaveCount(0);
     await context.close();
   }
 });
