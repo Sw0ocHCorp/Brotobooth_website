@@ -12,11 +12,13 @@ import "../styles/site.css";
 
 /**
  * L'accueil, dans l'ordre de la maquette validée (`docs/superpowers/specs/2026-11-07-maquette-site.html`) : tout le
- * contenu est dans le HTML, et la page se lit entière sans JavaScript ni animation.
+ * contenu est dans le HTML, et la page se lit entière sans JavaScript ni animation. Avec JavaScript, ses trois
+ * mouvements : l'ouverture du logo (une fois par visite), le mur de tirages et l'arrivée des images des sections.
  */
 ---
 
 <Base
+  opening
   title="Brotobooth – Réservez votre photobooth"
   description="Vos invités se prennent en photo, repartent avec leur tirage et se laissent des messages au combiné. Choisissez votre date et vérifiez tout de suite si elle est libre."
 >
@@ -31,3 +33,11 @@ import "../styles/site.css";
   </main>
   <Footer />
 </Base>
+
+<script>
+  import { startIntro } from "../scripts/logo-intro";
+  import { initToss } from "../scripts/toss";
+
+  initToss();
+  startIntro();
+</script>

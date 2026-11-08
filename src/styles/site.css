@@ -6,7 +6,9 @@
    Le rose est l'action, au plus un bouton plein par écran : .btn.primary,
    19 px en gras, le seul corps où le blanc sur rose passe le contraste.
    L'orange ne sert qu'à l'anneau du focus. Le texte est blanc partout.
-   Tout se lit sans animation : rien n'est caché en attendant un script.
+   Tout se lit sans animation : seuls l'ouverture (html.intro, posé par
+   /scripts/early.js) et les photos pas encore arrivées (.toss) cachent,
+   avec JavaScript, ce qu'ils vont montrer.
    ========================================================== */
 
 :root {
@@ -62,9 +64,9 @@ h2,
 .btn.ghost { border-width: 1px; background: rgba(11, 11, 15, .35); }
 
 /* ---------- la barre ---------- */
-/* Fixée en haut et voilée, pour rester lisible au-dessus de tout ; .clear la laisse transparente sur l'ouverture et
-   sur la vidéo de la réservation. Le logo prend la taille où l'ouverture le pose : 13 % de la largeur, entre 92 et
-   170 px, et 72 % de la hauteur de la barre au plus (le logo fait 4425 × 1684). */
+/* Fixée en haut et voilée, pour rester lisible au-dessus de tout ; .clear la laisse transparente sur la vidéo de la
+   réservation. Le logo prend la taille où l'ouverture le pose : 13 % de la largeur, entre 92 et 170 px, et 72 % de la
+   hauteur de la barre au plus (le logo fait 4425 × 1684), à l'opacité où il se pose sur la borne. */
 
 .bar {
   position: fixed;
@@ -83,6 +85,11 @@ h2,
 }
 
 .bar.clear { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* L'accueil avec JavaScript : la barre est claire au-dessus de l'ouverture dès le premier affichage, sans attendre son
+   script, qui la voile (.veiled) quand elle la quitte. Une règle à part : un navigateur sans :has() garde .clear. */
+html.js:has(#hero) .bar:not(.veiled) { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
 .bar nav { display: flex; gap: clamp(14px, 2.4vw, 34px); }
 .bar a { display: inline-flex; align-items: center; min-height: 44px; white-space: nowrap; }
 
@@ -90,6 +97,7 @@ h2,
   display: block;
   width: min(clamp(92px, 13vw, 170px), calc(var(--bar) * .72 * 4425 / 1684));
   height: auto;
+  opacity: .9;
 }
 
 /* Les plus petits téléphones (320 à 370 px) : un peu plus serrée, la barre tient toujours sur une ligne. */
@@ -114,7 +122,7 @@ h2,
   container-type: inline-size;
 }
 
-/* Le mur, que l'animation d'ouverture couvre de tirages (.print) ; vide sans elle. */
+/* Le mur, que scripts/photo-wall.ts couvre de tirages (.print) ; vide sans JavaScript. */
 #wall { position: absolute; inset: 0; z-index: 0; isolation: isolate; }
 
 .print {
@@ -123,7 +131,6 @@ h2,
   padding: 1.3% 1.3% 2.6%;
   background: #fff;
   box-shadow: var(--shadow);
-  will-change: transform;
 }
 
 .print img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
@@ -174,6 +181,9 @@ main { overflow-x: clip; }
 }
 
 .shot img { display: block; width: 100%; height: auto; }
+
+/* Une photo pas encore arrivée (scripts/toss.ts) : cachée à sa place, hors de l'écran, jusqu'à ce qu'elle y soit lancée. */
+.shot.toss { visibility: hidden; }
 
 /* Ce que vivent vos invités : la photo et le texte changent de côté à chaque étape. */
 .steps-list { list-style: none; }
@@ -287,6 +297,25 @@ main { overflow-x: clip; }
 }
 
 .missing p { max-width: 32em; }
+
+/* ---------- l'ouverture du logo ---------- */
+/* scripts/logo-intro.ts, le temps de l'animation (html.intro) : le contenu qu'elle révèle (.reveal) et le logo plat de
+   la barre, qu'elle dessine en vol, sont cachés. La surcouche couvre l'écran et prend les touchers ; le logo y est
+   placé par sa seule transformation, depuis son coin haut gauche, et déborde de son cadre quand BOOTH est ouvert. */
+
+html.intro .reveal,
+html.intro .logo svg { opacity: 0; }
+
+#logo-intro { position: fixed; inset: 0; z-index: 60; }
+
+#logo-intro svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  transform-origin: 0 0;
+  will-change: transform;
+}
 
 /* ---------- pied de page ---------- */
 
