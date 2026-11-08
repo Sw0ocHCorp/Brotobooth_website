@@ -268,11 +268,24 @@ describe("messages au propriétaire", () => {
     expect(renderTelegram("owner_late_payment", booking(), ctx).html).toMatch(/rembours/i);
   });
 
-  it("owner_email_failed nomme le client et donne de quoi le joindre", () => {
-    const { html } = renderTelegram("owner_email_failed", booking(), ctx);
-    expect(html).toContain("Camille Martin");
-    expect(html).toContain("0601020304");
-    expect(html).toContain("camille@example.test");
+  it("owner_email_failed nomme le client et donne son téléphone ; son adresse n'est que dans l'e-mail", () => {
+    const tg = renderTelegram("owner_email_failed", booking(), ctx).html;
+    expect(tg).toContain("Camille Martin");
+    expect(tg).toContain("0601020304");
+    expect(tg).not.toContain("camille@example.test");
+    const mail = renderEmail("owner_email_failed", booking(), ctx);
+    expect(mail.text).toContain("camille@example.test");
+    expect(mail.html).toContain("camille@example.test");
+  });
+
+  it("owner_late_payment garde l'adresse du client hors de Telegram, et la donne par e-mail", () => {
+    expect(renderTelegram("owner_late_payment", booking(), ctx).html).not.toContain("camille@example.test");
+    expect(renderEmail("owner_late_payment", booking(), ctx).text).toContain("camille@example.test");
+  });
+
+  it.each(ALL_TEMPLATES)("%s n'envoie jamais l'adresse e-mail du client à Telegram", (t) => {
+    expect(renderTelegram(t, booking({ client_email: "camille@example.test" }), ctx).html).not.toContain("camille@example.test");
+    expect(renderTelegram(t, booking({ client_email: "camille@example.test" }), ctx).html).not.toContain("camille%40example.test");
   });
 
   it("garde les liens de Telegram sur les adresses du site", () => {

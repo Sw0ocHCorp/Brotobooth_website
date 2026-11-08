@@ -139,8 +139,9 @@ CREATE TABLE notifications (
   due_at TEXT NOT NULL,
   sent_at TEXT,
   cancelled_at TEXT,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  last_error TEXT
+  attempts INTEGER NOT NULL DEFAULT 0,  -- un essai est compté quand un passage réserve l'envoi
+  last_error TEXT,
+  claimed_until TEXT                    -- envoi réservé par un passage jusqu'à cet instant (UTC), migration 0002
 );
 
 CREATE TABLE system_state (

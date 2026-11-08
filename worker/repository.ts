@@ -56,8 +56,11 @@ export type NotificationRow = NotificationSpec & {
   id: number;
   sent_at: string | null;
   cancelled_at: string | null;
+  /** Les essais d'envoi : chacun est compté quand `claimNotification` réserve l'envoi. */
   attempts: number;
   last_error: string | null;
+  /** Jusqu'à cet instant (UTC), un passage a réservé l'envoi et aucun autre ne le prend. */
+  claimed_until: string | null;
 };
 
 export interface Transition {
@@ -378,7 +381,10 @@ export async function enqueue(db: D1Database, specs: NotificationSpec[]): Promis
   if (specs.length > 0) await db.batch(specs.map((spec) => notificationStmt(db, spec)));
 }
 
-/** Les envois échus, les plus anciens d'abord, sans ceux faits, annulés ou à bout de reprises. */
+/**
+ * Les envois échus, les plus anciens d'abord, sans ceux faits, annulés, à bout de reprises ou réservés par un
+ * passage en cours.
+ */
 export const listDueNotifications = (
   db: D1Database,
   nowIso: string,
@@ -389,20 +395,42 @@ export const listDueNotifications = (
       .prepare(
         `SELECT * FROM notifications
          WHERE due_at <= ? AND sent_at IS NULL AND cancelled_at IS NULL AND attempts < ?
+           AND (claimed_until IS NULL OR claimed_until <= ?)
          ORDER BY due_at, id LIMIT ?`,
       )
-      .bind(nowIso, MAX_ATTEMPTS, limit),
+      .bind(nowIso, MAX_ATTEMPTS, nowIso, limit),
   );
+
+/**
+ * Réserve l'envoi `id` jusqu'à `untilIso` et compte l'essai, d'un seul `UPDATE` : de deux passages qui se
+ * croisent, un seul l'obtient, même si l'autre a listé l'envoi avant la réservation ou démarre pendant l'envoi.
+ * Rend le nombre d'essais, ou `null` si l'envoi est fait, annulé, inconnu ou réservé par un autre passage.
+ * Un passage interrompu libère l'envoi à `untilIso` ; `markFailed` le libère plus tôt, et un envoi fait n'est plus pris.
+ */
+export async function claimNotification(
+  db: D1Database,
+  id: number,
+  nowIso: string,
+  untilIso: string,
+): Promise<number | null> {
+  const claimed = await db
+    .prepare(
+      `UPDATE notifications SET attempts = attempts + 1, claimed_until = ?
+       WHERE id = ? AND sent_at IS NULL AND cancelled_at IS NULL AND (claimed_until IS NULL OR claimed_until <= ?)
+       RETURNING attempts`,
+    )
+    .bind(untilIso, id, nowIso)
+    .first<{ attempts: number }>();
+  return claimed?.attempts ?? null;
+}
 
 export async function markSent(db: D1Database, id: number, nowIso: string): Promise<void> {
   await db.prepare("UPDATE notifications SET sent_at = ? WHERE id = ?").bind(nowIso, id).run();
 }
 
+/** Garde l'erreur et libère l'envoi pour le passage suivant. L'essai a déjà été compté par `claimNotification`. */
 export async function markFailed(db: D1Database, id: number, error: string): Promise<void> {
-  await db
-    .prepare("UPDATE notifications SET attempts = attempts + 1, last_error = ? WHERE id = ?")
-    .bind(error, id)
-    .run();
+  await db.prepare("UPDATE notifications SET last_error = ?, claimed_until = NULL WHERE id = ?").bind(error, id).run();
 }
 
 /** Annule un envoi devenu inutile pour qu'il ne soit plus repris. Un envoi déjà fait ou annulé reste tel quel. */

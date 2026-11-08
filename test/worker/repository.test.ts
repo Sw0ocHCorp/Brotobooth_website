@@ -6,6 +6,7 @@ import {
   anonymizeOld,
   applyTransition,
   cancelNotification as cancelPending,
+  claimNotification,
   countActiveByEmail,
   countRecentByIp,
   enqueue,
@@ -46,6 +47,15 @@ const dueKeys = async (): Promise<string[]> =>
 const notificationId = async (key: string): Promise<number> => {
   const stmt = env.DB.prepare("SELECT id FROM notifications WHERE dedupe_key = ?");
   return (await stmt.bind(key).first<{ id: number }>())!.id;
+};
+
+const LEASE_END = "2026-11-07T10:02:00.000Z";
+
+/** Un essai qui échoue : l'envoi est réservé (ce qui compte l'essai), puis libéré avec son erreur. */
+const fail = async (key: string) => {
+  const id = await notificationId(key);
+  await claimNotification(env.DB, id, T0, LEASE_END);
+  await markFailed(env.DB, id, "boom");
 };
 
 const cancelNotification = (key: string) =>
@@ -541,6 +551,7 @@ describe("file de notifications", () => {
         cancelled_at: null,
         attempts: 0,
         last_error: null,
+        claimed_until: null,
       },
     ]);
   });
@@ -591,26 +602,87 @@ describe("file de notifications", () => {
     expect(await dueKeys()).toEqual([]);
   });
 
-  it("markFailed compte l'essai et garde la dernière erreur", async () => {
+  it("markFailed garde la dernière erreur sans compter d'essai : c'est la réservation qui le compte", async () => {
     await enqueue(env.DB, [spec("x")]);
     const [n] = await listDueNotifications(env.DB, T0, 10);
+    await claimNotification(env.DB, n!.id, T0, LEASE_END);
     await markFailed(env.DB, n!.id, "resend 500");
+    await claimNotification(env.DB, n!.id, T0, LEASE_END);
     await markFailed(env.DB, n!.id, "resend 503");
     const [again] = await listDueNotifications(env.DB, T0, 10);
-    expect(again).toMatchObject({ id: n!.id, attempts: 2, last_error: "resend 503", sent_at: null });
+    expect(again).toMatchObject({ id: n!.id, attempts: 2, last_error: "resend 503", sent_at: null, claimed_until: null });
+    await markFailed(env.DB, n!.id, "resend 504");
+    expect((await listDueNotifications(env.DB, T0, 10))[0]).toMatchObject({ attempts: 2, last_error: "resend 504" });
   });
 
   it("listFailedNotifications renvoie les envois à 3 essais ou plus, ni faits ni annulés", async () => {
     await enqueue(env.DB, ["deux", "trois", "quatre", "fait", "annule"].map((k) => spec(k)));
     const tries = { deux: 2, trois: 3, quatre: 4, fait: 3, annule: 3 };
     for (const [key, times] of Object.entries(tries)) {
-      for (let i = 0; i < times; i++) await markFailed(env.DB, await notificationId(key), "boom");
+      for (let i = 0; i < times; i++) await fail(key);
     }
     await markSent(env.DB, await notificationId("fait"), T0);
     await cancelNotification("annule");
 
     const failed = await listFailedNotifications(env.DB);
     expect(failed.map((n) => [n.dedupe_key, n.attempts])).toEqual([["trois", 3], ["quatre", 4]]);
+  });
+});
+
+describe("réservation d'un envoi", () => {
+  const LATER = "2026-11-07T10:02:00.000Z";
+  const row = async (key: string) =>
+    (await env.DB.prepare("SELECT attempts, claimed_until, sent_at FROM notifications WHERE dedupe_key = ?").bind(key).first())!;
+
+  it("rend le nombre d'essais, compte l'essai et date la fin de la réservation", async () => {
+    await enqueue(env.DB, [spec("x")]);
+    const id = await notificationId("x");
+    expect(await claimNotification(env.DB, id, T0, LATER)).toBe(1);
+    expect(await row("x")).toEqual({ attempts: 1, claimed_until: LATER, sent_at: null });
+  });
+
+  it("n'est obtenue que par un seul passage, y compris quand deux demandes se croisent", async () => {
+    await enqueue(env.DB, [spec("x")]);
+    const id = await notificationId("x");
+    const wins = await Promise.all([1, 2, 3, 4].map(() => claimNotification(env.DB, id, T0, LATER)));
+    expect(wins.filter((attempts) => attempts !== null)).toEqual([1]);
+    expect((await row("x")).attempts).toBe(1);
+  });
+
+  it("n'est pas obtenue tant que la réservation d'un autre passage dure, et l'est à son échéance", async () => {
+    await enqueue(env.DB, [spec("x")]);
+    const id = await notificationId("x");
+    await claimNotification(env.DB, id, T0, LATER);
+    expect(await claimNotification(env.DB, id, "2026-11-07T10:01:59.999Z", "2026-11-07T10:04:00.000Z")).toBeNull();
+    expect(await claimNotification(env.DB, id, LATER, "2026-11-07T10:04:00.000Z")).toBe(2);
+    expect(await row("x")).toEqual({ attempts: 2, claimed_until: "2026-11-07T10:04:00.000Z", sent_at: null });
+  });
+
+  it("n'est pas obtenue pour un envoi fait, annulé ou inconnu", async () => {
+    await enqueue(env.DB, ["fait", "annule"].map((k) => spec(k)));
+    await markSent(env.DB, await notificationId("fait"), T0);
+    await cancelNotification("annule");
+    expect(await claimNotification(env.DB, await notificationId("fait"), T0, LATER)).toBeNull();
+    expect(await claimNotification(env.DB, await notificationId("annule"), T0, LATER)).toBeNull();
+    expect(await claimNotification(env.DB, 999_999, T0, LATER)).toBeNull();
+    expect((await row("fait")).attempts).toBe(0);
+  });
+
+  it("retire l'envoi de la liste des envois dus jusqu'à la fin de la réservation", async () => {
+    await enqueue(env.DB, [spec("x"), spec("y")]);
+    await claimNotification(env.DB, await notificationId("x"), T0, LATER);
+    expect(await dueKeys()).toEqual(["y"]);
+    expect((await listDueNotifications(env.DB, "2026-11-07T10:01:59.999Z", 10)).map((n) => n.dedupe_key)).toEqual(["y"]);
+    expect((await listDueNotifications(env.DB, LATER, 10)).map((n) => n.dedupe_key)).toEqual(["x", "y"]);
+  });
+
+  it("markFailed libère la réservation, markSent laisse l'envoi fait", async () => {
+    await enqueue(env.DB, [spec("x"), spec("y")]);
+    for (const key of ["x", "y"]) await claimNotification(env.DB, await notificationId(key), T0, LATER);
+    await markFailed(env.DB, await notificationId("x"), "boom");
+    await markSent(env.DB, await notificationId("y"), T0);
+    expect(await dueKeys()).toEqual(["x"]);
+    expect((await row("y")).sent_at).toBe(T0);
   });
 });
 

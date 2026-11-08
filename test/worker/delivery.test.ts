@@ -1,4 +1,4 @@
-import { createExecutionContext } from "cloudflare:test";
+import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { cancelBooking } from "../../worker/operations";
@@ -7,7 +7,7 @@ import type { Deps } from "../../worker/deps";
 import type { Env } from "../../worker/env";
 import { resendGateway } from "../../worker/email";
 import { processDue } from "../../worker/notifications";
-import { enqueue, getState, patchBooking, setState, type NotificationSpec } from "../../worker/repository";
+import { claimNotification, enqueue, getState, patchBooking, setState, type NotificationSpec } from "../../worker/repository";
 import { handle } from "../../worker/router";
 import { chatIds, telegramGateway } from "../../worker/telegram";
 import wrangler from "../../wrangler.jsonc?raw";
@@ -135,6 +135,133 @@ describe("processDue : envoi des messages dus", () => {
     };
     expect(await processDue(deps)).toEqual({ sent: 1, failed: 1 });
     expect(deps.emails.map((m) => m.to)).toEqual(["deux@example.test"]);
+  });
+});
+
+describe("processDue : passages simultanés", () => {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const subjects = () => deps.emails.map((m) => m.subject).sort();
+
+  /** Trois e-mails dus, pour trois dates : chaque message ne doit partir qu'une fois. */
+  async function seedThree() {
+    const rows: NotificationSpec[] = [];
+    for (const [i, date] of ["2026-12-19", "2026-12-20", "2026-12-21"].entries()) {
+      const b = await seeded({ event_date: date, client_email: `client${i}@example.test` });
+      rows.push(mail("client_received", b.id));
+    }
+    await enqueue(env.DB, rows);
+  }
+
+  it("deux passages lancés ensemble n'envoient chaque message qu'une fois", async () => {
+    await seedThree();
+    deps.email.send = async (m) => {
+      await sleep(5);
+      deps.emails.push(m);
+    };
+    const [a, b] = await Promise.all([processDue(deps), processDue(deps)]);
+    expect(a.sent + b.sent).toBe(3);
+    expect(a.failed + b.failed).toBe(0);
+    expect(deps.emails.map((m) => m.to).sort()).toEqual(["client0@example.test", "client1@example.test", "client2@example.test"]);
+  });
+
+  it("un passage qui démarre pendant l'envoi d'un autre ne renvoie pas ce que celui-ci envoie", async () => {
+    await seedThree();
+    let firstSendStarted!: () => void;
+    const started = new Promise<void>((resolve) => (firstSendStarted = resolve));
+    deps.email.send = async (m) => {
+      firstSendStarted();
+      await sleep(30);
+      deps.emails.push(m);
+    };
+    const first = processDue(deps);
+    await started; // le premier passage a réservé et envoie : les trois lignes sont encore sans date d'envoi
+    const second = processDue(deps);
+    const [a, b] = await Promise.all([first, second]);
+    expect(a.sent + b.sent).toBe(3);
+    expect(deps.emails).toHaveLength(3);
+    expect(new Set(deps.emails.map((m) => m.to)).size).toBe(3);
+  });
+
+  it("deux passages avec des fausses passerelles distinctes n'envoient pas deux fois (isolats différents)", async () => {
+    await seedThree();
+    const other = fakeDeps();
+    const [a, b] = await Promise.all([processDue(deps), processDue(other)]);
+    expect(a.sent + b.sent).toBe(3);
+    expect(deps.emails.length + other.emails.length).toBe(3);
+  });
+
+  it("deux passages simultanés n'envoient qu'une alerte Telegram par message du propriétaire", async () => {
+    const b = await seeded({ status: "confirmed", hold_until: null });
+    await enqueue(env.DB, [telegram("owner_d7", b.id), mail("owner_d7", b.id)]);
+    await Promise.all([processDue(deps), processDue(deps), processDue(deps)]);
+    expect(deps.telegrams).toHaveLength(1);
+    expect(deps.emails).toHaveLength(1);
+  });
+
+  it("réserve l'envoi avant de l'envoyer et compte l'essai", async () => {
+    const b = await seeded();
+    await enqueue(env.DB, [mail("client_received", b.id)]);
+    let during: unknown;
+    deps.email.send = async (m) => {
+      during = (await notificationRows())[0];
+      deps.emails.push(m);
+    };
+    await processDue(deps);
+    expect(during).toMatchObject({ attempts: 1, sent_at: null, claimed_until: "2026-11-07T10:02:00.000Z" });
+    expect((await notificationRows())[0]).toMatchObject({ attempts: 1, sent_at: T0 });
+  });
+
+  it("laisse un envoi réservé par un autre passage jusqu'à la fin de sa réservation, puis le reprend", async () => {
+    const b = await seeded();
+    await enqueue(env.DB, [mail("client_received", b.id)]);
+    // Un passage a réservé l'envoi puis s'est interrompu avant de le terminer.
+    expect(await claimNotification(env.DB, (await notificationRows())[0].id, T0, "2026-11-07T10:02:00.000Z")).toBe(1);
+
+    expect(await processDue(deps)).toEqual({ sent: 0, failed: 0 });
+    deps.setNow("2026-11-07T10:01:59.999Z");
+    expect(await processDue(deps)).toEqual({ sent: 0, failed: 0 });
+    expect(deps.emails).toHaveLength(0);
+
+    deps.setNow("2026-11-07T10:02:00.000Z");
+    expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
+    expect((await notificationRows())[0].attempts).toBe(2);
+  });
+
+  it("libère l'envoi après un échec : le passage suivant le reprend tout de suite", async () => {
+    const b = await seeded();
+    await enqueue(env.DB, [mail("client_received", b.id)]);
+    const send = deps.email.send;
+    deps.email.send = async () => {
+      throw new Error("panne");
+    };
+    await processDue(deps);
+    expect((await notificationRows())[0]).toMatchObject({ attempts: 1, claimed_until: null });
+    deps.email.send = send;
+    expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
+    expect((await notificationRows())[0].attempts).toBe(2);
+  });
+
+  it("compte exactement un essai par envoi : le seuil de trois échecs ne bouge pas", async () => {
+    deps.email.send = async () => {
+      throw new Error("panne");
+    };
+    const b = await seeded();
+    await enqueue(env.DB, [mail("client_received", b.id)]);
+    await processDue(deps);
+    await processDue(deps);
+    expect((await notificationRows()).filter((n) => n.template === "owner_email_failed")).toHaveLength(0);
+    await processDue(deps);
+    expect((await notificationRows()).map((n) => [n.template, n.attempts])).toEqual([
+      ["client_received", 3],
+      ["owner_email_failed", 1],
+    ]);
+  });
+
+  it("donne la clé de dédoublonnage au service d'e-mail, pour qu'une reprise ne renvoie pas le message", async () => {
+    const b = await seeded();
+    await enqueue(env.DB, [mail("client_received", b.id), mail("owner_new_request", b.id)]);
+    await processDue(deps);
+    expect(deps.emails.map((m) => m.idempotencyKey).sort()).toEqual([`${b.id}:client_received:email`, `${b.id}:owner_new_request:email`]);
   });
 });
 
@@ -384,6 +511,19 @@ describe("passerelle Resend", () => {
     });
   });
 
+  it("envoie la clé d'idempotence quand le message en porte une, et la garde hors du corps", async () => {
+    const { calls, fetchFn } = recorder(() => Response.json({ id: "e1" }));
+    await resendGateway(RESEND_ENV, fetchFn).send({ ...message, idempotencyKey: "b1:client_received:email" });
+    expect(calls[0].init.headers).toMatchObject({ "Idempotency-Key": "b1:client_received:email", Authorization: "Bearer re_cle_secrete" });
+    expect(JSON.parse(calls[0].init.body as string)).not.toHaveProperty("idempotencyKey");
+  });
+
+  it("n'envoie aucune clé d'idempotence quand le message n'en porte pas", async () => {
+    const { calls, fetchFn } = recorder(() => Response.json({ id: "e1" }));
+    await resendGateway(RESEND_ENV, fetchFn).send(message);
+    expect(calls[0].init.headers).not.toHaveProperty("Idempotency-Key");
+  });
+
   it("borne l'appel dans le temps", async () => {
     const { calls, fetchFn } = recorder(() => Response.json({}));
     await resendGateway(RESEND_ENV, fetchFn).send(message);
@@ -571,11 +711,45 @@ describe("Turnstile réel", () => {
     for (const secret of ["jeton-client", "0x-secret-turnstile", "203.0.113.5"]) expect(logs()).not.toContain(secret);
   });
 
-  it("signale un secret refusé, sans le citer", async () => {
-    const { verify } = verifier(reply({ success: false, "error-codes": ["invalid-input-secret"] }));
-    expect(await verify("jeton-client", null)).toBe("fail");
-    expect(logs()).toContain("invalid-input-secret");
-    expect(logs()).not.toContain("0x-secret-turnstile");
+  it.each(["invalid-input-secret", "missing-input-secret"])(
+    "répond unavailable, et le consigne sans citer le secret, quand siteverify refuse le secret du site (%s)",
+    async (code) => {
+      const { verify } = verifier(reply({ success: false, "error-codes": [code] }));
+      expect(await verify("jeton-client", "203.0.113.5")).toBe("unavailable");
+      expect(logged.mock.calls).toEqual([[`Turnstile : ${code}`]]);
+      for (const secret of ["0x-secret-turnstile", "jeton-client", "203.0.113.5"]) expect(logs()).not.toContain(secret);
+    },
+  );
+
+  it("répond unavailable quand le refus du secret s'accompagne d'autres codes", async () => {
+    const { verify } = verifier(reply({ success: false, "error-codes": ["invalid-input-response", "invalid-input-secret"] }));
+    expect(await verify("t", null)).toBe("unavailable");
+  });
+
+  it("répond fail, sans rien consigner, pour les autres codes d'erreur", async () => {
+    for (const code of ["missing-input-response", "invalid-input-response", "timeout-or-duplicate", "bad-request"]) {
+      expect(await verifier(reply({ success: false, "error-codes": [code] })).verify("t", null)).toBe("fail");
+    }
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  it("un secret refusé ne fait pas échouer la demande de bout en bout", async () => {
+    const d = fakeDeps({ verifyTurnstile: turnstileVerifier(TS_ENV, (async () => Response.json({ success: false, "error-codes": ["invalid-input-secret"] })) as unknown as typeof fetch) });
+    const background = createExecutionContext();
+    const date = "2026-12-19";
+    const r = await handle(
+      new Request("https://brotobooth.fr/api/requests", {
+        method: "POST",
+        body: JSON.stringify({
+          date, plan: "formule-1", event_type: "Mariage", event_hours: "19 h - 1 h", venue: "Salle", name: "Camille",
+          phone: "06 12 34 56 78", email: "camille@example.test", terms: true, turnstile_token: "",
+        }),
+      }),
+      d,
+      background,
+    );
+    await waitOnExecutionContext(background);
+    expect(r.status).toBe(201);
   });
 });
 

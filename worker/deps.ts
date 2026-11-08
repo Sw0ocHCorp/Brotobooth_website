@@ -5,7 +5,8 @@ import { callService } from "./http";
 import { simulatedGateway } from "./simulated-payment";
 import { telegramGateway } from "./telegram";
 
-export type EmailMessage = { to: string; subject: string; text: string; html: string };
+/** `idempotencyKey` : la même clé, répétée, ne fait envoyer le message qu'une fois (Resend la retient 24 h). */
+export type EmailMessage = { to: string; subject: string; text: string; html: string; idempotencyKey?: string };
 
 export type EmailGateway = { send(m: EmailMessage): Promise<void> };
 
@@ -58,7 +59,7 @@ const notWired = (method: string) => async (): Promise<never> => {
 
 const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
-/** Les codes d'erreur qui disent que le secret du site est absent ou faux, non que le visiteur est un robot. */
+/** Les codes d'erreur de siteverify qui disent que le secret du site est absent ou faux, non que le visiteur est un robot. */
 const SECRET_ERRORS = ["missing-input-secret", "invalid-input-secret"];
 
 /**
@@ -87,10 +88,14 @@ export function turnstileVerifier(env: Env, fetchFn: typeof fetch = fetch): Deps
       console.error("Turnstile : réponse illisible");
       return "unavailable";
     }
-    // Un secret faux refuserait tous les visiteurs en silence : il se voit dans les journaux.
+    // Un secret absent ou faux est une erreur de configuration du site, pas un robot : elle ne refuse aucun client,
+    // et se voit dans les journaux.
     const codes = Array.isArray(verdict["error-codes"]) ? verdict["error-codes"] : [];
     const refused = codes.filter((code) => SECRET_ERRORS.includes(code));
-    if (refused.length > 0) console.error(`Turnstile : ${refused.join(", ")}`);
+    if (refused.length > 0) {
+      console.error(`Turnstile : ${refused.join(", ")}`);
+      return "unavailable";
+    }
     return verdict.success === true ? "pass" : "fail";
   };
 }
