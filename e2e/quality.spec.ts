@@ -236,7 +236,7 @@ test("la même politique de sécurité couvre les fichiers statiques et les rép
     policies.add(headers["content-security-policy"] ?? `aucune sur ${path}`);
     expect(headers["x-content-type-options"], path).toBe("nosniff");
     // `same-origin` et non `strict-origin-when-cross-origin` : les formulaires de /acompte ont besoin de l'en-tête Origin.
-    if (!path.startsWith("/api") && !path.startsWith("/agenda")) expect(headers["referrer-policy"], path).toBe("same-origin");
+    expect(headers["referrer-policy"], path).toBe("same-origin");
   }
   expect([...policies]).toHaveLength(1);
   const [policy] = [...policies];

@@ -17,12 +17,18 @@ export const CONTENT_SECURITY_POLICY =
   "style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self'; " +
   "form-action 'self' https://checkout.stripe.com; frame-ancestors 'none'; base-uri 'self'";
 
-/** Sur toute réponse du Worker : ni gardée en cache ni indexée, sauf si l'appelant en décide autrement, et sous la politique du site. */
+/**
+ * Sur toute réponse du Worker (JSON, page, redirection, flux d'agenda) : ni gardée en cache ni indexée, sauf si l'appelant
+ * en décide autrement, sous la politique du site, et sans son adresse (qui porte parfois un jeton) dans le `Referer` d'un
+ * autre site. `same-origin` et non `no-referrer` : avec ce dernier, un navigateur envoie `Origin: null` pour un formulaire
+ * du site lui-même, que le contrôle d'origine des `POST` refuserait. `public/_headers` porte le même `Referrer-Policy`.
+ */
 export const DEFAULT_HEADERS = {
   "Cache-Control": "no-store",
   "X-Robots-Tag": "noindex",
   "Content-Security-Policy": CONTENT_SECURITY_POLICY,
   "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "same-origin",
 };
 
 export const json = (data: unknown, status = 200, headers: Record<string, string> = {}): Response =>
@@ -58,18 +64,13 @@ export function findRoute(routes: Route[], method: string, pathname: string): { 
   return hit ?? json({ error: "method_not_allowed" }, 405, { Allow: onPath.map(({ route }) => route.method).join(", ") });
 }
 
-/**
- * Une page HTML : jamais gardée en cache ni indexée, et sans son adresse (qui porte le jeton) dans le `Referer`
- * d'un autre site. `same-origin` et non `no-referrer` : avec ce dernier, un navigateur envoie `Origin: null`
- * pour un formulaire du site lui-même, que le contrôle d'origine des `POST` refuserait.
- */
+/** Une page HTML : jamais gardée en cache ni indexée, sans son adresse hors du site dans le `Referer` (voir `DEFAULT_HEADERS`), et jamais dans un cadre. */
 export const html = (body: string, status = 200): Response =>
   new Response(body, {
     status,
     headers: {
       ...DEFAULT_HEADERS,
       "Content-Type": "text/html; charset=utf-8",
-      "Referrer-Policy": "same-origin",
       "X-Frame-Options": "DENY",
     },
   });
