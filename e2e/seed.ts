@@ -1,7 +1,7 @@
 import { expect, type APIRequestContext } from "@playwright/test";
 
 /** L'adresse du site d'essai : celle de `BASE_URL` dans `npm run dev:e2e`, avec laquelle l'API compare l'en-tête `Origin`. */
-export const ORIGIN = "http://localhost:8788";
+export const ORIGIN = "http://localhost:8798";
 
 const ADMIN = "/api/admin/bookings";
 const DAY_MS = 86_400_000;

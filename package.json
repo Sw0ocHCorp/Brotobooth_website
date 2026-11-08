@@ -10,7 +10,7 @@
     "build": "astro build",
     "dev": "astro build && wrangler dev",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "dev:e2e": "rm -rf .wrangler/e2e && astro build && wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e && wrangler dev --port 8788 --persist-to .wrangler/e2e --test-scheduled --var FAKE_GATEWAYS:1 --var PAYMENT_MODE:simulated --var ACCESS_AUD:local-dev --var BASE_URL:http://localhost:8788",
+    "dev:e2e": "rm -rf .wrangler/e2e && astro build && wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e && wrangler dev --port 8798 --persist-to .wrangler/e2e --test-scheduled --var FAKE_GATEWAYS:1 --var PAYMENT_MODE:simulated --var ACCESS_AUD:local-dev --var BASE_URL:http://localhost:8798",
     "e2e": "playwright test",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p src/scripts && tsc --noEmit -p e2e"
   },

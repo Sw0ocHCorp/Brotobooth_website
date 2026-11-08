@@ -1032,7 +1032,7 @@ git add -A && git commit -m "feat: API d'administration"
 
 **Interfaces:**
 - Consumes : routes de la tâche 12, `public/styles/tokens.css`.
-- Produces : `playwright.config.ts` (projets Chromium et WebKit, tailles 375×812 et 1280×800), lançant `npm run dev:e2e` sur le port 8788 ; `dev:e2e` = `rm -rf .wrangler/e2e && astro build && wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e && wrangler dev --port 8788 --persist-to .wrangler/e2e --var FAKE_GATEWAYS:1 --var PAYMENT_MODE:simulated --var ACCESS_AUD:local-dev --var BASE_URL:http://localhost:8788`, avec `workers: 1`. `seed(request, kind)` dans `e2e/seed.ts` crée des réservations par l'API, chacune sur une date libre calculée à partir d'aujourd'hui, et `freeDate()` donne une date libre à au moins 30 jours.
+- Produces : `playwright.config.ts` (projets Chromium et WebKit, tailles 375×812 et 1280×800), lançant `npm run dev:e2e` sur le port 8798 ; `dev:e2e` = `rm -rf .wrangler/e2e && astro build && wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e && wrangler dev --port 8798 --persist-to .wrangler/e2e --var FAKE_GATEWAYS:1 --var PAYMENT_MODE:simulated --var ACCESS_AUD:local-dev --var BASE_URL:http://localhost:8798`, avec `workers: 1`. `seed(request, kind)` dans `e2e/seed.ts` crée des réservations par l'API, chacune sur une date libre calculée à partir d'aujourd'hui, et `freeDate()` donne une date libre à au moins 30 jours.
 
 - [ ] **Step 1: Écrire les tests qui échouent**
 
