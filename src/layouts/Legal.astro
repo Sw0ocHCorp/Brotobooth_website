@@ -9,7 +9,8 @@ import Base from "./Base.astro";
  * Le gabarit des trois pages légales : la barre et le pied de page du site, puis un texte à lire. Ces pages sont des
  * brouillons à faire valider par un professionnel : ce statut ne vit que dans un commentaire HTML, en tête de chaque page,
  * et jamais dans le texte, qui s'adresse au client. Astro retire les commentaires d'un gabarit, d'où `set:html`.
- * À retirer, avec les marqueurs `[À compléter]` (`Fact.astro`), une fois les textes validés.
+ * À retirer, avec les faits restés sans valeur (`Fact.astro`), une fois les textes validés : `scripts/check-launch.mjs`
+ * refuse de publier tant que l'un ou l'autre est là.
  */
 interface Props {
   title: string;

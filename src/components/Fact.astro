@@ -1,8 +1,8 @@
 ---
 /**
  * Un fait de l'entreprise dans une page légale : sa valeur (avec un lien si `href`), ou, tant qu'il manque, le marqueur
- * littéral `[À compléter]`. Rien n'est jamais inventé ; la vérification d'avant ouverture cherche ce marqueur dans `dist/`,
- * et ce composant est le seul endroit où il est écrit.
+ * littéral `[À compléter]`. Rien n'est jamais inventé ; `scripts/check-launch.mjs` refuse de publier tant qu'un `<Fact />`
+ * sans valeur reste dans les sources, et ce composant est le seul endroit où le marqueur est écrit.
  */
 interface Props {
   value?: string;

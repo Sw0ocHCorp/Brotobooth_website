@@ -11,7 +11,7 @@ import { cleanup, reachDetails, seed } from "./seed";
 const offer: Offer = offerJson;
 
 const SITE = "https://brotobooth.fr";
-/** Le marqueur de tout fait d'entreprise qui manque encore : la vérification d'avant ouverture le cherche dans `dist/`. */
+/** Le marqueur de tout fait d'entreprise qui manque encore : `scripts/check-launch.mjs` refuse de publier tant qu'il reste. */
 const TODO = "[À compléter]";
 /** Les cinq pages publiques, avec l'adresse que le site sert : Cloudflare ajoute la barre finale à un dossier. */
 const PUBLIC = [

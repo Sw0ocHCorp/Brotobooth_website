@@ -4,6 +4,8 @@ dist/
 .astro/
 .dev.vars*
 !.dev.vars.example
+# La clé publique du widget anti-robots, lue à la construction de la publication (docs/mise-en-ligne.md).
+.env.production
 .superpowers/
 test-results/
 playwright-report/

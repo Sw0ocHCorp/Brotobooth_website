@@ -11,6 +11,8 @@ const FIRST_OFFSET_DAYS = 35;
 const PICK_OFFSET_DAYS = 30;
 /** Les mois que `pickFreeDate` parcourt avant de renoncer. */
 const PICK_MONTHS = 6;
+/** Les mois que `showDay` parcourt avant de renoncer. */
+const SHOW_MONTHS = 12;
 const SEARCH_DAYS = 120;
 const CLEANUP_DAYS = 400;
 
@@ -65,6 +67,17 @@ export async function pickFreeDate(page: Page): Promise<Locator> {
   throw new Error(`Aucune date libre dans le calendrier à partir du ${from}`);
 }
 
+/** Avance le calendrier de `/reserver` jusqu'au mois de `date`, et renvoie le bouton de ce jour une fois ses disponibilités connues. */
+export async function showDay(page: Page, date: string): Promise<Locator> {
+  const days = page.locator("#days");
+  const day = days.locator(`[data-date="${date}"]`);
+  for (let month = 0; month < SHOW_MONTHS && (await day.count()) === 0; month++) {
+    await page.getByRole("button", { name: "Mois suivant" }).click();
+  }
+  await expect(days).toHaveAttribute("aria-busy", "false");
+  return day;
+}
+
 /** De l'arrivée sur `/reserver` à la troisième étape, avec une date libre et la première formule : renvoie la date. */
 export async function reachDetails(page: Page): Promise<string> {
   await page.goto("/reserver");
@@ -74,6 +87,28 @@ export async function reachDetails(page: Page): Promise<string> {
   await page.getByRole("button", { name: "Continuer" }).click();
   await expect(page.getByRole("heading", { name: "Vos coordonnées" })).toBeVisible();
   return (await day.getAttribute("data-date"))!;
+}
+
+let clients = 0;
+/** Un client, avec un e-mail propre à chaque appel : la limite de demandes par e-mail ne gêne aucun test. */
+export const client = () => ({
+  name: "Camille Durand",
+  hours: "19 h - 1 h",
+  venue: "Domaine des Pins, Lyon",
+  phone: "06 12 34 56 78",
+  email: `camille.durand.${Date.now()}.${++clients}@example.test`,
+});
+
+/** La troisième étape remplie comme un client le ferait, conditions de vente acceptées. */
+export async function fillDetails(page: Page, who = client()) {
+  await page.getByLabel("Événement").selectOption("Anniversaire");
+  await page.getByLabel("Horaires").fill(who.hours);
+  await page.getByLabel("Lieu").fill(who.venue);
+  await page.getByLabel("Nom").fill(who.name);
+  await page.getByLabel("Téléphone").fill(who.phone);
+  await page.getByLabel("E-mail").fill(who.email);
+  await page.getByLabel("J'accepte les conditions générales de vente").check();
+  return who;
 }
 
 let sequence = 0;

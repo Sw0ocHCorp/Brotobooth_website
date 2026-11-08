@@ -153,6 +153,9 @@ test("les images de section arrivent une fois et finissent à leur place", async
     // Dans la page : `scrollIntoViewIfNeeded` attendrait que l'image ne bouge plus.
     await shot.evaluate((node) => node.scrollIntoView({ block: "center" }));
     await expect(shot).toBeVisible();
+    // Le vol est lancé au prochain passage de l'observateur, pas au défilement : sans cette attente, « aucune animation »
+    // serait vrai avant même le départ, et l'angle serait lu au premier instant du vol. `toss` part avec `animate()`.
+    await expect(shot).not.toHaveClass(/\btoss\b/);
     await expect.poll(() => shot.evaluate((node) => node.getAnimations().length)).toBe(0);
     const rest = await shot.evaluate((node) => parseFloat(getComputedStyle(node).getPropertyValue("--r")));
     expect(await angleOf(shot)).toBeCloseTo(rest, 1);

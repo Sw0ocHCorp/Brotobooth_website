@@ -4,7 +4,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import offerJson from "../config/offer.json" with { type: "json" };
 import type { Offer } from "../worker/offer";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { addDays, cleanup, isoDate, pickFreeDate, reachDetails, seed } from "./seed";
+import { addDays, cleanup, client, fillDetails, isoDate, pickFreeDate, reachDetails, seed, showDay } from "./seed";
 
 /** `/reserver` : la date, la formule et les coordonnées, dans la carte posée sur la vidéo de la borne (spec, sections 4 et 7). */
 
@@ -25,42 +25,10 @@ const DAY = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", 
 /** « samedi 12 décembre 2026 ». */
 const longDate = (date: string) => DAY.format(new Date(`${date}T00:00:00Z`));
 
-let sequence = 0;
-/** Un client, avec un e-mail propre à chaque appel : la limite de demandes par e-mail ne gêne aucun test. */
-const client = () => ({
-  name: "Camille Durand",
-  hours: "19 h - 1 h",
-  venue: "Domaine des Pins, Lyon",
-  phone: "06 12 34 56 78",
-  email: `camille.durand.${Date.now()}.${++sequence}@example.test`,
-});
-
 const days = (page: Page) => page.locator("#days");
 const send = (page: Page) => page.getByRole("button", { name: "Envoyer ma demande" });
 const terms = (page: Page) => page.getByLabel("J'accepte les conditions générales de vente");
 const confirmed = (page: Page) => page.getByRole("heading", { name: "Demande envoyée" });
-
-/** La troisième étape remplie comme un client le ferait. */
-async function fillDetails(page: Page, who = client()) {
-  await page.getByLabel("Événement").selectOption("Anniversaire");
-  await page.getByLabel("Horaires").fill(who.hours);
-  await page.getByLabel("Lieu").fill(who.venue);
-  await page.getByLabel("Nom").fill(who.name);
-  await page.getByLabel("Téléphone").fill(who.phone);
-  await page.getByLabel("E-mail").fill(who.email);
-  await terms(page).check();
-  return who;
-}
-
-/** Avance le calendrier jusqu'au mois de `date`, et renvoie le bouton de ce jour une fois ses disponibilités connues. */
-async function showDay(page: Page, date: string): Promise<Locator> {
-  const day = days(page).locator(`[data-date="${date}"]`);
-  for (let month = 0; month < 12 && (await day.count()) === 0; month++) {
-    await page.getByRole("button", { name: "Mois suivant" }).click();
-  }
-  await expect(days(page)).toHaveAttribute("aria-busy", "false");
-  return day;
-}
 
 /** Une zone donne le contact de l'offre : un lien par moyen renseigné, aucun pour un moyen encore vide. */
 async function expectContact(zone: Locator) {
