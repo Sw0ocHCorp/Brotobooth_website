@@ -105,6 +105,9 @@ const MAX_ATTEMPTS = 288;
 /** À partir de là, un envoi compte comme en échec pour le propriétaire. */
 const FAILED_AFTER_ATTEMPTS = 3;
 
+/** L'envoi n'est réservé par aucun passage à l'instant `?` : jamais réservé, ou réservation échue. */
+const UNCLAIMED = "(claimed_until IS NULL OR claimed_until <= ?)";
+
 type Sql = { sql: string; params: unknown[] };
 
 const inList = (values: readonly string[]): Sql => ({
@@ -394,8 +397,7 @@ export const listDueNotifications = (
     db
       .prepare(
         `SELECT * FROM notifications
-         WHERE due_at <= ? AND sent_at IS NULL AND cancelled_at IS NULL AND attempts < ?
-           AND (claimed_until IS NULL OR claimed_until <= ?)
+         WHERE due_at <= ? AND sent_at IS NULL AND cancelled_at IS NULL AND attempts < ? AND ${UNCLAIMED}
          ORDER BY due_at, id LIMIT ?`,
       )
       .bind(nowIso, MAX_ATTEMPTS, nowIso, limit),
@@ -416,7 +418,7 @@ export async function claimNotification(
   const claimed = await db
     .prepare(
       `UPDATE notifications SET attempts = attempts + 1, claimed_until = ?
-       WHERE id = ? AND sent_at IS NULL AND cancelled_at IS NULL AND (claimed_until IS NULL OR claimed_until <= ?)
+       WHERE id = ? AND sent_at IS NULL AND cancelled_at IS NULL AND ${UNCLAIMED}
        RETURNING attempts`,
     )
     .bind(untilIso, id, nowIso)
@@ -441,15 +443,18 @@ export async function cancelNotification(db: D1Database, id: number, nowIso: str
     .run();
 }
 
-/** Les envois ni faits ni annulés qui ont échoué au moins trois fois. */
-export const listFailedNotifications = (db: D1Database): Promise<NotificationRow[]> =>
+/**
+ * Les envois ni faits ni annulés qui ont échoué au moins trois fois à l'instant `nowIso`. Un envoi encore
+ * réservé par un passage en est exclu : sa dernière tentative est en cours, et peut réussir.
+ */
+export const listFailedNotifications = (db: D1Database, nowIso: string): Promise<NotificationRow[]> =>
   rows<NotificationRow>(
     db
       .prepare(
         `SELECT * FROM notifications
-         WHERE sent_at IS NULL AND cancelled_at IS NULL AND attempts >= ? ORDER BY due_at, id`,
+         WHERE sent_at IS NULL AND cancelled_at IS NULL AND attempts >= ? AND ${UNCLAIMED} ORDER BY due_at, id`,
       )
-      .bind(FAILED_AFTER_ATTEMPTS),
+      .bind(FAILED_AFTER_ATTEMPTS, nowIso),
   );
 
 export const getState = (db: D1Database, key: string): Promise<string | null> =>

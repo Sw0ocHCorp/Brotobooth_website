@@ -9,6 +9,7 @@ import {
   findActiveByDateAndEmail,
   getBooking,
   insertBooking,
+  patchBooking,
   type Booking,
   type NewBooking,
   type Transition,
@@ -98,7 +99,7 @@ const message = accept(lengthBetween(0, 2000));
  * Le jeton Turnstile peut être vide : le formulaire n'en a pas quand le service est en panne, et c'est
  * `verifyTurnstile` qui tranche.
  */
-const PARSERS: { [K in keyof RequestInput]-?: (value: unknown, now: Date) => RequestInput[K] | null } = {
+export const PARSERS: { [K in keyof RequestInput]-?: (value: unknown, now: Date) => RequestInput[K] | null } = {
   date: accept((text, now) => checkDate(text, now) === "ok"),
   plan: accept((text) => planById(text) !== undefined),
   event_type: accept((text) => offer.eventTypes.includes(text)),
@@ -310,13 +311,22 @@ export async function closeSession(stripe: StripeGateway, id: string): Promise<S
   }
 }
 
+/** Stripe ne répond pas : l'opération qui l'appelait n'a rien modifié. Le message est celui de la passerelle. */
+export class PaymentUnavailable extends Error {}
+
 /** Le prix se règle tant que l'acompte n'est pas payé. */
 const PRICE_EDITABLE: readonly BookingStatus[] = ["pending_review", "awaiting_deposit"];
+
+/** `closeSession`, dont toute exception est une panne de Stripe, annoncée comme telle : celles de D1 n'en sont pas. */
+const closeSessionOrUnavailable = (stripe: StripeGateway, id: string): Promise<StripeSession> =>
+  closeSession(stripe, id).catch((error) => {
+    throw new PaymentUnavailable(error instanceof Error ? error.message : "Stripe injoignable");
+  });
 
 /**
  * Fixe le prix, et l'acompte à la main ou d'après `offer.depositPercent`. Une session ouverte est expirée et
  * oubliée : le client en rouvre une au même montant que le nouveau prix. Une session déjà payée donne `stale`.
- * Une panne de Stripe lève, sans rien modifier.
+ * Une panne de Stripe lève `PaymentUnavailable`, sans rien modifier.
  */
 export const adjustPrice = (
   deps: Deps,
@@ -325,7 +335,7 @@ export const adjustPrice = (
 ): Promise<OpResult> =>
   withBooking(deps, id, async (b) => {
     if (!PRICE_EDITABLE.includes(b.status)) return STALE;
-    if (b.stripe_session && (await closeSession(deps.stripe, b.stripe_session)).paymentStatus === "paid") return STALE;
+    if (b.stripe_session && (await closeSessionOrUnavailable(deps.stripe, b.stripe_session)).paymentStatus === "paid") return STALE;
     return stay(deps, b, deps.now(), "price_adjusted", {
       patch: {
         price_cents: a.priceCents,
@@ -369,6 +379,16 @@ export const attachSession = (deps: Deps, id: string, session: StripeSession): P
         hold_until: b.hold_until !== null && b.hold_until > heldUntil ? b.hold_until : heldUntil,
       },
     });
+  });
+
+/**
+ * Remplace les notes du propriétaire (`null` les efface), à tout moment : elles ne changent ni l'état ni les
+ * messages. Une réservation déjà anonymisée n'en reçoit plus, pour que ses données ne reviennent pas après l'effacement.
+ */
+export const editNotes = (deps: Deps, id: string, notes: string | null): Promise<OpResult> =>
+  withBooking(deps, id, async (b) => {
+    if (b.anonymized_at !== null) return STALE;
+    return applied(await patchBooking(deps.env.DB, id, { notes }, "owner", "notes_updated", deps.now().toISOString()));
   });
 
 export const markBalancePaid = (deps: Deps, id: string): Promise<OpResult> =>

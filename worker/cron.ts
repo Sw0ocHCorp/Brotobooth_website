@@ -11,7 +11,8 @@ const RETENTION_MONTHS = 12;
 const MONDAY = 1;
 const DIGEST_CHANNELS = ["telegram", "email"] as const;
 
-const LAST_RUN_KEY = "last_cron_run";
+/** La clé de `system_state` où chaque passage écrit son heure : l'administration la lit. */
+export const LAST_RUN_KEY = "last_cron_run";
 const LAST_ANONYMIZE_KEY = "last_anonymize";
 
 /** Une demande en cours dont l'échéance est atteinte. */

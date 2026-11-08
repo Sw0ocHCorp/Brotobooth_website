@@ -101,9 +101,9 @@ export function turnstileVerifier(env: Env, fetchFn: typeof fetch = fetch): Deps
 }
 
 /**
- * Les dépendances réelles. Le vrai Stripe (tâche 20) et l'accès propriétaire (tâche 12) les remplaceront. D'ici
- * là, seul `PAYMENT_MODE=simulated` branche un paiement, factice. `FAKE_GATEWAYS=1` remplace les e-mails,
- * Telegram et Turnstile par des passerelles d'essai dont `/demo` montre les messages.
+ * Les dépendances réelles. Le vrai Stripe (tâche 20) les remplacera. D'ici là, seul `PAYMENT_MODE=simulated`
+ * branche un paiement, factice. `FAKE_GATEWAYS=1` remplace les e-mails, Telegram et Turnstile par des
+ * passerelles d'essai dont `/demo` montre les messages.
  */
 export function makeDeps(realEnv: Env): Deps {
   const demo = realEnv.FAKE_GATEWAYS === "1";
@@ -124,6 +124,8 @@ export function makeDeps(realEnv: Env): Deps {
     ...(demo
       ? demoGateways(env, now)
       : { email: resendGateway(env), telegram: telegramGateway(env), verifyTurnstile: turnstileVerifier(env) }),
-    isOwner: () => false,
+    // Cloudflare Access a laissé passer la requête pour cette application : son public (`aud`) est celui attendu.
+    // Sans `ACCESS_AUD`, personne n'est le propriétaire : deux publics absents ne s'accorderaient pas.
+    isOwner: (ctx) => Boolean(env.ACCESS_AUD) && ctx.access?.aud === env.ACCESS_AUD,
   };
 }

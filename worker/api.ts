@@ -7,15 +7,20 @@ import { listUnavailableDates } from "./repository";
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_RANGE_DAYS = 400;
 
-/** Les dates prises sur une plage, et la fenêtre réservable : jamais rien sur ceux qui les tiennent. */
-export const availability: Handler = async (req, deps) => {
+/** La plage `from`–`to` de l'adresse, ou `null` si ce n'est pas une plage de dates valides d'au plus `MAX_RANGE_DAYS` jours. */
+export function readRange(req: Request): { from: string; to: string } | null {
   const params = new URL(req.url).searchParams;
   const from = params.get("from") ?? "";
   const to = params.get("to") ?? "";
-  if (!isValidDate(from) || !isValidDate(to) || to < from || to > addDays(from, MAX_RANGE_DAYS)) {
-    return json({ error: "invalid_range" }, 400);
-  }
-  const unavailable = await listUnavailableDates(deps.env.DB, from, to);
+  const valid = isValidDate(from) && isValidDate(to) && to >= from && to <= addDays(from, MAX_RANGE_DAYS);
+  return valid ? { from, to } : null;
+}
+
+/** Les dates prises sur une plage, et la fenêtre réservable : jamais rien sur ceux qui les tiennent. */
+export const availability: Handler = async (req, deps) => {
+  const range = readRange(req);
+  if (!range) return json({ error: "invalid_range" }, 400);
+  const unavailable = await listUnavailableDates(deps.env.DB, range.from, range.to);
   return json({ unavailable, ...bookingWindow(deps.now()) }, 200, { "Cache-Control": "public, max-age=30" });
 };
 

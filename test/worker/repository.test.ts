@@ -624,8 +624,22 @@ describe("file de notifications", () => {
     await markSent(env.DB, await notificationId("fait"), T0);
     await cancelNotification("annule");
 
-    const failed = await listFailedNotifications(env.DB);
+    const failed = await listFailedNotifications(env.DB, T0);
     expect(failed.map((n) => [n.dedupe_key, n.attempts])).toEqual([["trois", 3], ["quatre", 4]]);
+  });
+
+  it("listFailedNotifications ne compte pas l'envoi réservé par un passage en cours, avant la fin de sa réservation", async () => {
+    await enqueue(env.DB, [spec("en-vol"), spec("libere")]);
+    for (const key of ["en-vol", "libere"]) {
+      await fail(key);
+      await fail(key);
+    }
+    // La troisième tentative de « en-vol » est partie : l'envoi reste réservé jusqu'à LEASE_END, sans échec connu.
+    await claimNotification(env.DB, await notificationId("en-vol"), T0, LEASE_END);
+    await fail("libere");
+
+    expect((await listFailedNotifications(env.DB, T0)).map((n) => n.dedupe_key)).toEqual(["libere"]);
+    expect((await listFailedNotifications(env.DB, LEASE_END)).map((n) => n.dedupe_key)).toEqual(["en-vol", "libere"]);
   });
 });
 

@@ -3,11 +3,44 @@ import type { Deps } from "./deps";
 /** `params` : les segments `:nom` du chemin de la route, dans l'ordre. */
 export type Handler = (req: Request, deps: Deps, ctx: ExecutionContext, params: string[]) => Promise<Response>;
 
+/** `:nom` dans `path` capte un segment du chemin, passé au gestionnaire dans l'ordre. */
+export type Route = { method: string; path: string; handler: Handler };
+
 /** Ni gardées en cache ni indexées, sauf si l'appelant en décide autrement. */
 export const DEFAULT_HEADERS = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 
 export const json = (data: unknown, status = 200, headers: Record<string, string> = {}): Response =>
   Response.json(data, { status, headers: { ...DEFAULT_HEADERS, ...headers } });
+
+/** Les segments captés par `:nom`, ou `null` si `pathname` n'est pas de la forme de `path`. */
+function match(path: string, pathname: string): string[] | null {
+  const wanted = path.split("/");
+  const actual = pathname.split("/");
+  if (wanted.length !== actual.length) return null;
+  const params: string[] = [];
+  for (const [i, segment] of wanted.entries()) {
+    if (!segment.startsWith(":")) {
+      if (segment !== actual[i]) return null;
+    } else if (actual[i] === "") {
+      return null;
+    } else {
+      params.push(actual[i]);
+    }
+  }
+  return params;
+}
+
+/** La route de `routes` qui répond à `method` sur `pathname`, avec ses segments captés, ou la réponse 404 ou 405 à rendre. */
+export function findRoute(routes: Route[], method: string, pathname: string): { route: Route; params: string[] } | Response {
+  const onPath = routes.flatMap((route) => {
+    const params = match(route.path, pathname);
+    return params ? [{ route, params }] : [];
+  });
+  if (onPath.length === 0) return json({ error: "not_found" }, 404);
+
+  const hit = onPath.find(({ route }) => route.method === method);
+  return hit ?? json({ error: "method_not_allowed" }, 405, { Allow: onPath.map(({ route }) => route.method).join(", ") });
+}
 
 /**
  * Une page HTML : jamais gardée en cache ni indexée, et sans son adresse (qui porte le jeton) dans le `Referer`
