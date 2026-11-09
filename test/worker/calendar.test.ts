@@ -168,6 +168,11 @@ describe("renderCalendar", () => {
     expect(ics).toMatch(/DESCRIPTION:Type : Mariage\\nHoraires : 18h-02h\\nFormule : [^\r]+\\nTéléphone : 0601020304\\nSolde restant : 1\s050 €\r\n/);
   });
 
+  it("donne le palier et le tarif de la recharge après la formule", () => {
+    const ics = unfold(render(confirmed("2026-12-19", { price_tier: "lancement", refill_cents: 3_750 })));
+    expect(ics).toMatch(/Formule : [^\r]+?\\nPalier : lancement\\nRecharge de 100 tirages : 37\\,50 €\\nTéléphone/);
+  });
+
   it("ne dit rien du solde, du lieu ni du reste quand ils ne sont pas renseignés", () => {
     const ics = unfold(
       render(confirmed("2026-12-19", { price_cents: null, deposit_cents: null, venue: null, event_type: null, event_hours: null, plan: null, client_phone: null })),

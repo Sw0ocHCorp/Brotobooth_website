@@ -95,7 +95,7 @@ function payView(b: Booking): string {
   return view(
     "Votre acompte",
     `<p>${hello}\u00a0: nous pouvons être présents à votre événement. Votre date est gardée pour vous${untilDeadline(b)}, et elle sera confirmée dès que l'acompte sera réglé.</p>`,
-    `<div class="card"><dl class="recap">${row("Date", formatDay(b.event_date))}${row("Lieu", b.venue)}${row("Formule", planName(b))}${row("Prix total", totalPrice(b))}<dt>Acompte à régler</dt><dd class="amount">${deposit}</dd>${row("Reste à régler ensuite", leftToPay(b))}</dl></div>`,
+    `<div class="card"><dl class="recap">${row("Date", formatDay(b.event_date))}${row("Lieu", b.venue)}${row("Formule", planName(b))}${row("Recharge de 100 tirages, le jour J", b.refill_cents === null ? null : formatEuros(b.refill_cents))}${row("Prix total", totalPrice(b))}<dt>Acompte à régler</dt><dd class="amount">${deposit}</dd>${row("Reste à régler ensuite", leftToPay(b))}</dl></div>`,
     `<form class="stack" method="post" action="${escapeHtml(acomptePath(b.token))}"><button class="btn primary" type="submit">Payer l'acompte de ${deposit}</button></form>`,
     "<p>Vous serez redirigé vers une page de paiement sécurisée.</p>",
   );

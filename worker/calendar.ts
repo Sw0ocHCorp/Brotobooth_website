@@ -1,9 +1,10 @@
 import { ACTIVE_STATUSES, addDays, parisToday, type BookingStatus } from "./bookings";
 import type { Deps } from "./deps";
 import { DEFAULT_HEADERS, json, secretMatches } from "./http";
+import { formatEuros } from "./html";
 import { offer } from "./offer";
 import { listUpcoming, type Booking } from "./repository";
-import { balance, planName } from "./templates";
+import { balance, planName, tierName } from "./templates";
 
 /** L'identifiant d'un événement est `<identifiant de la réservation>@brotobooth.fr` : le même à chaque lecture. */
 const UID_DOMAIN = "brotobooth.fr";
@@ -66,6 +67,8 @@ function details(b: Booking): string[] {
     ["Type", b.event_type],
     ["Horaires", b.event_hours],
     ["Formule", planName(b)],
+    ["Palier", tierName(b)],
+    ["Recharge de 100 tirages", b.refill_cents === null ? null : formatEuros(b.refill_cents)],
     ["Téléphone", b.client_phone],
     // Sans prix, le solde n'est pas nul : il est inconnu.
     ["Solde restant", b.price_cents === null ? null : balance(b)],

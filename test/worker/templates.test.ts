@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { escapeHtml } from "../../worker/html";
+import { escapeHtml, formatEuros } from "../../worker/html";
 import { ALL_TEMPLATES } from "../../worker/notifications";
 import { offer } from "../../worker/offer";
 import type { Booking } from "../../worker/repository";
-import { renderEmail, renderTelegram } from "../../worker/templates";
+import { renderEmail, renderTelegram, tierName } from "../../worker/templates";
 import { SECOND_PLAN, T0, newBooking } from "../support";
 
 const ctx = { baseUrl: "https://brotobooth.fr" };
@@ -505,5 +505,42 @@ describe("modèles inconnus", () => {
       expect(renderEmail(t, booking(), ctx).text.length).toBeGreaterThan(0);
       expect(renderTelegram(t, booking(), ctx).html.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("la recharge de 100 tirages et le palier", () => {
+  const REFILL = 3_750;
+  const LABEL = "Recharge de 100 tirages, le jour J";
+  const OWNER_LABEL = "Recharge de 100 tirages";
+  const known = offer.tiers[0];
+  const tiered = (over: Partial<Booking> = {}) => booking({ price_tier: known.id, refill_cents: REFILL, ...over });
+
+  it.each(["client_received", "client_deposit_link", "client_confirmed", "client_d7"])("%s annonce le tarif de la recharge juste après la formule", (t) => {
+    const m = renderEmail(t, tiered(), ctx);
+    const lines = m.text.split("\n");
+    const formule = lines.findIndex((l) => l.startsWith("Formule : "));
+    expect(lines[formule + 1]).toBe(`${LABEL} : ${formatEuros(REFILL)}`);
+    expect(m.html).toContain(`<strong>${LABEL}</strong> : ${escapeHtml(formatEuros(REFILL))}`);
+  });
+
+  it.each(["client_received", "client_deposit_link", "client_confirmed", "client_d7"])("%s n'écrit aucune ligne de recharge sans tarif", (t) => {
+    expect(renderEmail(t, tiered({ refill_cents: null }), ctx).text).not.toContain("Recharge");
+  });
+
+  it.each(["owner_new_request", "owner_deposit_paid", "owner_d7", "owner_d1"])("%s donne le palier et la recharge juste après la formule, en e-mail et sur Telegram", (t) => {
+    const b = tiered();
+    const rows = [`Palier : ${known.name}`, `${OWNER_LABEL} : ${formatEuros(REFILL)}`];
+    const lines = renderEmail(t, b, ctx).text.split("\n");
+    const formule = lines.findIndex((l) => l.startsWith("Formule : "));
+    if (formule >= 0) expect(lines.slice(formule + 1, formule + 3)).toEqual(rows);
+    else for (const row of rows) expect(lines).toContain(row);
+    const tg = renderTelegram(t, b, ctx).html;
+    for (const row of rows) expect(tg).toContain(escapeHtml(row).replace(/^([^:]+) :/, "<b>$1</b> :"));
+  });
+
+  it("tierName : le nom du palier connu, l'identifiant d'un palier inconnu, rien sans palier", () => {
+    expect(tierName(booking({ price_tier: known.id }))).toBe(known.name);
+    expect(tierName(booking({ price_tier: "ancien-palier" }))).toBe("ancien-palier");
+    expect(tierName(booking({ price_tier: null }))).toBeNull();
   });
 });

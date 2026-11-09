@@ -90,6 +90,13 @@ describe("GET /acompte/<jeton> : récapitulatif", () => {
     expect(html).toContain("samedi 19 décembre 2026");
   });
 
+  it("annonce le tarif de la recharge juste après la formule, et rien sans tarif", async () => {
+    const b = (await insert(newBooking({ status: "awaiting_deposit", event_date: "2026-12-26", refill_cents: 3_750 }))).booking;
+    const html = await (await open(b.token)).text();
+    expect(html).toMatch(/<dt>Formule<\/dt><dd>[^<]+<\/dd><dt>Recharge de 100 tirages, le jour J<\/dt><dd>37,50 €<\/dd>/);
+    expect(await (await open(v.token)).text()).not.toContain("Recharge");
+  });
+
   it("annonce la date limite à l'heure de Paris et propose de payer", async () => {
     const html = await (await open(v.token)).text();
     expect(html).toContain("mardi 10 novembre à 11 h");

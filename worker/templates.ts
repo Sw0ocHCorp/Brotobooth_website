@@ -2,7 +2,7 @@ import { reminderAt, type BookingStatus } from "./bookings";
 import type { Button } from "./deps";
 import { escapeHtml, formatDay, formatEuros, formatHours, formatMoment } from "./html";
 import type { Template } from "./notifications";
-import { offer, planById } from "./offer";
+import { offer, planById, tierById } from "./offer";
 import type { Booking } from "./repository";
 
 /** `upcoming` : les prestations du point du lundi, que l'appelant lit dans la base. */
@@ -42,6 +42,17 @@ const paymentUrl = (b: Booking, ctx: MessageContext): string => absolute(ctx, `/
 const day = (b: Booking): string => formatDay(b.event_date);
 const euros = (cents: number | null): string => formatEuros(cents ?? 0);
 export const planName = (b: Booking): string | null => planById(b.plan ?? "")?.name ?? b.plan;
+/** Le palier de la réservation, que seul le propriétaire lit : son nom, son identifiant s'il a disparu de l'offre, rien sans palier. */
+export const tierName = (b: Booking): string | null => (b.price_tier ? (tierById(b.price_tier)?.name ?? b.price_tier) : null);
+/** Le tarif figé d'une recharge de 100 tirages, ou rien quand la réservation n'en garde pas. */
+const refillPrice = (b: Booking): string | null => (b.refill_cents === null ? null : euros(b.refill_cents));
+/** La recharge sous le libellé du client, qui la commande le jour J. */
+const clientRefillRow = (b: Booking): Row => ["Recharge de 100 tirages, le jour J", refillPrice(b)];
+/** Le palier puis la recharge, sous les libellés du propriétaire. */
+const ownerTierRows = (b: Booking): Row[] => [
+  ["Palier", tierName(b)],
+  ["Recharge de 100 tirages", refillPrice(b)],
+];
 /** Ce qui reste à régler après l'acompte, en euros ; zéro une fois le solde réglé. */
 export const balance = (b: Booking): string =>
   euros(b.balance_paid_at ? 0 : Math.max(0, (b.price_cents ?? 0) - (b.deposit_cents ?? 0)));
@@ -61,6 +72,7 @@ type Row = [label: string, value: string | null];
 const eventRows = (b: Booking): Row[] => [
   ["Date", day(b)],
   ["Formule", planName(b)],
+  clientRefillRow(b),
   ["Événement", b.event_type],
   ["Lieu", b.venue],
   ["Horaires", b.event_hours],
@@ -123,6 +135,8 @@ const eventReminder =
     blocks: [
       facts([
         ["Client", b.client_name],
+        ["Formule", planName(b)],
+        ...ownerTierRows(b),
         ["Lieu", b.venue],
         ["Horaires", b.event_hours],
         ["Téléphone", b.client_phone],
@@ -163,7 +177,7 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       `Bonne nouvelle : nous pouvons être là le ${day(b)}`,
       para(`Bonne nouvelle\u00a0: nous pouvons être présents à votre événement le ${day(b)}\u00a0!`),
       para(`Pour confirmer votre date, réglez l'acompte de ${euros(b.deposit_cents)}. Elle est gardée pour vous${through(b)}.`),
-      facts([["Formule", planName(b)], ...priceRows(b, "Acompte à régler maintenant", "Reste à régler ensuite")]),
+      facts([["Formule", planName(b)], clientRefillRow(b), ...priceRows(b, "Acompte à régler maintenant", "Reste à régler ensuite")]),
       action(`Payer l'acompte de ${euros(b.deposit_cents)}`, paymentUrl(b, ctx)),
       para(
         "La date est confirmée dès que l'acompte est payé.",
@@ -237,6 +251,7 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
         facts([
           ["Type", b.event_type],
           ["Formule", planName(b)],
+          ...ownerTierRows(b),
           ["Lieu", b.venue],
           ["Client", b.client_name],
           ["Téléphone", b.client_phone],
@@ -283,6 +298,7 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       facts([
         ["Client", b.client_name],
         ["Formule", planName(b)],
+        ...ownerTierRows(b),
         ["Acompte", euros(b.deposit_cents)],
         ["Solde restant", balance(b)],
         ["Téléphone", b.client_phone],
