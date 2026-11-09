@@ -157,7 +157,7 @@ describe("messages au client", () => {
 
   it("le lien de paiement donne le montant, la date limite à l'heure de Paris et la date confirmée au paiement", () => {
     const { text } = renderEmail("client_deposit_link", booking(), ctx);
-    expect(text).toMatch(/450,00 €/);
+    expect(text).toMatch(/450 €/);
     expect(text).toContain("jusqu'au mardi 10 novembre à 11 h");
     expect(text).toMatch(/confirmée dès que l'acompte est payé/);
   });
@@ -172,9 +172,9 @@ describe("messages au client", () => {
   it("le lien de paiement rappelle la formule, le prix total, l'acompte et le reste à régler, avant le lien", () => {
     const { text } = renderEmail("client_deposit_link", booking({ price_cents: 150_000, deposit_cents: 45_000 }), ctx);
     expect(text).toContain(`Formule : ${SECOND_PLAN.name}`);
-    expect(text).toMatch(/Prix total : 1\s?500,00 €/);
-    expect(text).toContain("Acompte à régler maintenant : 450,00 €");
-    expect(text).toMatch(/Reste à régler ensuite : 1\s?050,00 €/);
+    expect(text).toMatch(/Prix total : 1\s?500 €/);
+    expect(text).toContain("Acompte à régler maintenant : 450 €");
+    expect(text).toMatch(/Reste à régler ensuite : 1\s?050 €/);
     expect(text.indexOf("Prix total")).toBeLessThan(text.indexOf("https://brotobooth.fr/acompte/"));
   });
 
@@ -183,7 +183,7 @@ describe("messages au client", () => {
     expect(text).toContain("Passé le mardi 10 novembre à 11 h, la date sera de nouveau proposée à d'autres.");
   });
 
-  // Un prix encore à fixer ne s'écrit pas « 0,00 € » comme s'il était réel, ni un reste à régler qui en découlerait.
+  // Un prix encore à fixer ne s'écrit pas « 0 € » comme s'il était réel, ni un reste à régler qui en découlerait.
   it.each(["client_deposit_link", "client_confirmed", "client_d7"])("%s n'écrit ni prix ni reste à régler sans prix fixé", (t) => {
     for (const price_cents of [null, 0]) {
       const { text } = renderEmail(t, booking({ price_cents }), ctx);
@@ -199,7 +199,7 @@ describe("messages au client", () => {
 
   it("formate les dates et les montants en français", () => {
     expect(renderEmail("client_confirmed", booking({ event_date: "2026-12-19", price_cents: 150000 }), ctx).text)
-      .toMatch(/samedi 19 décembre 2026[\s\S]*1\s?500,00\s?€/);
+      .toMatch(/samedi 19 décembre 2026[\s\S]*1\s?500\s?€/);
   });
 
   it("la confirmation récapitule la formule, le lieu, le prix total, l'acompte et le reste à régler", () => {
@@ -207,9 +207,9 @@ describe("messages au client", () => {
     expect(text).toContain(SECOND_PLAN.name);
     expect(text).toContain("Domaine des Pins, Lyon");
     expect(text).toContain("18h-02h");
-    expect(text).toMatch(/Prix total : 1\s?500,00 €/);
-    expect(text).toMatch(/Acompte réglé : 450,00 €/);
-    expect(text).toMatch(/Reste à régler : 1\s?050,00 €/);
+    expect(text).toMatch(/Prix total : 1\s?500 €/);
+    expect(text).toMatch(/Acompte réglé : 450 €/);
+    expect(text).toMatch(/Reste à régler : 1\s?050 €/);
   });
 
   // Le rappel de J-7 n'est prévu que si son heure n'était pas passée au paiement (`plan`) : la confirmation ne promet que lui.
@@ -227,12 +227,12 @@ describe("messages au client", () => {
     const { text } = renderEmail("client_d7", booking({ price_cents: 150_000, deposit_cents: 45_000 }), ctx);
     expect(text).toContain("Domaine des Pins, Lyon");
     expect(text).toContain("18h-02h");
-    expect(text).toMatch(/Reste à régler : 1\s?050,00 €/);
+    expect(text).toMatch(/Reste à régler : 1\s?050 €/);
   });
 
   it("n'annonce plus rien à régler quand le reste est déjà réglé", () => {
     const { text } = renderEmail("client_d7", booking({ balance_paid_at: T0 }), ctx);
-    expect(text).toMatch(/Reste à régler : 0,00 €/);
+    expect(text).toMatch(/Reste à régler : 0 €/);
   });
 
   it("le refus remercie, s'excuse, dit qu'il n'y a rien à payer et propose de choisir une autre date", () => {
@@ -364,14 +364,14 @@ describe("messages au propriétaire", () => {
   it.each(["owner_d7", "owner_d1"])("%s donne le lieu, les horaires, le téléphone et le solde restant", (t) => {
     const { html } = renderTelegram(t, booking({ price_cents: 150_000, deposit_cents: 45_000 }), ctx);
     for (const part of ["Domaine des Pins, Lyon", "18h-02h", "0601020304"]) expect(html).toContain(part);
-    expect(html).toMatch(/Solde restant<\/b> : 1\s?050,00 €/);
+    expect(html).toMatch(/Solde restant<\/b> : 1\s?050 €/);
   });
 
   it("owner_deposit_paid donne le client, l'acompte et le solde restant", () => {
     const { html } = renderTelegram("owner_deposit_paid", booking({ price_cents: 150_000, deposit_cents: 45_000 }), ctx);
     expect(html).toContain("Camille Martin");
-    expect(html).toMatch(/450,00 €/);
-    expect(html).toMatch(/1\s?050,00 €/);
+    expect(html).toMatch(/450 €/);
+    expect(html).toMatch(/1\s?050 €/);
   });
 
   it("owner_released nomme le client et la date libérée", () => {
@@ -390,7 +390,7 @@ describe("messages au propriétaire", () => {
     const m = renderEmail("owner_late_payment", booking({ event_date: "2026-12-19", deposit_cents: 45_000 }), ctx);
     expect(m.text).toContain("Camille Martin");
     expect(m.text).toContain("samedi 19 décembre 2026");
-    expect(m.text).toMatch(/450,00 €/);
+    expect(m.text).toMatch(/450 €/);
     expect(m.text).toMatch(/Stripe/);
     expect(m.text).toMatch(/rembours/i);
     expect(renderTelegram("owner_late_payment", booking(), ctx).html).toMatch(/rembours/i);

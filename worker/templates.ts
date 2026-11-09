@@ -47,7 +47,7 @@ export const balance = (b: Booking): string =>
   euros(b.balance_paid_at ? 0 : Math.max(0, (b.price_cents ?? 0) - (b.deposit_cents ?? 0)));
 /**
  * Le prix total et ce qui reste à régler, tels que le client les lit : rien tant que le prix n'est pas fixé, car
- * « 0,00 € » se lirait comme un vrai montant.
+ * « 0 € » se lirait comme un vrai montant.
  */
 const priced = (b: Booking): boolean => (b.price_cents ?? 0) > 0;
 export const totalPrice = (b: Booking): string | null => (priced(b) ? euros(b.price_cents) : null);

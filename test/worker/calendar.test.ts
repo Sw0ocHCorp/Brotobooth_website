@@ -165,7 +165,7 @@ describe("renderCalendar", () => {
     // Le nom de la formule est celui de l'offre, tel que le calendrier l'écrit (`\`, `;` et `,` échappés).
     const formule = SECOND_PLAN.name.replace(/[\\;,]/g, "\\$&");
     expect(ics).toContain(`Formule : ${formule}\\nTéléphone : 0601020304\\nSolde restant : `);
-    expect(ics).toMatch(/DESCRIPTION:Type : Mariage\\nHoraires : 18h-02h\\nFormule : [^\r]+\\nTéléphone : 0601020304\\nSolde restant : 1\s050\\,00 €\r\n/);
+    expect(ics).toMatch(/DESCRIPTION:Type : Mariage\\nHoraires : 18h-02h\\nFormule : [^\r]+\\nTéléphone : 0601020304\\nSolde restant : 1\s050 €\r\n/);
   });
 
   it("ne dit rien du solde, du lieu ni du reste quand ils ne sont pas renseignés", () => {
@@ -180,7 +180,7 @@ describe("renderCalendar", () => {
   });
 
   it("compte un solde réglé pour zéro", () => {
-    expect(unfold(render(confirmed("2026-12-19", { balance_paid_at: T0 })))).toMatch(/Solde restant : 0\\,00 €/);
+    expect(unfold(render(confirmed("2026-12-19", { balance_paid_at: T0 })))).toMatch(/Solde restant : 0 €/);
   });
 });
 

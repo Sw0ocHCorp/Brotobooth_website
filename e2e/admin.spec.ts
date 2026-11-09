@@ -104,7 +104,7 @@ test("ajuster le prix recalcule l'acompte", async ({ page, request }) => {
   await price.getByLabel("Prix (€)").fill("1500");
   await price.getByRole("button", { name: "Enregistrer le prix" }).click();
   await expect(price).toBeHidden();
-  await expect(sheet.getByText("1 500,00 €", { exact: true })).toBeVisible();
+  await expect(sheet.getByText("1 500 €", { exact: true })).toBeVisible();
   await expect(sheet.getByText(euros(depositFor(150_000)), { exact: true })).toBeVisible(); // le pourcentage de l'offre
   await expect(sheet.getByText(euros(150_000 - depositFor(150_000)), { exact: true })).toBeVisible(); // le solde
   // L'historique garde la trace du changement, en français.
@@ -217,8 +217,8 @@ test("ajouter une réservation et bloquer une date", async ({ page, request }) =
   // La fiche de la réservation s'ouvre : confirmée, avec le solde restant dû.
   const sheet = sheetOf(page, "Inès Lefèvre");
   await expect(sheet.getByText("Confirmée", { exact: true })).toBeVisible();
-  await expect(sheet.getByText("1 200,00 €", { exact: true })).toBeVisible();
-  await expect(sheet.getByText("900,00 €", { exact: true })).toBeVisible();
+  await expect(sheet.getByText("1 200 €", { exact: true })).toBeVisible();
+  await expect(sheet.getByText("900 €", { exact: true })).toBeVisible();
   await expect(sheet.getByLabel("Notes")).toHaveValue("Paiement du solde en espèces.");
   await sheet.getByRole("button", { name: "Fermer" }).click();
   await showMonth(page, first);
@@ -250,7 +250,7 @@ test("marquer le solde comme réglé", async ({ page, request }) => {
   const booking = await seed(request, "confirmed");
   await page.goto(`/admin#${booking.id}`);
   const sheet = sheetOf(page, booking.name);
-  await expect(sheet.getByText("1 050,00 €", { exact: true })).toBeVisible();
+  await expect(sheet.getByText("1 050 €", { exact: true })).toBeVisible();
   await sheet.getByRole("button", { name: "Solde réglé" }).click();
   await expect(sheet.getByRole("button", { name: "Solde réglé" })).toHaveCount(0);
   await expect(sheet.getByText(/Solde réglé le/)).toBeVisible();

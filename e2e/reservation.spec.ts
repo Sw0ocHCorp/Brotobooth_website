@@ -1,7 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { isBookable, plansOf } from "../worker/offer";
 import {
   FIRST_PLAN,
   SECOND_PLAN,
@@ -12,10 +11,12 @@ import {
   client,
   euros,
   fillDetails,
+  isBookable,
   isoDate,
   offer,
   pickFreeDate,
   planButton,
+  plansOf,
   reachDetails,
   seed,
   showDay,
@@ -55,17 +56,24 @@ async function expectContact(zone: Locator) {
   if (email) await expect(zone.getByRole("link", { name: email })).toBeVisible();
 }
 
-/** `/reserver` telle qu'une construction avec une clé anti-robots la servirait : la clé de test posée sur le widget. */
-async function withSiteKey(page: Page) {
+/**
+ * `/reserver` servie avec `anchor` remplacé par `replacement`. L'ancre est cherchée d'abord : si la page a changé, le test
+ * échoue en le disant, au lieu d'attendre un élément qui n'arrivera jamais.
+ */
+async function serveReserver(page: Page, anchor: string, replacement: string) {
+  const html = await (await page.request.get("/reserver")).text();
+  expect(html.includes(anchor), `/reserver ne contient plus « ${anchor} » : le test ne peut pas modifier la page`).toBe(true);
   await page.route(
     (url) => url.pathname === "/reserver",
     async (route) => {
       const response = await route.fetch();
-      const body = (await response.text()).replace("data-sitekey>", `data-sitekey="${TEST_SITE_KEY}">`);
-      await route.fulfill({ response, body });
+      await route.fulfill({ response, body: (await response.text()).replace(anchor, replacement) });
     },
   );
 }
+
+/** `/reserver` telle qu'une construction avec une clé anti-robots la servirait : la clé de test posée sur le widget. */
+const withSiteKey = (page: Page) => serveReserver(page, "data-sitekey>", `data-sitekey="${TEST_SITE_KEY}">`);
 
 /**
  * Un faux script Turnstile, pour ne dépendre ni du réseau ni de Cloudflare : le widget rend « widget-1 » et donne le
@@ -194,14 +202,8 @@ test("la borne vient avant les tirages : une borne à venir se voit sans se choi
 
 test("choisir une autre borne efface le nombre de tirages choisi", async ({ page }) => {
   // Une seconde borne réservable, posée dans la page servie : l'offre du site n'en a peut-être qu'une.
-  await page.route(
-    (url) => url.pathname === "/reserver",
-    async (route) => {
-      const response = await route.fetch();
-      const other = '<button type="button" class="choice" data-booth="borne-d-essai" aria-pressed="false"><b>Borne d\'essai</b></button>';
-      await route.fulfill({ response, body: (await response.text()).replace("Votre borne</p>", `Votre borne</p>${other}`) });
-    },
-  );
+  const other = '<button type="button" class="choice" data-booth="borne-d-essai" aria-pressed="false"><b>Borne d\'essai</b></button>';
+  await serveReserver(page, "Votre borne</p>", `Votre borne</p>${other}`);
   await page.goto("/reserver");
   await pickFreeDate(page);
   await goOn(page).click();
@@ -217,6 +219,20 @@ test("choisir une autre borne efface le nombre de tirages choisi", async ({ page
   await boothButton(page, FIRST_PLAN.booth).click();
   await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "false");
   await expect(goOn(page)).toBeDisabled();
+});
+
+// Firefox garde d'une visite à l'autre l'état `disabled` qu'un script a changé : la page ne s'y fie pas, le script le rétablit.
+test("« Continuer » de la formule reste désactivé sans formule, même si la page servie ne le désactive pas", async ({ page }) => {
+  await serveReserver(page, 'id="go-plan" disabled>', 'id="go-plan">');
+  await page.goto("/reserver");
+  await pickFreeDate(page);
+  await goOn(page).click();
+  await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeVisible();
+  await expect(goOn(page)).toBeDisabled();
+  await boothButton(page, FIRST_PLAN.booth).click();
+  await expect(goOn(page)).toBeDisabled();
+  await planButton(page, FIRST_PLAN).click();
+  await expect(goOn(page)).toBeEnabled();
 });
 
 test("le lien d'une borne la présélectionne : après la date, il reste le nombre de tirages à choisir", async ({ page }) => {
@@ -731,14 +747,19 @@ test("le calendrier s'utilise au clavier", async ({ page }) => {
   await expect(go).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeFocused();
-  // La borne, puis ses tirages : le focus reste sur la borne choisie, et les tirages viennent juste après.
-  for (const target of [boothButton(page, FIRST_PLAN.booth), planButton(page, FIRST_PLAN)]) {
-    for (let step = 0; step < 10 && !(await target.evaluate((button) => button === document.activeElement)); step++) await page.keyboard.press("Tab");
-    await expect(target).toBeFocused();
-    await page.keyboard.press("Space");
-    await expect(target).toHaveAttribute("aria-pressed", "true");
-    await expect(target).toBeFocused();
-  }
+  // La borne : choisie au clavier, elle garde le focus.
+  const booth = boothButton(page, FIRST_PLAN.booth);
+  const focused = (locator: Locator) => locator.evaluate((element) => element.contains(document.activeElement));
+  for (let step = 0; step < offer.booths.length && !(await focused(booth)); step++) await page.keyboard.press("Tab");
+  await expect(booth).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(booth).toHaveAttribute("aria-pressed", "true");
+  await expect(booth).toBeFocused();
+  // Ses tirages viennent juste après les bornes : la première tabulation qui quitte les bornes arrive sur sa première formule.
+  for (let step = 0; step < offer.booths.length && (await focused(booths(page))); step++) await page.keyboard.press("Tab");
+  await expect(planButton(page, plansOf(offer, FIRST_PLAN.booth)[0])).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "true");
   await expect(go).toBeEnabled();
 });
 

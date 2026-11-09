@@ -57,9 +57,13 @@ ${bodyHtml}
 }
 
 const EUROS = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const WHOLE_EUROS = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 
-/** « 450,00 € ». Le symbole suit une espace ordinaire : le montant se retrouve tel quel dans un texte. */
-export const formatEuros = (cents: number): string => `${EUROS.format(cents / 100)} €`;
+/**
+ * « 250 € » pour un montant rond, « 37,50 € » sinon. Le symbole suit une espace ordinaire : le montant se retrouve tel quel
+ * dans un texte.
+ */
+export const formatEuros = (cents: number): string => `${(cents % 100 === 0 ? WHOLE_EUROS : EUROS).format(cents / 100)} €`;
 
 /** « 72 h », le nombre et son unité liés par une espace insécable : une fin de ligne ne les sépare jamais. */
 export const formatHours = (hours: number): string => `${hours}\u00a0h`;

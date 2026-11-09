@@ -86,7 +86,7 @@ const withStatus = async (status: BookingStatus) =>
 describe("GET /acompte/<jeton> : récapitulatif", () => {
   it("affiche le récapitulatif avec le montant de l'acompte", async () => {
     const html = await (await open(v.token)).text();
-    expect(html).toContain("450,00 €");
+    expect(html).toContain("450 €");
     expect(html).toContain("samedi 19 décembre 2026");
   });
 
@@ -106,9 +106,9 @@ describe("GET /acompte/<jeton> : récapitulatif", () => {
   it("récapitule la formule, le prix total, l'acompte à régler et le reste à régler ensuite", async () => {
     const html = await (await open(v.token)).text();
     expect(html).toContain(`<dt>Formule</dt><dd>${SECOND_PLAN.name}</dd>`);
-    expect(html).toMatch(/<dt>Prix total<\/dt><dd>1\s?500,00 €<\/dd>/);
-    expect(html).toContain('<dt>Acompte à régler</dt><dd class="amount">450,00 €</dd>');
-    expect(html).toMatch(/<dt>Reste à régler ensuite<\/dt><dd>1\s?050,00 €<\/dd>/);
+    expect(html).toMatch(/<dt>Prix total<\/dt><dd>1\s?500 €<\/dd>/);
+    expect(html).toContain('<dt>Acompte à régler</dt><dd class="amount">450 €</dd>');
+    expect(html).toMatch(/<dt>Reste à régler ensuite<\/dt><dd>1\s?050 €<\/dd>/);
   });
 
   it("n'écrit ni prix ni reste à régler tant que le prix n'est pas fixé", async () => {
@@ -405,7 +405,7 @@ describe("GET /acompte/<jeton>?paid=1 : retour de Stripe", () => {
     const html = await (await open(`${v.token}?paid=1`)).text();
     expect((await current()).status).toBe("confirmed");
     expect(html).toContain("date est confirmée");
-    expect(html).toContain("450,00 €");
+    expect(html).toContain("450 €");
   });
 
   it("recharger la page ne change rien", async () => {

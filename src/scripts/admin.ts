@@ -1,3 +1,4 @@
+import { formatEuros } from "../../worker/html";
 import { planById } from "../../worker/offer";
 
 /**
@@ -108,15 +109,14 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props = {}, ...
   return element;
 }
 
-const EUROS = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const DAY_FORMAT = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 const MONTH_FORMAT = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" });
 const MOMENT_FORMAT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 /** `en-CA` écrit le jour `AAAA-MM-JJ`. */
 const PARIS_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" });
 
-/** « 1 500,00 € ». */
-const euros = (cents: number | null): string => (cents === null ? "—" : `${EUROS.format(cents / 100)} €`);
+/** « 1 500 € », « — » sans montant. */
+const euros = (cents: number | null): string => (cents === null ? "—" : formatEuros(cents));
 
 /** Des euros tapés (« 1500 », « 1 500,50 ») en centimes, ou `null` si ce n'est pas un montant. */
 function parseEuros(text: string): number | null {

@@ -244,11 +244,13 @@ main { overflow-x: clip; }
   .extras span { display: block; text-align: left; }
 }
 
-/* Les formules : une carte par borne, toutes de même largeur côte à côte ; le bouton descend au bas de chaque carte, pour qu'elles s'alignent. */
+/*
+ * Les formules : une carte par borne, chacune large d'un tiers de la section quel que soit leur nombre, pour qu'un prix
+ * reste près de ses tirages ; la première s'aligne sous le titre. Le bouton descend au bas de chaque carte, pour qu'elles s'alignent.
+ */
 .plans {
   display: grid;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-auto-flow: column;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: clamp(12px, 1.6vw, 22px);
   max-width: 1320px;
   margin: auto;
@@ -284,7 +286,7 @@ main { overflow-x: clip; }
 .plan .btn { align-self: flex-start; margin-top: auto; }
 
 @media (max-width: 860px) {
-  .plans { grid-auto-flow: row; }
+  .plans { grid-template-columns: 1fr; }
 }
 
 /* Les fondateurs. */

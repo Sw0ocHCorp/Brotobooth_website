@@ -113,8 +113,8 @@ describe("processDue : envoi des messages dus", () => {
     await enqueue(env.DB, [mail("client_deposit_link", b.id)]);
     await patchBooking(env.DB, b.id, { deposit_cents: 30_000 }, "owner", "price_adjusted", T0);
     await processDue(deps);
-    expect(deps.emails[0].text).toContain("300,00 €");
-    expect(deps.emails[0].text).not.toContain("450,00 €");
+    expect(deps.emails[0].text).toContain("300 €");
+    expect(deps.emails[0].text).not.toContain("450 €");
   });
 
   it("limite le nombre d'envois d'un passage", async () => {

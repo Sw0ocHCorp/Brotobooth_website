@@ -59,7 +59,7 @@ export const planById = (id: string): Plan | undefined =>
   offer.plans.find(plan => plan.id === id);
 
 /** Les formules de la borne `booth`, dans l'ordre de l'offre. */
-export const plansOf = ({ plans }: Offer, booth: string): Plan[] => plans.filter((plan) => plan.booth === booth);
+export const plansOf = (from: Offer, booth: string): Plan[] => from.plans.filter((plan) => plan.booth === booth);
 
 /** `true` si la borne a au moins une formule ; sinon elle est à venir. */
 export const isBookable = (from: Offer, booth: string): boolean => plansOf(from, booth).length > 0;
@@ -68,4 +68,4 @@ export const isBookable = (from: Offer, booth: string): boolean => plansOf(from,
 export const hasContact = (): boolean => Boolean(offer.contact.phone || offer.contact.email);
 
 /** « 30 % », une fois l'offre définitive ; `undefined` tant qu'elle est provisoire et que le pourcentage peut encore changer. */
-export const finalDepositPercent = (): string | undefined => (offer.draft ? undefined : `${offer.depositPercent} %`);
+export const finalDepositPercent = (): string | undefined => (offer.draft ? undefined : `${offer.depositPercent}\u00a0%`);

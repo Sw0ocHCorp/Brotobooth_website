@@ -1,8 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { isBookable, plansOf } from "../worker/offer";
-import { euros, offer } from "./seed";
+import { euros, isBookable, offer, plansOf } from "./seed";
 
 const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
@@ -98,6 +97,26 @@ test("une carte par borne : ses formules et le lien pour la réserver, ou « Bie
     await expect(card.getByRole("link")).toHaveCount(1);
     await expect(card.getByRole("link")).toHaveText(`Choisir le ${booth.name}`);
     await expect(card.getByRole("link")).toHaveAttribute("href", `/reserver?borne=${booth.id}`);
+  }
+});
+
+// Une carte large éloignerait chaque prix de son nombre de tirages : sur ordinateur, une carte garde le tiers de la section,
+// côte à côte avec les autres et la première sous le titre ; sur téléphone, elles prennent toute la largeur.
+test("les cartes des formules gardent une largeur lisible, alignées sous le titre", async ({ page, viewport }) => {
+  await page.goto("/");
+  const [title, grid] = await Promise.all([
+    page.getByRole("heading", { name: "Les formules" }).boundingBox(),
+    page.locator("#formules .plans").boundingBox(),
+  ]);
+  const boxes = await Promise.all((await page.locator("#formules").getByRole("article").all()).map((card) => card.boundingBox()));
+  expect(Math.abs(boxes[0]!.x - title!.x)).toBeLessThan(1);
+  for (const [index, box] of boxes.entries()) {
+    if (viewport!.width > 860) {
+      expect(box!.width, `carte ${index + 1}`).toBeLessThanOrEqual(grid!.width / 3 + 1);
+      if (index < 3) expect(box!.y, `carte ${index + 1}`).toBe(boxes[0]!.y);
+    } else {
+      expect(Math.abs(box!.width - grid!.width), `carte ${index + 1}`).toBeLessThan(1);
+    }
   }
 });
 

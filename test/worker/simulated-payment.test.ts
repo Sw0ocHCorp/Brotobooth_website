@@ -70,7 +70,7 @@ describe("le parcours complet, sans Stripe", () => {
     const html = await page.text();
     expect(html).toContain("<h1>Simulation</h1>");
     expect(html).toContain("Aucun paiement réel");
-    expect(html).toContain("450,00 €");
+    expect(html).toContain("450 €");
     expect(html).toContain("Simuler un paiement réussi");
     expect(html).toContain("Abandonner");
 

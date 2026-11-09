@@ -1,19 +1,19 @@
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { depositCents } from "../worker/bookings";
-import { offer, type Plan } from "../worker/offer";
+import { isBookable, offer, plansOf, type Plan } from "../worker/offer";
 
 /**
  * L'offre telle que le propriétaire l'écrit dans `config/offer.json`. Il y change les bornes, les identifiants et les prix :
  * aucun essai ne suppose ceux d'aujourd'hui, ils passent par `FIRST_PLAN`, `SECOND_PLAN`, `boothButton`, `planButton` et `choosePlan`.
  */
-export { offer };
+export { isBookable, offer, plansOf };
 export const [FIRST_PLAN, SECOND_PLAN] = offer.plans;
 
 /** L'acompte que l'offre prévoit pour ce prix, quel que soit son pourcentage. */
 export const depositFor = (priceCents: number): number => depositCents(priceCents, offer.depositPercent);
 
-const EUROS = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
-/** Un montant comme l'écran l'écrit (« 1 050,00 € »), avec des espaces ordinaires. */
+const EUROS = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", trailingZeroDisplay: "stripIfInteger" });
+/** Un montant comme l'écran l'écrit (« 1 050 € », « 37,50 € »), avec des espaces ordinaires. */
 export const euros = (cents: number): string => EUROS.format(cents / 100).replace(/\s/g, " ");
 
 /** L'adresse du site d'essai : celle de `BASE_URL` dans `npm run dev:e2e`, avec laquelle l'API compare l'en-tête `Origin`. */

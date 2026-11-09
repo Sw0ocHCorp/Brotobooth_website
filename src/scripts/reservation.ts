@@ -400,7 +400,7 @@ function start(now: () => Date): void {
   });
 
   goDate.addEventListener("click", () => go(chosenPlan ? 3 : 2));
-  goPlan.addEventListener("click", () => go(3));
+  goPlan.addEventListener("click", () => go(reachable(3)));
   for (const choice of boothChoices) choice.addEventListener("click", () => chooseBooth(choice));
   for (const choice of planChoices) choice.addEventListener("click", () => choosePlan(choice));
   for (const back of document.querySelectorAll<HTMLElement>("[data-back]")) {
@@ -415,6 +415,8 @@ function start(now: () => Date): void {
     void submit();
   });
 
+  // Aucune formule au départ, quel que soit l'état que le navigateur a gardé du bouton « Continuer » (Firefox le garde).
+  choosePlan(null);
   // « Choisir le … » sur une borne de l'accueil : `?borne=<id>`. Une borne à venir ne se choisit pas, même par l'adresse.
   const wanted = new URLSearchParams(location.search).get("borne");
   chooseBooth(boothChoices.find((choice) => choice.dataset.booth === wanted && !choice.disabled) ?? null);
