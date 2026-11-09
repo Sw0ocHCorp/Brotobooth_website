@@ -12,6 +12,10 @@ export interface Booking {
   plan: string | null;
   price_cents: number | null;
   deposit_cents: number | null;
+  /** Le palier de l'offre où la place a été prise ; nul pour une date bloquée. Jamais modifié ensuite. */
+  price_tier: string | null;
+  /** Le prix d'un tirage de recharge, figé à la réservation. */
+  refill_cents: number | null;
   client_name: string | null;
   client_email: string | null;
   client_phone: string | null;
@@ -81,13 +85,14 @@ export interface Transition {
 /** Les colonnes d'un `NewBooking`. Le littéral doit nommer chaque clé du type, ni plus ni moins. */
 const NEW_BOOKING_COLUMNS = Object.keys({
   id: 0, token: 0, event_date: 0, status: 0, source: 0, plan: 0, price_cents: 0, deposit_cents: 0,
+  price_tier: 0, refill_cents: 0,
   client_name: 0, client_email: 0, client_phone: 0, event_type: 0, venue: 0, event_hours: 0, message: 0,
   ip_hash: 0, terms_version: 0, hold_until: 0, stripe_session: 0, stripe_session_expires: 0,
   deposit_paid_at: 0, balance_paid_at: 0, notes: 0, anonymized_at: 0,
 } satisfies Record<keyof NewBooking, 0>) as (keyof NewBooking)[];
 
 /** Colonnes qu'un correctif ne touche pas : l'état ne change que par `applyTransition`. */
-const FROZEN_COLUMNS: ReadonlySet<string> = new Set(["id", "token", "status", "created_at", "updated_at"]);
+const FROZEN_COLUMNS: ReadonlySet<string> = new Set(["id", "token", "status", "price_tier", "created_at", "updated_at"]);
 
 /** Données personnelles effacées par `anonymizeOld`. */
 const PERSONAL_COLUMNS = [
@@ -201,28 +206,63 @@ async function writeThenRead(
 const isDateTaken = (error: unknown): boolean =>
   /one_booking_per_day|UNIQUE constraint failed: bookings\.event_date/.test(String(error));
 
+/** Le palier où la réservation prend place, et le nombre de places qu'il compte. */
+export type TierCap = { tier: string; places: number };
+
+/** Les places prises par palier. Toute ligne compte, quel que soit son état : une place prise n'est jamais rendue. */
+export async function countTakenByTier(db: D1Database): Promise<Record<string, number>> {
+  const found = await rows<{ price_tier: string; n: number }>(
+    db.prepare("SELECT price_tier, COUNT(*) AS n FROM bookings WHERE price_tier IS NOT NULL GROUP BY price_tier"),
+  );
+  return Object.fromEntries(found.map((row) => [row.price_tier, row.n]));
+}
+
 /**
  * Insère la demande et ses notifications d'un seul bloc. L'index `one_booking_per_day` refuse une
- * seconde réservation active sur la date : le bloc est alors annulé en entier.
+ * seconde réservation active sur la date : le bloc est alors annulé en entier. Avec `cap`, la ligne n'est
+ * écrite que s'il reste une place au palier, comptée dans la même instruction : sinon `tier_full`.
  */
 export async function insertBooking(
   db: D1Database,
   b: NewBooking,
   specs: NotificationSpec[],
   nowIso: string,
-): Promise<{ ok: true; booking: Booking } | { ok: false; reason: "date_taken" }> {
+): Promise<{ ok: true; booking: Booking } | { ok: false; reason: "date_taken" }>;
+export async function insertBooking(
+  db: D1Database,
+  b: NewBooking,
+  specs: NotificationSpec[],
+  nowIso: string,
+  cap: TierCap | undefined,
+): Promise<{ ok: true; booking: Booking } | { ok: false; reason: "date_taken" | "tier_full" }>;
+export async function insertBooking(
+  db: D1Database,
+  b: NewBooking,
+  specs: NotificationSpec[],
+  nowIso: string,
+  cap?: TierCap,
+): Promise<{ ok: true; booking: Booking } | { ok: false; reason: "date_taken" | "tier_full" }> {
   const columns = [...NEW_BOOKING_COLUMNS, "created_at", "updated_at"];
-  const insert = db
-    .prepare(`INSERT INTO bookings (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`)
-    .bind(...NEW_BOOKING_COLUMNS.map((column) => b[column] ?? null), nowIso, nowIso);
+  const values = [...NEW_BOOKING_COLUMNS.map((column) => b[column] ?? null), nowIso, nowIso];
+  const placeholders = columns.map(() => "?").join(", ");
+  const insert = cap
+    ? db
+        .prepare(
+          `INSERT INTO bookings (${columns.join(", ")}) SELECT ${placeholders}
+           WHERE (SELECT COUNT(*) FROM bookings WHERE price_tier = ?) < ?`,
+        )
+        .bind(...values, cap.tier, cap.places)
+    : db.prepare(`INSERT INTO bookings (${columns.join(", ")}) VALUES (${placeholders})`).bind(...values);
+  const written: Sql = { sql: "id = ?", params: [b.id] };
   try {
     const booking = await writeThenRead(
       db,
-      [insert, ...specs.map((spec) => notificationStmt(db, spec))],
+      [insert, ...specs.map((spec) => notificationStmt(db, spec, cap ? written : undefined))],
       0,
-      selectWhere(db, { sql: "id = ?", params: [b.id] }),
+      selectWhere(db, written),
     );
-    return { ok: true, booking: booking! }; // écrite dans la même transaction
+    if (!booking) return { ok: false, reason: "tier_full" }; // seule une limite de palier laisse la ligne non écrite
+    return { ok: true, booking };
   } catch (error) {
     if (isDateTaken(error)) return { ok: false, reason: "date_taken" };
     throw error;

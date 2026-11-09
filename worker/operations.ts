@@ -61,6 +61,8 @@ const blankBooking = (
   plan: null,
   price_cents: null,
   deposit_cents: null,
+  price_tier: null,
+  refill_cents: null,
   client_name: null,
   client_email: null,
   client_phone: null,

@@ -39,6 +39,8 @@ export const newBooking = (over: Partial<NewBooking> = {}): NewBooking => ({
   plan: SECOND_PLAN.id,
   price_cents: 150_000,
   deposit_cents: 45_000,
+  price_tier: null,
+  refill_cents: null,
   client_name: "Camille Martin",
   client_email: "camille@example.test",
   client_phone: "0601020304",

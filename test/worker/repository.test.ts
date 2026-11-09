@@ -8,6 +8,7 @@ import {
   cancelNotification as cancelPending,
   claimNotification,
   countActiveByEmail,
+  countTakenByTier,
   countRecentByIp,
   enqueue,
   findActiveByDateAndEmail,
@@ -789,5 +790,63 @@ describe("anonymizeOld", () => {
     expect(await anonymizeOld(env.DB, CUTOFF, T0)).toBe(1);
     expect(await anonymizeOld(env.DB, CUTOFF, "2026-11-08T10:00:00.000Z")).toBe(0);
     expect((await getBooking(env.DB, refused.id))!.anonymized_at).toBe(T0);
+  });
+});
+
+describe("le palier d'une réservation", () => {
+  const dayOf = (i: number) => `2026-12-${String(i + 1).padStart(2, "0")}`;
+  const cap = { tier: "t1", places: 1 };
+  const count = async (table: "bookings" | "notifications") =>
+    (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>())!.n;
+
+  it("countTakenByTier counts every status", async () => {
+    const statuses: BookingStatus[] = ["pending_review", "awaiting_deposit", "confirmed", "refused", "expired", "cancelled"];
+    for (const [i, status] of statuses.entries()) {
+      await insert(newBooking({ status, event_date: dayOf(i), price_tier: "t1", refill_cents: 100 }));
+    }
+    await insert(newBooking({ status: "blocked", event_date: dayOf(10), source: "manual", price_tier: null }));
+    expect(await countTakenByTier(env.DB)).toEqual({ t1: 6 });
+  });
+
+  it("insertBooking with a cap refuses a full tier", async () => {
+    const first = await insertBooking(env.DB, newBooking({ event_date: dayOf(0), price_tier: "t1" }), [spec("a")], T0, cap);
+    expect(first.ok).toBe(true);
+    const second = newBooking({ event_date: dayOf(1), price_tier: "t1" });
+    const refused = await insertBooking(env.DB, second, [spec("b", second.id)], T0, cap);
+    expect(refused).toEqual({ ok: false, reason: "tier_full" });
+    expect(await getBooking(env.DB, second.id)).toBeNull();
+    expect(await count("bookings")).toBe(1);
+    expect(await count("notifications")).toBe(1);
+  });
+
+  it("insertBooking with a cap lets only one of two simultaneous inserts through", async () => {
+    const r = await Promise.all([
+      insertBooking(env.DB, newBooking({ event_date: dayOf(0), price_tier: "t1" }), [], T0, cap),
+      insertBooking(env.DB, newBooking({ event_date: dayOf(1), price_tier: "t1" }), [], T0, cap),
+    ]);
+    expect(r.filter((x) => x.ok)).toHaveLength(1);
+    expect(r.filter((x) => !x.ok)).toEqual([{ ok: false, reason: "tier_full" }]);
+  });
+
+  it("insertBooking still reports a taken date with a cap", async () => {
+    await insert(newBooking({ price_tier: "t1" }));
+    const r = await insertBooking(env.DB, newBooking({ price_tier: "t1" }), [], T0, { tier: "t1", places: 5 });
+    expect(r).toEqual({ ok: false, reason: "date_taken" });
+  });
+
+  it("anonymizeOld keeps the tier and the refill price", async () => {
+    const nb = newBooking({ status: "refused", price_tier: "t1", refill_cents: 700 });
+    await insertBooking(env.DB, nb, [], "2025-10-07T10:00:00.000Z");
+    expect(await anonymizeOld(env.DB, "2025-11-07T10:00:00.000Z", T0)).toBe(1);
+    expect(await getBooking(env.DB, nb.id)).toMatchObject({ price_tier: "t1", refill_cents: 700 });
+    expect(await countTakenByTier(env.DB)).toEqual({ t1: 1 });
+  });
+
+  it("patchBooking cannot move a booking to another tier", async () => {
+    const { booking } = await insert(newBooking({ price_tier: "t1" }));
+    await expect(
+      patchBooking(env.DB, booking.id, { price_tier: "t2" }, "owner", "hack", T0),
+    ).rejects.toThrow("price_tier");
+    expect((await getBooking(env.DB, booking.id))!.price_tier).toBe("t1");
   });
 });
