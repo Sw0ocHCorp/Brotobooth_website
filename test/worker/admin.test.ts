@@ -3,6 +3,7 @@ import { env, exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeDeps, type Deps } from "../../worker/deps";
 import { processDue } from "../../worker/notifications";
+import { currentTier, offer } from "../../worker/offer";
 import { confirmDeposit } from "../../worker/operations";
 import {
   claimNotification,
@@ -16,7 +17,24 @@ import {
   type Booking,
 } from "../../worker/repository";
 import { handle } from "../../worker/router";
-import { T0, depositFor, fakeDeps, insert, newBooking, notificationRows, request, resetDb, spec, validatedBooking, type FakeDeps } from "../support";
+import {
+  SECOND_PLAN,
+  T0,
+  depositFor,
+  fakeDeps,
+  insert,
+  newBooking,
+  notificationRows,
+  racingDeps,
+  request,
+  resetDb,
+  spec,
+  takePlace,
+  testTier,
+  useTiers,
+  validatedBooking,
+  type FakeDeps,
+} from "../support";
 
 const BASE = "https://brotobooth.fr";
 const LEASE_END = "2026-11-07T10:02:00.000Z";
@@ -567,6 +585,7 @@ describe("POST /api/admin/bookings : réservation manuelle", () => {
     ["avec des horaires de 61 caractères", { event_hours: "x".repeat(61) }, ["event_hours"]],
     ["avec des notes de 2001 caractères", { notes: "x".repeat(2001) }, ["notes"]],
     ["avec un type d'événement inconnu", { event_type: "Baptême" }, ["event_type"]],
+    ["avec une formule inconnue", { plan: "inconnue" }, ["plan"]],
     ["avec un champ inconnu", { eventType: "Mariage" }, ["eventType"]],
   ])("répond 422 %s", async (_name, change, fields) => {
     const r = await create({ ...manual, ...change });
@@ -604,6 +623,26 @@ describe("POST /api/admin/bookings : réservation manuelle", () => {
     // Sans prix, aucun acompte n'est possible.
     const noPrice = await create({ kind: "manual", date: "2026-12-19", name: "Camille", deposit_cents: 100 });
     expect(await reply(noPrice)).toEqual({ error: "invalid", fields: ["deposit_cents"] });
+  });
+
+  it("enregistre la formule choisie au prix saisi, avec le palier en cours et le tarif de sa recharge", async () => {
+    const { tier } = currentTier(offer, {});
+    const { booking } = await reply(await create({ ...manual, plan: SECOND_PLAN.id }));
+    expect(booking).toMatchObject({
+      plan: SECOND_PLAN.id,
+      price_cents: manual.price_cents,
+      deposit_cents: manual.deposit_cents,
+      price_tier: tier.id,
+      refill_cents: tier.refillCents,
+    });
+  });
+
+  it("répond 409 tier_changed si le palier se remplit pendant l'ajout", async () => {
+    useTiers(testTier("t1", 10_000, 1), testTier("t2", 20_000));
+    const r = await create(manual, racingDeps(() => takePlace("t1")));
+    expect(r.status).toBe(409);
+    expect(await reply(r)).toEqual({ error: "tier_changed" });
+    expect(await listRange(env.DB, manual.date, manual.date)).toEqual([]);
   });
 
   it("accepte les montants limites", async () => {

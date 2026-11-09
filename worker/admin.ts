@@ -39,18 +39,16 @@ import {
  * | `GET  /overview` | `{ todo, health: { lastCronRun, failedNotifications } }` |
  * | `GET  /bookings?from&to` | `{ bookings }` de la période |
  * | `GET  /bookings/:id` | `{ booking, history }`, l'historique commençant par la demande reçue |
- * | `POST /bookings` | `{ kind: "manual" \| "blocked", ... }`, 201 `{ booking }` |
+ * | `POST /bookings` | `{ kind: "manual" \| "blocked", ... }`, 201 `{ booking }` ; une prestation prend une place du palier en cours |
  * | `POST /bookings/:id/<action>` | `validate`, `refuse`, `cancel`, `resend-link`, `balance-paid` : `{ booking }` |
  * | `PATCH /bookings/:id` | `{ price_cents?, deposit_cents?, notes? }` : `{ booking }` |
  *
- * Erreurs : 400 corps illisible ou période invalide, 403, 404, 405, 409 (`stale`, `date_taken`), 413, 415,
+ * Erreurs : 400 corps illisible ou période invalide, 403, 404, 405, 409 (`stale`, `date_taken`, `tier_changed`), 413, 415,
  * 422 `{ error: "invalid", fields }`, 503 `payment_unavailable`.
  */
 
 const BOOKINGS = "/api/admin/bookings";
 const MAX_BODY_BYTES = 16 * 1024;
-/** Un prix ou un acompte, en centimes : 100 000 €, bien au-delà de toute prestation. */
-const MAX_CENTS = 10_000_000;
 
 const invalid = (fields: string[]): Response => json({ error: "invalid", fields }, 422);
 
@@ -60,7 +58,7 @@ const invalid = (fields: string[]): Response => json({ error: "invalid", fields 
  */
 const forAdmin = ({ ip_hash: _ipHash, ...booking }: Booking): Omit<Booking, "ip_hash"> => booking;
 
-const FAILURE_STATUS = { not_found: 404, stale: 409, date_taken: 409, invalid: 422 } as const;
+const FAILURE_STATUS = { not_found: 404, stale: 409, date_taken: 409, tier_changed: 409, invalid: 422 } as const;
 
 /** La réponse à une opération : la réservation si elle a réussi, sinon la raison du refus. */
 function reply(result: OpResult, okStatus = 200): Response {
@@ -84,8 +82,8 @@ type Rule<T> = (value: unknown, now: Date) => T | null;
 
 const dateRule: Rule<string> = (value) => (typeof value === "string" && isValidDate(value) ? value : null);
 
-const centsRule: Rule<number> = (value) =>
-  typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= MAX_CENTS ? value : null;
+/** Un prix ou un acompte, en centimes, avec la règle du prix de la demande publique. */
+const centsRule: Rule<number> = PARSERS.price_cents;
 
 /** Un champ absent, nul ou vide n'est pas renseigné. */
 const isBlank = (value: unknown): boolean => value === undefined || value === null || value === "";
@@ -122,6 +120,7 @@ function parseManual(raw: Record<string, unknown>, now: Date): Parsed<ManualInpu
   const eventType = read("event_type", PARSERS.event_type);
   const venue = read("venue", PARSERS.venue);
   const hours = read("event_hours", PARSERS.event_hours);
+  const plan = read("plan", PARSERS.plan);
   const price = read("price_cents", centsRule);
   const deposit = read("deposit_cents", centsRule);
   const notes = read("notes", PARSERS.message) || undefined;
@@ -129,7 +128,7 @@ function parseManual(raw: Record<string, unknown>, now: Date): Parsed<ManualInpu
   if (fields().length > 0) return { ok: false, fields: fields() };
   return {
     ok: true,
-    value: { date: date!, name: name!, phone, email, eventType, venue, hours, priceCents: price ?? 0, depositCents: deposit ?? 0, notes },
+    value: { date: date!, name: name!, phone, email, eventType, venue, hours, plan, priceCents: price ?? 0, depositCents: deposit ?? 0, notes },
   };
 }
 

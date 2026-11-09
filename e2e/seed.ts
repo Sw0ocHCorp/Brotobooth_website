@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { depositCents } from "../worker/bookings";
-import { isBookable, normalTier, offer, plansOf, priceOf, type Plan } from "../worker/offer";
+import { isBookable, normalTier, offer, plansOf, priceOf, type Plan, type PricesBody } from "../worker/offer";
 
 /**
  * L'offre telle que le propriétaire l'écrit dans `config/offer.json`. Il y change les bornes, les identifiants et les prix :
@@ -177,8 +177,18 @@ export async function seed(
     }));
     if (kind === "cancelled") await write(request, "post", `${ADMIN}/${booking.id}/cancel`, {});
   } else {
+    // Au prix du moment, comme la page : chaque demande enregistrée peut faire avancer le palier.
+    const { plans }: PricesBody = await (await request.get("/api/prices")).json();
     const created = await request.post("/api/requests", {
-      data: { date, plan: FIRST_PLAN.id, ...common, message: "Un fond rose, si possible.", terms: true, turnstile_token: "" },
+      data: {
+        date,
+        plan: FIRST_PLAN.id,
+        price_cents: plans[FIRST_PLAN.id].priceCents,
+        ...common,
+        message: "Un fond rose, si possible.",
+        terms: true,
+        turnstile_token: "",
+      },
     });
     expect(created.status(), "POST /api/requests").toBe(201);
     const { bookings } = await (await request.get(`${ADMIN}?from=${date}&to=${date}`)).json();

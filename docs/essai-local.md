@@ -19,6 +19,7 @@ Après une minute environ (le temps de construire le site), le terminal affiche 
 
 - Au premier lancement, quatre réservations d'exemple sont posées : une demande à valider, une demande validée qui attend son acompte, une prestation confirmée et une date bloquée.
 - La base d'essai est gardée d'un lancement à l'autre, et les exemples vieillissent avec elle : leurs dates se rapprochent et leurs délais de 72 h finissent par passer. Pour repartir d'une base neuve, avec des exemples à jour : `npm run demo:reset`, puis `npm run demo`.
+- Comme en ligne, chaque demande et chaque prestation ajoutée prend une place de l'offre de lancement, même refusée ou annulée, et le prix monte d'un palier quand ses places sont prises : les exemples en prennent déjà trois. `npm run demo:reset` rend toutes les places.
 
 ## Quoi essayer, dans l'ordre
 

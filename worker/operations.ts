@@ -2,23 +2,27 @@ import { checkDate, depositCents, isValidDate, nextStatus, type BookingAction, t
 import type { Deps, StripeGateway, StripeSession } from "./deps";
 import { plan, type PlanEvent } from "./notifications";
 import { sha256Hex, toHex } from "./http";
-import { normalTier, offer, planById, priceOf } from "./offer";
+import { currentTier, offer, planById, priceOf, type CurrentTier } from "./offer";
 import {
   applyTransition,
   countActiveByEmail,
   countRecentByIp,
+  countTakenByTier,
   findActiveByDateAndEmail,
   getBooking,
   insertBooking,
   patchBooking,
   type Booking,
   type NewBooking,
+  type TierCap,
   type Transition,
 } from "./repository";
 
 export type RequestInput = {
   date: string;
   plan: string;
+  /** Le prix que la page a montré pour la formule, en centimes. */
+  price_cents: number;
   event_type: string;
   event_hours: string;
   venue: string;
@@ -30,14 +34,20 @@ export type RequestInput = {
   turnstile_token: string;
 };
 
-/** `too_many` : trop de demandes en cours pour cette adresse e-mail, ou trop de demandes parties de cette connexion en 24 h. */
+/**
+ * `too_many` : trop de demandes en cours pour cette adresse e-mail, ou trop de demandes parties de cette connexion en 24 h.
+ * `price_changed` : le prix de la formule n'est plus celui que le client a vu ; `priceCents` est le prix du moment.
+ */
 export type CreateRequestResult =
   | { kind: "created" | "already_requested"; booking: Booking }
   | { kind: "date_taken" | "bot" }
   | { kind: "too_many"; reason: "email" | "ip" }
+  | { kind: "price_changed"; priceCents: number }
   | { kind: "invalid"; fields: string[] };
 
 const HOUR_MS = 3_600_000;
+/** Un prix ou un acompte, en centimes : 100 000 €, bien au-delà de toute prestation. */
+const MAX_CENTS = 10_000_000;
 
 const PHONE = /^[0-9 +.()-]{6,20}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -104,6 +114,7 @@ const message = accept(lengthBetween(0, 2000));
 export const PARSERS: { [K in keyof RequestInput]-?: (value: unknown, now: Date) => RequestInput[K] | null } = {
   date: accept((text, now) => checkDate(text, now) === "ok"),
   plan: accept((text) => planById(text) !== undefined),
+  price_cents: (value) => (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= MAX_CENTS ? value : null),
   event_type: accept((text) => offer.eventTypes.includes(text)),
   event_hours: accept(lengthBetween(1, 60)),
   venue: accept(lengthBetween(1, 300)),
@@ -141,9 +152,31 @@ async function checkTurnstile(deps: Deps, token: string, ip: string | null) {
   }
 }
 
+/** Le palier en cours, d'après les places déjà prises. */
+export const readCurrentTier = async (db: D1Database): Promise<CurrentTier> => currentTier(offer, await countTakenByTier(db));
+
 /**
- * Enregistre la demande d'un client : champs, doublon, Turnstile, limites, puis insertion qui tient la date.
- * Un même envoi répété donne `already_requested`, y compris quand deux envois se croisent.
+ * Insère `booking` et les messages de `event`. Avec `current`, la réservation prend une place de ce palier, dont le tarif
+ * de recharge est figé avec elle, et un palier de lancement déjà plein refuse l'insertion (`tier_full`). Sans lui (une
+ * date bloquée), elle n'en prend aucune.
+ */
+function insertAtTier(deps: Deps, booking: NewBooking, event: PlanEvent, now: Date, current?: CurrentTier) {
+  const nowIso = now.toISOString();
+  const placed = current ? { ...booking, price_tier: current.tier.id, refill_cents: current.tier.refillCents } : booking;
+  const cap: TierCap | undefined = current?.launch ? { tier: current.tier.id, places: current.tier.places! } : undefined;
+  return insertBooking(deps.env.DB, placed, plan(event, { ...placed, created_at: nowIso, updated_at: nowIso }, now), nowIso, cap);
+}
+
+/** `price_changed` si le prix de la formule au palier `current` n'est plus celui que la page a montré, sinon `null`. */
+function priceChanged({ tier }: CurrentTier, request: RequestInput): CreateRequestResult | null {
+  const priceCents = priceOf(tier, request.plan);
+  return priceCents === request.price_cents ? null : { kind: "price_changed", priceCents };
+}
+
+/**
+ * Enregistre la demande d'un client : champs, doublon, prix, Turnstile, limites, puis insertion qui tient la date et
+ * prend une place du palier en cours. Un même envoi répété donne `already_requested`, y compris quand deux envois se
+ * croisent. Le client paie le prix qu'il a vu : sinon `price_changed`, et rien n'est enregistré.
  */
 export async function createRequest(deps: Deps, input: unknown, ip: string | null): Promise<CreateRequestResult> {
   const now = deps.now();
@@ -157,6 +190,11 @@ export async function createRequest(deps: Deps, input: unknown, ip: string | nul
   const twin = await findTwin();
   if (twin) return { kind: "already_requested", booking: twin };
 
+  // Avant Turnstile aussi : le client renvoie sa demande au nouveau prix, avec un nouveau jeton.
+  let current = await readCurrentTier(db);
+  const changed = priceChanged(current, request);
+  if (changed) return changed;
+
   if ((await checkTurnstile(deps, request.turnstile_token, ip)) === "fail") return { kind: "bot" };
 
   // Sans sel, une empreinte se retrouverait par essais : mieux vaut n'en garder aucune, et sauter la limite par adresse.
@@ -167,16 +205,12 @@ export async function createRequest(deps: Deps, input: unknown, ip: string | nul
   if ((await countActiveByEmail(db, request.email)) >= offer.maxActivePerEmail) return { kind: "too_many", reason: "email" };
   if (ipHash !== null && (await countRecentByIp(db, ipHash, dayAgo)) >= offer.maxPerIpPer24h) return { kind: "too_many", reason: "ip" };
 
-  const chosen = planById(request.plan)!; // validé par parseRequest
-  const price = priceOf(normalTier(offer), chosen.id);
-  const nowIso = now.toISOString();
   const booking = blankBooking(
     { event_date: request.date, status: "pending_review", source: "site" },
     {
-      plan: chosen.id,
-      // Provisoire : la Task 3 attribue le palier en cours.
-      price_cents: price,
-      deposit_cents: depositCents(price, offer.depositPercent),
+      plan: request.plan,
+      price_cents: request.price_cents,
+      deposit_cents: depositCents(request.price_cents, offer.depositPercent),
       client_name: request.name,
       client_email: request.email,
       client_phone: request.phone,
@@ -189,20 +223,28 @@ export async function createRequest(deps: Deps, input: unknown, ip: string | nul
       hold_until: holdUntil(now, offer.reviewHours),
     },
   );
-  const specs = plan("requested", { ...booking, created_at: nowIso, updated_at: nowIso }, now);
-
-  const inserted = await insertBooking(db, booking, specs, nowIso);
-  if (inserted.ok) return { kind: "created", booking: inserted.booking };
-  // Un envoi identique, arrivé en même temps, vient de prendre la date : pour ce client, c'est une réussite.
-  const winner = await findTwin();
-  return winner ? { kind: "already_requested", booking: winner } : { kind: "date_taken" };
+  // Seul un palier plein refuse l'insertion : le palier en cours avance alors, et le dernier, sans limite, ne refuse jamais.
+  for (let tries = 0; tries < offer.tiers.length; tries++) {
+    const inserted = await insertAtTier(deps, booking, "requested", now, current);
+    if (inserted.ok) return { kind: "created", booking: inserted.booking };
+    // Un envoi identique, arrivé en même temps, vient de prendre la date ou la dernière place : pour ce client, c'est une réussite.
+    const winner = await findTwin();
+    if (winner) return { kind: "already_requested", booking: winner };
+    if (inserted.reason === "date_taken") return { kind: "date_taken" };
+    // Le palier s'est rempli depuis la lecture : au même prix, la demande prend place au suivant.
+    current = await readCurrentTier(db);
+    const changedSince = priceChanged(current, request);
+    if (changedSince) return changedSince;
+  }
+  throw new Error("createRequest : le palier en cours n'avance plus");
 }
 
 export type Actor = "client" | "owner" | "system" | "stripe";
 
+/** `tier_changed` : le palier s'est rempli pendant l'ajout, le prix proposé au propriétaire n'est peut-être plus le bon. */
 export type OpResult =
   | { ok: true; booking: Booking }
-  | { ok: false; reason: "not_found" | "stale" | "date_taken" | "invalid" };
+  | { ok: false; reason: "not_found" | "stale" | "date_taken" | "tier_changed" | "invalid" };
 
 const NOT_FOUND: OpResult = { ok: false, reason: "not_found" };
 /** L'état de la réservation n'autorise plus l'opération, ou a changé depuis la lecture : rien n'a été écrit. */
@@ -402,7 +444,7 @@ export const markBalancePaid = (deps: Deps, id: string): Promise<OpResult> =>
 
 /**
  * Enregistre une réservation du propriétaire. Le délai minimum ne s'applique pas, mais la date doit exister.
- * `plan` ne prévient personne pour une date bloquée.
+ * Une prestation prend une place du palier en cours ; une date bloquée n'en prend pas, et `plan` n'y prévient personne.
  */
 async function insertOwnerBooking(
   deps: Deps,
@@ -411,16 +453,17 @@ async function insertOwnerBooking(
   fields: Partial<NewBooking>,
 ): Promise<OpResult> {
   if (!isValidDate(date)) return { ok: false, reason: "invalid" };
-  const now = deps.now();
-  const nowIso = now.toISOString();
+  const current = status === "confirmed" ? await readCurrentTier(deps.env.DB) : undefined;
   const booking = blankBooking({ event_date: date, status, source: "manual" }, fields);
-  const specs = plan("manual_confirmed", { ...booking, created_at: nowIso, updated_at: nowIso }, now);
-  return insertBooking(deps.env.DB, booking, specs, nowIso);
+  const inserted = await insertAtTier(deps, booking, "manual_confirmed", deps.now(), current);
+  return inserted.ok ? inserted : { ok: false, reason: inserted.reason === "tier_full" ? "tier_changed" : inserted.reason };
 }
 
 export type ManualInput = {
   date: string;
   name: string;
+  /** La formule, si le propriétaire en a choisi une ; sans elle, le prix est libre. */
+  plan?: string;
   phone?: string;
   email?: string;
   eventType?: string;
@@ -431,9 +474,10 @@ export type ManualInput = {
   notes?: string;
 };
 
-/** Une prestation confirmée pour un client qui appelle : acompte saisi à la main, pas encore encaissé en ligne. */
+/** Une prestation confirmée pour un client qui appelle : prix et acompte saisis à la main, pas encore encaissés en ligne. */
 export const createManual = (deps: Deps, a: ManualInput): Promise<OpResult> =>
   insertOwnerBooking(deps, "confirmed", a.date, {
+    plan: a.plan ?? null,
     client_name: a.name,
     client_phone: a.phone ?? null,
     client_email: a.email ?? null,

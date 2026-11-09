@@ -1,10 +1,12 @@
 import { env } from "cloudflare:workers";
+import { onTestFinished } from "vitest";
 import { depositCents } from "../worker/bookings";
 import type { Button, Deps, EmailMessage, StripeGateway, StripeSession } from "../worker/deps";
 import { plan } from "../worker/notifications";
-import { normalTier, offer, priceOf, type Plan } from "../worker/offer";
+import { buildOffer, currentTier, offer, planById, priceOf, type Plan, type Tier } from "../worker/offer";
 import { validateBooking } from "../worker/operations";
 import {
+  countTakenByTier,
   insertBooking,
   type Booking,
   type NewBooking,
@@ -20,9 +22,6 @@ export const T0 = "2026-11-07T10:00:00.000Z";
  * et aucun test ne suppose les valeurs d'aujourd'hui.
  */
 export const [FIRST_PLAN, SECOND_PLAN]: Plan[] = offer.plans;
-
-/** Le prix normal d'une formule, celui du dernier palier. */
-export const normalPrice = (plan: Plan): number => priceOf(normalTier(offer), plan.id);
 
 /** L'acompte que l'offre prévoit pour ce prix, quel que soit son pourcentage. */
 export const depositFor = (priceCents: number): number => depositCents(priceCents, offer.depositPercent);
@@ -60,11 +59,51 @@ export const newBooking = (over: Partial<NewBooking> = {}): NewBooking => ({
   ...over,
 });
 
+/**
+ * Le corps d'une demande du site, comme la page l'envoie. `price_cents` est le prix de la formule au palier en cours, lu
+ * dans la base à l'appel : chaque demande enregistrée peut faire avancer le palier. Une formule inconnue prend le prix de
+ * la première, pour que seul le champ `plan` soit refusé.
+ */
+export async function requestBody(over: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  const chosen = (typeof over.plan === "string" && planById(over.plan)) || FIRST_PLAN;
+  const { tier } = currentTier(offer, await countTakenByTier(env.DB));
+  return {
+    date: "2026-12-19", plan: FIRST_PLAN.id, event_type: "Mariage", event_hours: "19 h - 1 h",
+    venue: "Salle des fêtes", name: "Camille Durand", phone: "06 12 34 56 78", email: "camille@example.test",
+    terms: true, turnstile_token: "t", price_cents: priceOf(tier, chosen.id), ...over,
+  };
+}
+
+/** Un palier d'essai : `cents` pour la première formule de l'offre, 1 000 centimes de plus à chaque suivante, la recharge au dixième. */
+export const testTier = (id: string, cents: number, places?: number): Tier => ({
+  id,
+  name: `Palier ${id}`,
+  ...(places === undefined ? {} : { places }),
+  refillCents: cents / 10,
+  prices: Object.fromEntries(offer.plans.map((plan, i) => [plan.id, cents + i * 1_000])),
+});
+
+/**
+ * Remplace les paliers de l'offre le temps du test en cours, après les avoir fait vérifier par `buildOffer` : un test
+ * remplit un palier sans rien supposer de ceux de `config/offer.json`.
+ */
+export function useTiers(...tiers: Tier[]): void {
+  const real = offer.tiers;
+  offer.tiers = buildOffer({ ...offer, plans: offer.plans.map(({ name: _name, ...plan }) => plan), tiers }).tiers;
+  onTestFinished(() => {
+    offer.tiers = real;
+  });
+}
+
 export async function insert(nb: NewBooking): Promise<{ booking: Booking }> {
   const result = await insertBooking(env.DB, nb, [], T0);
   if (!result.ok) throw new Error(`insert: ${result.reason}`);
   return { booking: result.booking };
 }
+
+/** La réservation d'un autre client, qui prend une place de `tier`. */
+export const takePlace = (tier: string, event_date = "2027-01-09"): Promise<{ booking: Booking }> =>
+  insert(newBooking({ event_date, price_tier: tier, client_email: "autre@example.test" }));
 
 /** Une demande du site telle que `createRequest` la laisse à `T0` : à valider, avec ses alertes en file. */
 export async function request(over: Partial<NewBooking> = {}): Promise<Booking> {
@@ -228,6 +267,24 @@ export function fakeDeps({ env: given, ...over }: Partial<Deps> = {}): FakeDeps 
     answerTexts,
   };
   return Object.assign(base, over);
+}
+
+/**
+ * Les dépendances des tests, où `meanwhile` s'exécute une fois, juste avant la première écriture groupée dans la base :
+ * une autre réservation arrive entre la lecture du palier et l'insertion.
+ */
+export function racingDeps(meanwhile: () => Promise<unknown>): FakeDeps {
+  let pending: (() => Promise<unknown>) | null = meanwhile;
+  const DB = {
+    prepare: (sql: string) => env.DB.prepare(sql),
+    batch: async (statements: D1PreparedStatement[]) => {
+      const run = pending;
+      pending = null;
+      await run?.();
+      return env.DB.batch(statements);
+    },
+  } as unknown as D1Database;
+  return fakeDeps({ env: { ...env, DB } });
 }
 
 /**

@@ -1,20 +1,24 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { plan } from "../../worker/notifications";
+import { currentTier, offer, priceOf } from "../../worker/offer";
 import {
   adjustPrice,
   blockDate,
   cancelBooking,
   confirmDeposit,
   createManual,
+  createRequest,
   expireHold,
   markBalancePaid,
   refuseBooking,
   resendPaymentLink,
   validateBooking,
+  type CreateRequestResult,
   type OpResult,
 } from "../../worker/operations";
 import {
+  countTakenByTier,
   getBooking,
   getHistory,
   insertBooking,
@@ -25,7 +29,23 @@ import {
   type Booking,
   type NewBooking,
 } from "../../worker/repository";
-import { T0, depositFor, fakeDeps, insert, newBooking, resetDb, strictStripe, type FakeDeps } from "../support";
+import {
+  FIRST_PLAN,
+  SECOND_PLAN,
+  T0,
+  depositFor,
+  fakeDeps,
+  insert,
+  newBooking,
+  racingDeps,
+  requestBody,
+  resetDb,
+  strictStripe,
+  takePlace,
+  testTier,
+  useTiers,
+  type FakeDeps,
+} from "../support";
 
 const STALE = { ok: false, reason: "stale" };
 
@@ -38,6 +58,12 @@ beforeEach(async () => {
 /** La réservation d'un succès ; un échec fait échouer le test en nommant sa raison. */
 const ok = (r: OpResult): Booking => {
   if (!r.ok) throw new Error(`opération refusée : ${r.reason}`);
+  return r.booking;
+};
+
+/** La demande enregistrée ; un autre résultat fait échouer le test en le nommant. */
+const created = (r: CreateRequestResult): Booking => {
+  if (r.kind !== "created") throw new Error(`demande non enregistrée : ${r.kind}`);
   return r.booking;
 };
 
@@ -622,5 +648,111 @@ describe("blockDate", () => {
     expect(booking.client_email).not.toBeNull();
     expect(ok(await cancelBooking(deps, booking.id, "owner")).status).toBe("cancelled");
     expect(await queued(booking.id)).toEqual([]);
+  });
+});
+
+describe("le palier d'une réservation", () => {
+  const allBookings = () => listRange(env.DB, "0000-01-01", "9999-12-31");
+
+  it("createRequest stores the tier, its price, deposit and refill", async () => {
+    const { tier } = currentTier(offer, {});
+    const price = priceOf(tier, SECOND_PLAN.id);
+    const b = created(await createRequest(deps, await requestBody({ plan: SECOND_PLAN.id }), null));
+    expect(b).toMatchObject({
+      plan: SECOND_PLAN.id,
+      price_tier: tier.id,
+      price_cents: price,
+      deposit_cents: depositFor(price),
+      refill_cents: tier.refillCents,
+    });
+  });
+
+  it("createRequest answers price_changed before Turnstile", async () => {
+    const verifyTurnstile = vi.fn(async () => "pass" as const);
+    const input = await requestBody();
+    const price = input.price_cents as number;
+    expect(await createRequest(fakeDeps({ verifyTurnstile }), { ...input, price_cents: price + 100 }, null)).toEqual({
+      kind: "price_changed",
+      priceCents: price,
+    });
+    expect(verifyTurnstile).not.toHaveBeenCalled();
+    expect(await allBookings()).toEqual([]);
+  });
+
+  it("createRequest moves to the next tier once a tier is full", async () => {
+    useTiers(testTier("t1", 10_000, 1), testTier("t2", 20_000, 1), testTier("t3", 30_000));
+    await takePlace("t1");
+    const [, next] = offer.tiers;
+    const b = created(await createRequest(deps, await requestBody(), null));
+    expect(b).toMatchObject({ price_tier: next.id, price_cents: priceOf(next, FIRST_PLAN.id), refill_cents: next.refillCents });
+  });
+
+  it("createRequest answers price_changed when the tier fills during the request", async () => {
+    useTiers(testTier("t1", 10_000, 1), testTier("t2", 20_000, 1), testTier("t3", 30_000));
+    const input = await requestBody();
+    const [, next] = offer.tiers;
+    expect(await createRequest(racingDeps(() => takePlace("t1")), input, null)).toEqual({
+      kind: "price_changed",
+      priceCents: priceOf(next, FIRST_PLAN.id),
+    });
+    expect(await countTakenByTier(env.DB)).toEqual({ t1: 1 });
+    expect(await allBookings()).toHaveLength(1);
+  });
+
+  it("retries the next tier when its price is the same", async () => {
+    useTiers(testTier("t1", 10_000, 1), { ...testTier("t2", 10_000, 1), refillCents: 2_000 }, testTier("t3", 30_000));
+    const input = await requestBody();
+    const b = created(await createRequest(racingDeps(() => takePlace("t1")), input, null));
+    expect(b).toMatchObject({ price_tier: "t2", price_cents: input.price_cents, refill_cents: 2_000 });
+    expect(await countTakenByTier(env.DB)).toEqual({ t1: 1, t2: 1 });
+  });
+
+  it("treats an identical send that took the last place as already requested", async () => {
+    useTiers(testTier("t1", 10_000, 1), testTier("t2", 20_000));
+    const input = await requestBody();
+    const twin = newBooking({ event_date: input.date as string, client_email: input.email as string, price_tier: "t1" });
+    const r = await createRequest(racingDeps(() => insert(twin)), input, null);
+    expect(r).toMatchObject({ kind: "already_requested", booking: { id: twin.id } });
+    expect(await allBookings()).toHaveLength(1);
+  });
+
+  it("a refused request keeps its place", async () => {
+    useTiers(testTier("t1", 10_000, 3), testTier("t2", 20_000));
+    const remaining = async () => currentTier(offer, await countTakenByTier(env.DB)).remaining;
+    const first = created(await createRequest(deps, await requestBody(), null));
+    expect(await remaining()).toBe(2);
+    ok(await refuseBooking(deps, first.id, "owner"));
+    expect(await remaining()).toBe(2);
+    created(await createRequest(deps, await requestBody(), null));
+    expect(await remaining()).toBe(1);
+  });
+
+  it("createManual takes a place of the current tier", async () => {
+    const { tier } = currentTier(offer, {});
+    const b = ok(
+      await createManual(deps, { date: "2026-12-19", name: "Camille", plan: SECOND_PLAN.id, priceCents: 12_345, depositCents: 1_000 }),
+    );
+    expect(b).toMatchObject({
+      plan: SECOND_PLAN.id,
+      price_tier: tier.id,
+      refill_cents: tier.refillCents,
+      price_cents: 12_345,
+      deposit_cents: 1_000,
+    });
+    expect(await countTakenByTier(env.DB)).toEqual({ [tier.id]: 1 });
+  });
+
+  it("createManual answers tier_changed when the tier fills", async () => {
+    useTiers(testTier("t1", 10_000, 1), testTier("t2", 20_000));
+    const r = await createManual(racingDeps(() => takePlace("t1")), { date: "2026-12-19", name: "Camille", priceCents: 0, depositCents: 0 });
+    expect(r).toEqual({ ok: false, reason: "tier_changed" });
+    expect(await countTakenByTier(env.DB)).toEqual({ t1: 1 });
+    expect(await allBookings()).toHaveLength(1);
+  });
+
+  it("blockDate takes no place", async () => {
+    const b = ok(await blockDate(deps, "2026-12-24"));
+    expect(b).toMatchObject({ price_tier: null, refill_cents: null });
+    expect(await countTakenByTier(env.DB)).toEqual({});
   });
 });

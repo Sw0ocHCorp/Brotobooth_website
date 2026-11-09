@@ -12,7 +12,7 @@ import { claimNotification, enqueue, getState, patchBooking, setState, type Noti
 import { handle } from "../../worker/router";
 import { telegramGateway } from "../../worker/telegram";
 import wrangler from "../../wrangler.jsonc?raw";
-import { CHAT_ID, FIRST_PLAN, OWNER_EMAIL, T0, fakeDeps, insert, newBooking, notificationRows, resetDb, type FakeDeps } from "../support";
+import { CHAT_ID, OWNER_EMAIL, T0, fakeDeps, insert, newBooking, notificationRows, requestBody, resetDb, type FakeDeps } from "../support";
 
 let deps: FakeDeps;
 let logged: MockInstance<Console["error"]>;
@@ -807,14 +807,10 @@ describe("Turnstile réel", () => {
   it("un secret refusé ne fait pas échouer la demande de bout en bout", async () => {
     const d = fakeDeps({ verifyTurnstile: turnstileVerifier(TS_ENV, (async () => Response.json({ success: false, "error-codes": ["invalid-input-secret"] })) as unknown as typeof fetch) });
     const background = createExecutionContext();
-    const date = "2026-12-19";
     const r = await handle(
       new Request("https://brotobooth.fr/api/requests", {
         method: "POST",
-        body: JSON.stringify({
-          date, plan: FIRST_PLAN.id, event_type: "Mariage", event_hours: "19 h - 1 h", venue: "Salle", name: "Camille",
-          phone: "06 12 34 56 78", email: "camille@example.test", terms: true, turnstile_token: "",
-        }),
+        body: JSON.stringify(await requestBody({ turnstile_token: "" })),
       }),
       d,
       background,

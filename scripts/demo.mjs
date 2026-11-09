@@ -56,9 +56,13 @@ async function call(method, path, body) {
   return response.json();
 }
 
-/** Une demande de client sur la date, par le formulaire public (l'anti-robots d'essai laisse passer) ; renvoie la réservation créée. */
+/**
+ * Une demande de client sur la date, par le formulaire public, au prix que la page montrerait (l'anti-robots d'essai laisse
+ * passer) ; renvoie la réservation créée.
+ */
 async function request(date, planId, client) {
-  await call("POST", "/api/requests", { date, plan: planId, event_type: "Mariage", terms: true, turnstile_token: "", ...client });
+  const { plans } = await call("GET", "/api/prices");
+  await call("POST", "/api/requests", { date, plan: planId, price_cents: plans[planId].priceCents, event_type: "Mariage", terms: true, turnstile_token: "", ...client });
   const { bookings } = await call("GET", `/api/admin/bookings?from=${date}&to=${date}`);
   return bookings.find((booking) => booking.client_email === client.email);
 }

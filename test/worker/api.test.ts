@@ -1,24 +1,32 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { normalTier, offer } from "../../worker/offer";
 import { addDays } from "../../worker/bookings";
 import type { Deps, EmailMessage } from "../../worker/deps";
 import { processDue } from "../../worker/notifications";
-import { listRange } from "../../worker/repository";
+import { currentTier, offer, priceOf, pricesBody } from "../../worker/offer";
+import { countTakenByTier, listRange } from "../../worker/repository";
 import { handle } from "../../worker/router";
-import { CHAT_ID, FIRST_PLAN, OWNER_EMAIL, SECOND_PLAN, T0, depositFor, fakeDeps, normalPrice, notificationRows, resetDb, type FakeDeps } from "../support";
+import {
+  CHAT_ID,
+  FIRST_PLAN,
+  OWNER_EMAIL,
+  SECOND_PLAN,
+  T0,
+  depositFor,
+  fakeDeps,
+  notificationRows,
+  requestBody,
+  resetDb,
+  testTier,
+  useTiers,
+  type FakeDeps,
+} from "../support";
 
 const ctx = createExecutionContext();
 const IP = "203.0.113.5";
 const OTHER_IP = "198.51.100.7";
 const MAX_BODY = 16 * 1024;
-
-const body = (o: Record<string, unknown> = {}) => ({
-  date: "2026-12-19", plan: FIRST_PLAN.id, event_type: "Mariage", event_hours: "19 h - 1 h",
-  venue: "Salle des fêtes", name: "Camille Durand", phone: "06 12 34 56 78", email: "camille@example.test",
-  terms: true, turnstile_token: "t", ...o,
-});
 
 let deps: FakeDeps;
 beforeEach(async () => {
@@ -58,7 +66,8 @@ const sha256Hex = async (text: string) =>
 
 describe("POST /api/requests : enregistrement", () => {
   it("enregistre la demande, tient la date 72 h et planifie les alertes", async () => {
-    const r = await post(body());
+    const input = await requestBody();
+    const r = await post(input);
     expect(r.status).toBe(201);
     expect(await reply(r)).toEqual({ status: "created" });
     const [b] = await listRange(env.DB, "2026-12-19", "2026-12-19");
@@ -66,8 +75,8 @@ describe("POST /api/requests : enregistrement", () => {
     expect(b.source).toBe("site");
     expect(b.hold_until).toBe("2026-11-10T10:00:00.000Z");
     expect(b.terms_version).toBe("2026-11-07");
-    expect(b.price_cents).toBe(normalPrice(FIRST_PLAN));
-    expect(b.deposit_cents).toBe(depositFor(normalPrice(FIRST_PLAN)));
+    expect(b.price_cents).toBe(input.price_cents);
+    expect(b.deposit_cents).toBe(depositFor(input.price_cents as number));
     expect(b.created_at).toBe(T0);
     expect((await notificationRows()).map((n) => `${n.template}|${n.channel}`).sort()).toEqual([
       "client_received|email",
@@ -79,22 +88,17 @@ describe("POST /api/requests : enregistrement", () => {
   });
 
   it("calcule le prix et l'acompte d'après la formule", async () => {
-    const { prices } = normalTier(offer);
-    const provisional = prices[SECOND_PLAN.id];
-    prices[SECOND_PLAN.id] = 150_000;
-    try {
-      await post(body({ plan: SECOND_PLAN.id }));
-    } finally {
-      prices[SECOND_PLAN.id] = provisional;
-    }
+    useTiers(testTier("seul", 50_000));
+    const [only] = offer.tiers;
+    const price = priceOf(only, SECOND_PLAN.id);
+    expect(price).not.toBe(priceOf(only, FIRST_PLAN.id));
+    await post(await requestBody({ plan: SECOND_PLAN.id }));
     const [b] = await stored();
-    expect(b.plan).toBe(SECOND_PLAN.id);
-    expect(b.price_cents).toBe(150_000);
-    expect(b.deposit_cents).toBe(depositFor(150_000));
+    expect(b).toMatchObject({ plan: SECOND_PLAN.id, price_cents: price, deposit_cents: depositFor(price) });
   });
 
   it("enregistre les champs rognés, l'e-mail en minuscules, et sans message un message vide", async () => {
-    await post(body({
+    await post(await requestBody({
       name: "  Camille Durand ", venue: " Salle des fêtes\n", event_hours: " 19 h - 1 h ", phone: " 06 12 34 56 78 ",
       email: "  CAMILLE@Example.test ", event_type: " Mariage ", plan: ` ${FIRST_PLAN.id} `, date: " 2026-12-19 ",
     }));
@@ -108,13 +112,13 @@ describe("POST /api/requests : enregistrement", () => {
 
   it("garde le message tel quel, retours à la ligne et caractères spéciaux compris", async () => {
     const message = "Un fond <b>rose</b> & des ballons ;\n« merci », 🎉";
-    await post(body({ message: `  ${message}  ` }));
+    await post(await requestBody({ message: `  ${message}  ` }));
     expect((await stored())[0].message).toBe(message);
   });
 
   it("donne à chaque demande un identifiant et un jeton de 256 bits que la réponse ne dévoile pas", async () => {
-    const first = await post(body());
-    await post(body({ date: "2026-12-20", email: "autre@example.test" }));
+    const first = await post(await requestBody());
+    await post(await requestBody({ date: "2026-12-20", email: "autre@example.test" }));
     const [a, b] = await stored();
     expect(a.token).toMatch(/^[0-9a-f]{64}$/);
     expect(b.token).toMatch(/^[0-9a-f]{64}$/);
@@ -124,35 +128,37 @@ describe("POST /api/requests : enregistrement", () => {
   });
 
   it("répond date_taken si un autre client a pris la date", async () => {
-    await post(body());
-    const r = await post(body({ email: "autre@example.test" }));
+    await post(await requestBody());
+    const r = await post(await requestBody({ email: "autre@example.test" }));
     expect(r.status).toBe(409);
     expect(await r.json()).toEqual({ error: "date_taken" });
     expect(await stored()).toHaveLength(1);
   });
 
   it("traite un second envoi identique comme une réussite", async () => {
-    await post(body());
-    const r = await post(body({ email: "CAMILLE@example.test " }));
+    await post(await requestBody());
+    const r = await post(await requestBody({ email: "CAMILLE@example.test " }));
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ status: "already_requested" });
     expect(await listRange(env.DB, "2026-12-19", "2026-12-19")).toHaveLength(1);
   });
 
   it("traite deux envois identiques simultanés comme une réussite, jamais comme une date prise", async () => {
-    const replies = await Promise.all([post(body()), post(body())]);
+    const input = await requestBody();
+    const replies = await Promise.all([post(input), post(input)]);
     expect(replies.map((r) => r.status).sort()).toEqual([200, 201]);
     expect(await stored()).toHaveLength(1);
   });
 
   it("répond date_taken à deux clients différents qui se disputent la date en même temps", async () => {
-    const replies = await Promise.all([post(body()), post(body({ email: "autre@example.test" }))]);
+    const [mine, theirs] = [await requestBody(), await requestBody({ email: "autre@example.test" })];
+    const replies = await Promise.all([post(mine), post(theirs)]);
     expect(replies.map((r) => r.status).sort()).toEqual([201, 409]);
     expect(await stored()).toHaveLength(1);
   });
 
   it("envoie tout de suite l'accusé au client et l'alerte au propriétaire", async () => {
-    expect((await post(body())).status).toBe(201);
+    expect((await post(await requestBody())).status).toBe(201);
     expect(deps.emails.map((m) => [m.to, m.subject])).toEqual(
       expect.arrayContaining([
         ["camille@example.test", "Nous avons bien reçu votre demande pour le samedi 19 décembre 2026"],
@@ -180,7 +186,7 @@ describe("POST /api/requests : enregistrement", () => {
       d.telegram.send = vi.fn(async () => {
         throw new Error("panne");
       });
-      expect((await post(body(), d)).status).toBe(201);
+      expect((await post(await requestBody(), d)).status).toBe(201);
       expect(await stored()).toHaveLength(1);
       // L'envoi a bien été tenté, pour l'accusé comme pour l'alerte du propriétaire.
       expect(send).toHaveBeenCalled();
@@ -202,7 +208,7 @@ describe("POST /api/requests : enregistrement", () => {
       d.email.send = async () => {
         throw new Error("panne");
       };
-      await post(body(), d);
+      await post(await requestBody(), d);
       expect(d.emails).toHaveLength(0);
       d.email.send = down;
       d.setNow("2026-11-07T10:05:00.000Z");
@@ -216,13 +222,13 @@ describe("POST /api/requests : enregistrement", () => {
   });
 
   it("n'envoie rien quand la demande n'est pas enregistrée", async () => {
-    await post(body());
+    await post(await requestBody());
     const sent = deps.emails.length + deps.telegrams.length;
-    await post(body()); // la même demande : déjà enregistrée
-    await post(body({ email: "autre@example.test" })); // la date vient d'être prise
-    await post(body({ date: "2026-12-20", name: "" })); // un champ refusé
+    await post(await requestBody()); // la même demande : déjà enregistrée
+    await post(await requestBody({ email: "autre@example.test" })); // la date vient d'être prise
+    await post(await requestBody({ date: "2026-12-20", name: "" })); // un champ refusé
     const robot = fakeDeps({ verifyTurnstile: async () => "fail" });
-    await post(body({ date: "2026-12-21", email: "robot@example.test" }), robot);
+    await post(await requestBody({ date: "2026-12-21", email: "robot@example.test" }), robot);
     expect(deps.emails.length + deps.telegrams.length).toBe(sent);
     expect(robot.emails).toHaveLength(0);
     expect(robot.telegrams).toHaveLength(0);
@@ -231,26 +237,26 @@ describe("POST /api/requests : enregistrement", () => {
 
 describe("POST /api/requests : limites", () => {
   it("limite à 2 demandes actives par e-mail, sans tenir compte de la casse", async () => {
-    await post(body({ date: "2026-12-19" }));
-    await post(body({ date: "2026-12-20" }));
-    const third = await post(body({ date: "2026-12-21", email: "Camille@Example.test" }));
+    await post(await requestBody({ date: "2026-12-19" }));
+    await post(await requestBody({ date: "2026-12-20" }));
+    const third = await post(await requestBody({ date: "2026-12-21", email: "Camille@Example.test" }));
     expect(third.status).toBe(429);
     // La page dit « vous avez déjà plusieurs demandes en cours » : vrai pour cette raison-là seulement.
     expect(await third.json()).toEqual({ error: "too_many", reason: "email" });
     expect(await listRange(env.DB, "2026-12-21", "2026-12-21")).toHaveLength(0);
-    expect((await post(body({ date: "2026-12-21", email: "autre@example.test" }))).status).toBe(201);
+    expect((await post(await requestBody({ date: "2026-12-21", email: "autre@example.test" }))).status).toBe(201);
   });
 
   it("répond que la demande est faite, et non trop de demandes, à qui renvoie la sienne au plafond", async () => {
-    await post(body({ date: "2026-12-19" }));
-    await post(body({ date: "2026-12-20" }));
-    const r = await post(body({ date: "2026-12-19" }));
+    await post(await requestBody({ date: "2026-12-19" }));
+    await post(await requestBody({ date: "2026-12-20" }));
+    const r = await post(await requestBody({ date: "2026-12-19" }));
     expect(r.status).toBe(200);
     expect(await reply(r)).toEqual({ status: "already_requested" });
   });
 
   it("limite à 5 demandes par adresse IP sur 24 h", async () => {
-    const one = (i: number, ip = IP) => post(body({ date: `2026-12-${19 + i}`, email: `client${i}@example.test` }), deps, ip);
+    const one = async (i: number, ip = IP) => post(await requestBody({ date: `2026-12-${19 + i}`, email: `client${i}@example.test` }), deps, ip);
     for (let i = 0; i < 5; i++) expect((await one(i)).status).toBe(201);
     const sixth = await one(5);
     expect(sixth.status).toBe(429);
@@ -261,7 +267,7 @@ describe("POST /api/requests : limites", () => {
   });
 
   it("donne la raison de l'e-mail à qui dépasse les deux limites : ses demandes en cours sont la cause qu'il peut résoudre", async () => {
-    const one = (i: number, email: string) => post(body({ date: `2026-12-${19 + i}`, email }));
+    const one = async (i: number, email: string) => post(await requestBody({ date: `2026-12-${19 + i}`, email }));
     for (const [i, email] of ["a", "a", "b", "c", "d"].entries()) expect((await one(i, `${email}@example.test`)).status).toBe(201);
     const over = await one(5, "a@example.test");
     expect(over.status).toBe(429);
@@ -269,7 +275,7 @@ describe("POST /api/requests : limites", () => {
   });
 
   it("oublie les demandes de plus de 24 h pour la limite par adresse IP", async () => {
-    const one = (i: number) => post(body({ date: `2026-12-${19 + i}`, email: `client${i}@example.test` }));
+    const one = async (i: number) => post(await requestBody({ date: `2026-12-${19 + i}`, email: `client${i}@example.test` }));
     for (let i = 0; i < 5; i++) await one(i);
     deps.setNow("2026-11-08T10:00:01.000Z");
     expect((await one(5)).status).toBe(201);
@@ -277,7 +283,7 @@ describe("POST /api/requests : limites", () => {
 
   it("sans en-tête d'adresse IP, ne garde aucune empreinte et n'applique pas la limite par adresse", async () => {
     for (let i = 0; i < 6; i++) {
-      const r = await post(body({ date: `2026-12-${19 + i}`, email: `client${i}@example.test` }), deps, null);
+      const r = await post(await requestBody({ date: `2026-12-${19 + i}`, email: `client${i}@example.test` }), deps, null);
       expect(r.status).toBe(201);
     }
     expect((await stored()).every((b) => b.ip_hash === null)).toBe(true);
@@ -288,7 +294,7 @@ describe("POST /api/requests : limites", () => {
     async (_label, salt) => {
       const d = fakeDeps({ env: { ...env, IP_HASH_SALT: salt as string } });
       for (let i = 0; i < 6; i++) {
-        const r = await post(body({ date: `2026-12-${19 + i}`, email: `client${i}@example.test` }), d);
+        const r = await post(await requestBody({ date: `2026-12-${19 + i}`, email: `client${i}@example.test` }), d);
         expect(r.status).toBe(201);
       }
       const rows = await stored();
@@ -298,7 +304,7 @@ describe("POST /api/requests : limites", () => {
   );
 
   it("conserve seulement une empreinte salée de l'adresse IP", async () => {
-    await post(body());
+    await post(await requestBody());
     const [b] = await listRange(env.DB, "2026-12-19", "2026-12-19");
     expect(b.ip_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(env.IP_HASH_SALT).toBeTruthy();
@@ -321,8 +327,10 @@ describe("POST /api/requests : validation", () => {
     [{ message: "x".repeat(2001) }, "message"], [{ message: 7 }, "message"],
     [{ terms: false }, "terms"], [{ terms: "true" }, "terms"], [{ terms: 1 }, "terms"], [{ terms: undefined }, "terms"],
     [{ turnstile_token: 5 }, "turnstile_token"], [{ turnstile_token: "t".repeat(2049) }, "turnstile_token"],
+    [{ price_cents: undefined }, "price_cents"], [{ price_cents: null }, "price_cents"], [{ price_cents: "15000" }, "price_cents"],
+    [{ price_cents: 1.5 }, "price_cents"], [{ price_cents: -1 }, "price_cents"], [{ price_cents: 10_000_001 }, "price_cents"],
   ])("refuse %j", async (over, field) => {
-    const r = await post(body(over));
+    const r = await post(await requestBody(over));
     expect(r.status).toBe(422);
     const { error, fields } = await reply(r);
     expect(error).toBe("invalid");
@@ -331,7 +339,7 @@ describe("POST /api/requests : validation", () => {
   });
 
   it("accepte chaque champ à sa longueur maximale", async () => {
-    const r = await post(body({
+    const r = await post(await requestBody({
       name: "x".repeat(120), venue: "x".repeat(300), event_hours: "x".repeat(60), message: "x".repeat(2000),
       phone: "+33 (0)6.12-34-56-78", email: `${"a".repeat(241)}@example.test`, turnstile_token: "t".repeat(2048),
     }));
@@ -339,7 +347,7 @@ describe("POST /api/requests : validation", () => {
   });
 
   it("nomme tous les champs refusés, dans l'ordre du formulaire", async () => {
-    const r = await post(body({ date: "x", name: "", email: "x", terms: false }));
+    const r = await post(await requestBody({ date: "x", name: "", email: "x", terms: false }));
     expect((await reply(r)).fields).toEqual(["date", "name", "email", "terms"]);
   });
 
@@ -347,7 +355,7 @@ describe("POST /api/requests : validation", () => {
     const r = await post(raw);
     expect(r.status).toBe(422);
     expect((await reply(r)).fields).toEqual(
-      expect.arrayContaining(["date", "plan", "event_type", "event_hours", "venue", "name", "phone", "email", "terms"]),
+      expect.arrayContaining(["date", "plan", "price_cents", "event_type", "event_hours", "venue", "name", "phone", "email", "terms"]),
     );
   });
 
@@ -361,7 +369,8 @@ describe("POST /api/requests : validation", () => {
   });
 
   it("répond 413 au-delà de 16 Ko, et accepte juste 16 Ko", async () => {
-    const withPad = (n: number) => JSON.stringify({ ...body(), pad: "x".repeat(n) });
+    const base = await requestBody();
+    const withPad = (n: number) => JSON.stringify({ ...base, pad: "x".repeat(n) });
     const bytes = (text: string) => new TextEncoder().encode(text).length; // « fêtes » compte plus d'octets que de lettres
     const fit = MAX_BODY - bytes(withPad(0));
     expect(bytes(withPad(fit))).toBe(MAX_BODY);
@@ -374,16 +383,26 @@ describe("POST /api/requests : validation", () => {
   });
 
   it("répond 413 d'après la taille annoncée, même si le corps reçu est petit", async () => {
-    const r = await send(JSON.stringify(body()), deps, IP, { "Content-Length": String(MAX_BODY + 1) });
+    const r = await send(JSON.stringify(await requestBody()), deps, IP, { "Content-Length": String(MAX_BODY + 1) });
     expect(r.status).toBe(413);
     expect(await stored()).toHaveLength(0);
   });
 
   it("valide avant de consulter Turnstile, pour ne pas dépenser un jeton", async () => {
     const verifyTurnstile = vi.fn(async () => "pass" as const);
-    const r = await post(body({ name: "" }), fakeDeps({ verifyTurnstile }));
+    const r = await post(await requestBody({ name: "" }), fakeDeps({ verifyTurnstile }));
     expect(r.status).toBe(422);
     expect(verifyTurnstile).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/requests : prix", () => {
+  it("répond price_changed avec le prix du moment, sans rien enregistrer", async () => {
+    const input = await requestBody();
+    const r = await post({ ...input, price_cents: (input.price_cents as number) + 100 });
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ error: "price_changed", price_cents: input.price_cents });
+    expect(await stored()).toHaveLength(0);
   });
 });
 
@@ -391,21 +410,21 @@ describe("POST /api/requests : Turnstile", () => {
   it("transmet le jeton et l'adresse IP", async () => {
     const verifyTurnstile = vi.fn(async () => "pass" as const);
     const d = fakeDeps({ verifyTurnstile });
-    await post(body({ turnstile_token: " jeton " }), d);
+    await post(await requestBody({ turnstile_token: " jeton " }), d);
     expect(verifyTurnstile).toHaveBeenLastCalledWith("jeton", IP);
-    await post(body({ date: "2026-12-20", email: "autre@example.test" }), d, null);
+    await post(await requestBody({ date: "2026-12-20", email: "autre@example.test" }), d, null);
     expect(verifyTurnstile).toHaveBeenLastCalledWith("t", null);
   });
 
   it("refuse un robot, et n'enregistre rien", async () => {
-    const r = await post(body(), fakeDeps({ verifyTurnstile: async () => "fail" }));
+    const r = await post(await requestBody(), fakeDeps({ verifyTurnstile: async () => "fail" }));
     expect(r.status).toBe(403);
     expect(await r.json()).toEqual({ error: "bot" });
     expect(await stored()).toHaveLength(0);
   });
 
   it("accepte la demande si le service Turnstile est injoignable", async () => {
-    expect((await post(body(), fakeDeps({ verifyTurnstile: async () => "unavailable" }))).status).toBe(201);
+    expect((await post(await requestBody(), fakeDeps({ verifyTurnstile: async () => "unavailable" }))).status).toBe(201);
   });
 
   it("accepte la demande si la vérification Turnstile lève une erreur, et le consigne sans donnée personnelle", async () => {
@@ -414,7 +433,7 @@ describe("POST /api/requests : Turnstile", () => {
       const verifyTurnstile = async (): Promise<never> => {
         throw new Error("panne");
       };
-      expect((await post(body({ turnstile_token: "jeton-secret-123" }), fakeDeps({ verifyTurnstile }))).status).toBe(201);
+      expect((await post(await requestBody({ turnstile_token: "jeton-secret-123" }), fakeDeps({ verifyTurnstile }))).status).toBe(201);
       expect(await stored()).toHaveLength(1);
 
       expect(log).toHaveBeenCalledOnce();
@@ -430,23 +449,23 @@ describe("POST /api/requests : Turnstile", () => {
   });
 
   it("répond que la demande est faite à qui renvoie la sienne avec un jeton déjà dépensé", async () => {
-    await post(body());
-    const r = await post(body({ turnstile_token: "deja-utilise" }), fakeDeps({ verifyTurnstile: async () => "fail" }));
+    await post(await requestBody());
+    const r = await post(await requestBody({ turnstile_token: "deja-utilise" }), fakeDeps({ verifyTurnstile: async () => "fail" }));
     expect(r.status).toBe(200);
     expect(await reply(r)).toEqual({ status: "already_requested" });
     expect(await stored()).toHaveLength(1);
   });
 
   it("ne consulte pas Turnstile pour une demande déjà enregistrée", async () => {
-    await post(body());
+    await post(await requestBody());
     const verifyTurnstile = vi.fn(async () => "pass" as const);
-    expect((await post(body(), fakeDeps({ verifyTurnstile }))).status).toBe(200);
+    expect((await post(await requestBody(), fakeDeps({ verifyTurnstile }))).status).toBe(200);
     expect(verifyTurnstile).not.toHaveBeenCalled();
   });
 
   it("refuse toujours un robot qui envoie une autre demande", async () => {
-    await post(body());
-    const r = await post(body({ date: "2026-12-20" }), fakeDeps({ verifyTurnstile: async () => "fail" }));
+    await post(await requestBody());
+    const r = await post(await requestBody({ date: "2026-12-20" }), fakeDeps({ verifyTurnstile: async () => "fail" }));
     expect(r.status).toBe(403);
     expect(await stored()).toHaveLength(1);
   });
@@ -459,7 +478,7 @@ describe("GET /api/availability", () => {
     (await (await get(`/api/availability?from=${from}&to=${to}`)).json<{ unavailable: string[] }>()).unavailable;
 
   it("ne donne que des dates", async () => {
-    await post(body());
+    await post(await requestBody());
     const r = await get(`/api/availability?from=${FROM}&to=${TO}`);
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ unavailable: ["2026-12-19"], earliest: "2026-11-14", latest: "2028-11-07" });
@@ -472,8 +491,8 @@ describe("GET /api/availability", () => {
   });
 
   it("ne donne que les dates de la plage demandée", async () => {
-    await post(body());
-    await post(body({ date: "2027-03-06", email: "autre@example.test" }));
+    await post(await requestBody());
+    await post(await requestBody({ date: "2027-03-06", email: "autre@example.test" }));
     expect(await unavailableIn(FROM, TO)).toEqual(["2026-12-19"]);
     expect(await unavailableIn("2027-03-01", "2027-03-31")).toEqual(["2027-03-06"]);
     expect(await unavailableIn("2027-04-01", "2027-04-30")).toEqual([]);
@@ -498,6 +517,24 @@ describe("GET /api/availability", () => {
     expect(r.status).toBe(400);
     expect(await reply(r)).toEqual({ error: "invalid_range" });
     expect(r.headers.get("Cache-Control")).toBe("no-store");
+  });
+});
+
+describe("GET /api/prices", () => {
+  it("donne le palier en cours, ses places restantes et le prix de chaque formule", async () => {
+    useTiers(testTier("t1", 10_000, 2), testTier("t2", 20_000));
+    await post(await requestBody());
+    const r = await get("/api/prices");
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    expect(body).toEqual(pricesBody(offer, currentTier(offer, await countTakenByTier(env.DB))));
+    expect(body).toMatchObject({ tier: "t1", launch: true, remaining: 1 });
+  });
+
+  it("garde le résultat 30 secondes au plus", async () => {
+    const r = await get("/api/prices");
+    expect(r.headers.get("Cache-Control")).toBe("public, max-age=30");
+    expect(r.headers.get("X-Robots-Tag")).toBe("noindex");
   });
 });
 
@@ -527,7 +564,7 @@ describe("routage et erreurs", () => {
 
   it("interdit la mise en cache et l'indexation de toutes les réponses du Worker", async () => {
     const replies = [
-      await get("/api/inconnue"), await get("/api/requests"), await post(body()), await post(body({ name: "" })),
+      await get("/api/inconnue"), await get("/api/requests"), await post(await requestBody()), await post(await requestBody({ name: "" })),
       await send("{"),
     ];
     for (const r of replies) {
@@ -545,7 +582,7 @@ describe("routage et erreurs", () => {
           throw new Error("horloge cassée");
         },
       });
-      const r = await post(body(), broken);
+      const r = await post(await requestBody(), broken);
       expect(r.status).toBe(500);
       expect(await r.json()).toEqual({ error: "server_error" });
 
