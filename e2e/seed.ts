@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { depositCents } from "../worker/bookings";
-import { isBookable, offer, plansOf, type Plan } from "../worker/offer";
+import { isBookable, normalTier, offer, plansOf, priceOf, type Plan } from "../worker/offer";
 
 /**
  * L'offre telle que le propriétaire l'écrit dans `config/offer.json`. Il y change les bornes, les identifiants et les prix :
@@ -8,6 +8,9 @@ import { isBookable, offer, plansOf, type Plan } from "../worker/offer";
  */
 export { isBookable, offer, plansOf };
 export const [FIRST_PLAN, SECOND_PLAN] = offer.plans;
+
+/** Le prix normal d'une formule, celui du dernier palier. */
+export const normalPrice = (plan: Plan): number => priceOf(normalTier(offer), plan.id);
 
 /** L'acompte que l'offre prévoit pour ce prix, quel que soit son pourcentage. */
 export const depositFor = (priceCents: number): number => depositCents(priceCents, offer.depositPercent);

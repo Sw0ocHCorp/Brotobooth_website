@@ -41,8 +41,11 @@ export function findLaunchBlockers({ offer, legalPages, databaseId, vars, siteKe
   }
   if (isBlank(offer.contact.phone)) blockers.push("Le numéro de téléphone de contact manque dans config/offer.json.");
   if (isBlank(offer.contact.email)) blockers.push("L'adresse e-mail de contact manque dans config/offer.json.");
-  for (const plan of offer.plans) {
-    if (!(plan.priceCents > 0)) blockers.push(`La formule « ${plan.name} » est encore à 0 € : indiquez son prix dans config/offer.json.`);
+  for (const tier of offer.tiers) {
+    for (const plan of offer.plans) {
+      if (!(tier.prices[plan.id] > 0)) blockers.push(`Le palier « ${tier.name} » : le prix de « ${plan.name} » est encore à 0 € dans config/offer.json.`);
+    }
+    if (!(tier.refillCents > 0)) blockers.push(`Le palier « ${tier.name} » : le tarif de la recharge est encore à 0 € dans config/offer.json.`);
   }
 
   const pages = Object.entries(legalPages);

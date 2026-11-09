@@ -13,6 +13,7 @@ import {
   fillDetails,
   isBookable,
   isoDate,
+  normalPrice,
   offer,
   pickFreeDate,
   planButton,
@@ -191,7 +192,7 @@ test("la borne vient avant les tirages : une borne à venir se voit sans se choi
     for (const plan of own) {
       await expect(planButton(page, plan)).toBeVisible();
       await expect(planButton(page, plan)).toContainText(`${plan.prints} tirages`);
-      if (plan.priceCents > 0) await expect(planButton(page, plan)).toContainText(euros(plan.priceCents));
+      if (normalPrice(plan) > 0) await expect(planButton(page, plan)).toContainText(euros(normalPrice(plan)));
       else await expect(planButton(page, plan)).not.toContainText("€");
     }
     const [group, list] = await Promise.all([booths(page).boundingBox(), prints(page).boundingBox()]);

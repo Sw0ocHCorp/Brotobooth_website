@@ -1,7 +1,7 @@
 import { parseEnv } from "node:util";
 import { describe, expect, it } from "vitest";
 import { findLaunchBlockers, parseJsonc, siteKeyFrom } from "../../scripts/check-launch.mjs";
-import { buildOffer, type Offer } from "../../worker/offer";
+import { buildOffer, offer as realOffer, type Offer } from "../../worker/offer";
 
 /** Le contrôle d'avant publication (spec, sections 13 et 14) : il refuse tant qu'un contenu manque ou qu'un réglage d'essai reste. */
 
@@ -25,8 +25,11 @@ const completeOffer: Offer = buildOffer({
   contact: { phone: "06 12 34 56 78", email: "contact@example.test", social: [] },
   booths: [{ id: "borne", name: "La borne", includes: ["Un fond au choix"] }],
   plans: [
-    { id: "borne-100", booth: "borne", prints: 100, priceCents: 90_000 },
-    { id: "borne-300", booth: "borne", prints: 300, priceCents: 120_000 },
+    { id: "borne-100", booth: "borne", prints: 100 },
+    { id: "borne-300", booth: "borne", prints: 300 },
+  ],
+  tiers: [
+    { id: "normal", name: "Prix normal", refillCents: 10_000, prices: { "borne-100": 90_000, "borne-300": 120_000 } },
   ],
 });
 const draftOffer: Offer = { ...completeOffer, draft: true, contact: { phone: "", email: "", social: [] } };
@@ -67,15 +70,26 @@ describe("findLaunchBlockers", () => {
     expect(blockers).toHaveLength(5);
   });
 
-  it("signale chaque formule à 0 €, par son nom", () => {
-    const plans = [
-      { ...completeOffer.plans[0], priceCents: 0 },
-      completeOffer.plans[1],
-      { id: "borne-500", name: "La borne · 500 tirages", booth: "borne", prints: 500, priceCents: 0 },
-    ];
-    const blockers = findLaunchBlockers({ ...complete, offer: { ...completeOffer, plans } });
-    expect(blockers).toEqual([expect.stringContaining("« La borne · 100 tirages »"), expect.stringContaining("« La borne · 500 tirages »")]);
-    expect(blockers.every((blocker) => blocker.includes("0 €"))).toBe(true);
+  it("signale chaque prix à 0 € d'un palier, par son nom", () => {
+    const [normal] = completeOffer.tiers;
+    const tiers = [{ ...normal, prices: { "borne-100": 0, "borne-300": 0 } }];
+    const blockers = findLaunchBlockers({ ...complete, offer: { ...completeOffer, tiers } });
+    expect(blockers).toEqual([
+      "Le palier « Prix normal » : le prix de « La borne · 100 tirages » est encore à 0 € dans config/offer.json.",
+      "Le palier « Prix normal » : le prix de « La borne · 300 tirages » est encore à 0 € dans config/offer.json.",
+    ]);
+  });
+
+  it("signale un tarif de recharge à 0 €", () => {
+    const tiers = [{ ...completeOffer.tiers[0], refillCents: 0 }];
+    expect(findLaunchBlockers({ ...complete, offer: { ...completeOffer, tiers } })).toEqual([
+      "Le palier « Prix normal » : le tarif de la recharge est encore à 0 € dans config/offer.json.",
+    ]);
+  });
+
+  it("ne bloque pas sur l'offre réelle", () => {
+    const blockers = findLaunchBlockers({ ...complete, offer: { ...realOffer, draft: false, contact: completeOffer.contact } });
+    expect(blockers.filter((blocker) => blocker.includes("0 €"))).toEqual([]);
   });
 
   it("refuse de publier avec le paiement simulé ou les fausses passerelles", () => {
@@ -143,7 +157,7 @@ describe("findLaunchBlockers", () => {
 
   it("écrit chaque blocage en une phrase complète, sur une seule ligne", () => {
     const blockers = findLaunchBlockers({
-      offer: { ...draftOffer, plans: [{ ...completeOffer.plans[0], priceCents: 0 }] },
+      offer: { ...draftOffer, tiers: [{ ...completeOffer.tiers[0], refillCents: 0 }] },
       legalPages: { "src/pages/cgv.astro": `[À compléter] ${DRAFT_COMMENT}` },
       databaseId: ZERO_DATABASE_ID,
       vars: { PAYMENT_MODE: "simulated", FAKE_GATEWAYS: "1" },

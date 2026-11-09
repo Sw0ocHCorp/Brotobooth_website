@@ -9,14 +9,31 @@
   "maxPerIpPer24h": 5,
   "reminderHourParis": 9,
   "termsVersion": "2026-11-07",
-  "eventTypes": ["Mariage", "Anniversaire", "Événement d'entreprise", "Autre"],
-  "contact": { "phone": "", "email": "", "social": [] },
+  "eventTypes": [
+    "Mariage",
+    "Anniversaire",
+    "Événement d'entreprise",
+    "Autre"
+  ],
+  "contact": {
+    "phone": "",
+    "email": "",
+    "social": []
+  },
   "booths": [
     { "id": "brotobooth", "name": "BrotoBooth", "includes": [] },
     { "id": "brotobooth-tiny", "name": "BrotoBooth tiny", "includes": [] }
   ],
   "plans": [
-    { "id": "brotobooth-200", "booth": "brotobooth", "prints": 200, "priceCents": 25000 },
-    { "id": "brotobooth-400", "booth": "brotobooth", "prints": 400, "priceCents": 40000 }
+    { "id": "brotobooth-200", "booth": "brotobooth", "prints": 200 },
+    { "id": "brotobooth-400", "booth": "brotobooth", "prints": 400 }
+  ],
+  "tiers": [
+    { "id": "lancement-1", "name": "Lancement 1", "places": 10, "refillCents": 7500,
+      "prices": { "brotobooth-200": 15000, "brotobooth-400": 25000 } },
+    { "id": "lancement-2", "name": "Lancement 2", "places": 10, "refillCents": 10000,
+      "prices": { "brotobooth-200": 20000, "brotobooth-400": 35000 } },
+    { "id": "normal", "name": "Prix normal", "refillCents": 10000,
+      "prices": { "brotobooth-200": 25000, "brotobooth-400": 40000 } }
   ]
 }

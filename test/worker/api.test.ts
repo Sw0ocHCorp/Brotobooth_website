@@ -1,12 +1,13 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { normalTier, offer } from "../../worker/offer";
 import { addDays } from "../../worker/bookings";
 import type { Deps, EmailMessage } from "../../worker/deps";
 import { processDue } from "../../worker/notifications";
 import { listRange } from "../../worker/repository";
 import { handle } from "../../worker/router";
-import { CHAT_ID, FIRST_PLAN, OWNER_EMAIL, SECOND_PLAN, T0, depositFor, fakeDeps, notificationRows, resetDb, type FakeDeps } from "../support";
+import { CHAT_ID, FIRST_PLAN, OWNER_EMAIL, SECOND_PLAN, T0, depositFor, fakeDeps, normalPrice, notificationRows, resetDb, type FakeDeps } from "../support";
 
 const ctx = createExecutionContext();
 const IP = "203.0.113.5";
@@ -65,8 +66,8 @@ describe("POST /api/requests : enregistrement", () => {
     expect(b.source).toBe("site");
     expect(b.hold_until).toBe("2026-11-10T10:00:00.000Z");
     expect(b.terms_version).toBe("2026-11-07");
-    expect(b.price_cents).toBe(FIRST_PLAN.priceCents);
-    expect(b.deposit_cents).toBe(depositFor(FIRST_PLAN.priceCents));
+    expect(b.price_cents).toBe(normalPrice(FIRST_PLAN));
+    expect(b.deposit_cents).toBe(depositFor(normalPrice(FIRST_PLAN)));
     expect(b.created_at).toBe(T0);
     expect((await notificationRows()).map((n) => `${n.template}|${n.channel}`).sort()).toEqual([
       "client_received|email",
@@ -78,12 +79,13 @@ describe("POST /api/requests : enregistrement", () => {
   });
 
   it("calcule le prix et l'acompte d'après la formule", async () => {
-    const provisional = SECOND_PLAN.priceCents;
-    SECOND_PLAN.priceCents = 150_000;
+    const { prices } = normalTier(offer);
+    const provisional = prices[SECOND_PLAN.id];
+    prices[SECOND_PLAN.id] = 150_000;
     try {
       await post(body({ plan: SECOND_PLAN.id }));
     } finally {
-      SECOND_PLAN.priceCents = provisional;
+      prices[SECOND_PLAN.id] = provisional;
     }
     const [b] = await stored();
     expect(b.plan).toBe(SECOND_PLAN.id);

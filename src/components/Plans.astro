@@ -1,6 +1,6 @@
 ---
 import { formatEuros } from "../../worker/html";
-import { isBookable, offer, plansOf } from "../../worker/offer";
+import { isBookable, normalTier, offer, plansOf, priceOf } from "../../worker/offer";
 
 /**
  * « Les formules » (`#formules`), telles que `config/offer.json` les décrit : une carte par borne, avec ce qu'elle comprend
@@ -30,7 +30,7 @@ import { isBookable, offer, plansOf } from "../../worker/offer";
                 {plansOf(offer, booth.id).map((plan) => (
                   <li>
                     <span>{plan.prints} tirages</span>
-                    {plan.priceCents > 0 && <b class="price">{formatEuros(plan.priceCents)}</b>}
+                    {priceOf(normalTier(offer), plan.id) > 0 && <b class="price">{formatEuros(priceOf(normalTier(offer), plan.id))}</b>}
                   </li>
                 ))}
               </ul>

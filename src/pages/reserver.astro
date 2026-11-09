@@ -1,6 +1,6 @@
 ---
 import { formatEuros } from "../../worker/html";
-import { finalDepositPercent, hasContact, isBookable, offer } from "../../worker/offer";
+import { finalDepositPercent, hasContact, isBookable, normalTier, offer, priceOf } from "../../worker/offer";
 import ContactLine from "../components/ContactLine.astro";
 import TopBar from "../components/TopBar.astro";
 import Base from "../layouts/Base.astro";
@@ -146,7 +146,7 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
               offer.plans.map((plan) => (
                 <button type="button" class="choice" data-plan={plan.id} data-booth={plan.booth} aria-pressed="false">
                   <b>{plan.prints} tirages</b>
-                  {plan.priceCents > 0 && <span>{formatEuros(plan.priceCents)}</span>}
+                  {priceOf(normalTier(offer), plan.id) > 0 && <span>{formatEuros(priceOf(normalTier(offer), plan.id))}</span>}
                 </button>
               ))
             }

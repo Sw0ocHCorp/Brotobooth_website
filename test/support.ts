@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { depositCents } from "../worker/bookings";
 import type { Button, Deps, EmailMessage, StripeGateway, StripeSession } from "../worker/deps";
 import { plan } from "../worker/notifications";
-import { offer, type Plan } from "../worker/offer";
+import { normalTier, offer, priceOf, type Plan } from "../worker/offer";
 import { validateBooking } from "../worker/operations";
 import {
   insertBooking,
@@ -20,6 +20,9 @@ export const T0 = "2026-11-07T10:00:00.000Z";
  * et aucun test ne suppose les valeurs d'aujourd'hui.
  */
 export const [FIRST_PLAN, SECOND_PLAN]: Plan[] = offer.plans;
+
+/** Le prix normal d'une formule, celui du dernier palier. */
+export const normalPrice = (plan: Plan): number => priceOf(normalTier(offer), plan.id);
 
 /** L'acompte que l'offre prévoit pour ce prix, quel que soit son pourcentage. */
 export const depositFor = (priceCents: number): number => depositCents(priceCents, offer.depositPercent);

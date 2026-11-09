@@ -13,7 +13,7 @@ import {
   type BookingAction,
   type BookingStatus,
 } from "../../worker/bookings";
-import { buildOffer, isBookable, offer, planById, plansOf, type OfferConfig } from "../../worker/offer";
+import { buildOffer, currentTier, isBookable, normalTier, offer, planById, plansOf, priceOf, pricesBody, type OfferConfig, type Tier } from "../../worker/offer";
 
 describe("transitions de statut", () => {
   const transitions: [BookingStatus, BookingAction, BookingStatus | null][] = [
@@ -137,16 +137,17 @@ describe("offre", () => {
         { id: "petite", name: "Petite borne", includes: [] },
       ],
       plans: [
-        { id: "grande-100", booth: "grande", prints: 100, priceCents: 10_000 },
-        { id: "grande-300", booth: "grande", prints: 300, priceCents: 20_000 },
+        { id: "grande-100", booth: "grande", prints: 100 },
+        { id: "grande-300", booth: "grande", prints: 300 },
       ],
+      tiers: [{ id: "normal", name: "Prix normal", refillCents: 1_000, prices: { "grande-100": 10_000, "grande-300": 20_000 } }],
     };
     const trial = buildOffer(config);
 
     it("nomme chaque formule par sa borne et son nombre de tirages, sans rien changer d'autre", () => {
       expect(trial.plans).toEqual([
-        { id: "grande-100", name: "Grande borne · 100 tirages", booth: "grande", prints: 100, priceCents: 10_000 },
-        { id: "grande-300", name: "Grande borne · 300 tirages", booth: "grande", prints: 300, priceCents: 20_000 },
+        { id: "grande-100", name: "Grande borne · 100 tirages", booth: "grande", prints: 100 },
+        { id: "grande-300", name: "Grande borne · 300 tirages", booth: "grande", prints: 300 },
       ]);
       expect(trial.booths).toEqual(config.booths);
       expect(trial.depositPercent).toBe(config.depositPercent);
@@ -164,9 +165,61 @@ describe("offre", () => {
 
     // Une faute de frappe dans `config/offer.json` casse les tests au lieu d'afficher une formule sans borne.
     it("refuse une formule dont la borne n'existe pas, en nommant l'une et l'autre", () => {
-      const orphan = { id: "geante-500", booth: "geante", prints: 500, priceCents: 50_000 };
+      const orphan = { id: "geante-500", booth: "geante", prints: 500 };
       expect(() => buildOffer({ ...config, plans: [...config.plans, orphan] })).toThrow(/« geante-500 ».*« geante »/);
     });
+  });
+
+
+  describe("les paliers", () => {
+    const tier = (id: string, places: number | undefined, a: number, b: number, refillCents = 1_000): Tier => ({
+      id, name: id, ...(places === undefined ? {} : { places }), refillCents, prices: { a, b },
+    });
+    const t1 = tier("t1", 3, 100_00, 200_00, 500);
+    const t2 = tier("t2", 2, 150_00, 250_00, 800);
+    const last = tier("last", undefined, 200_00, 300_00);
+    const config: OfferConfig = {
+      ...offer,
+      booths: [{ id: "x", name: "X", includes: [] }],
+      plans: [{ id: "a", booth: "x", prints: 100 }, { id: "b", booth: "x", prints: 200 }],
+      tiers: [t1, t2, last],
+    };
+    const trial = buildOffer(config);
+    const refused = (tiers: Tier[]) => expect(() => buildOffer({ ...config, tiers })).toThrow(/config\/offer.json/);
+
+    it("currentTier on an empty base is the first tier", () => {
+      expect(currentTier(trial, {})).toEqual({ tier: t1, remaining: 3, launch: true });
+    });
+    it("currentTier skips full tiers", () => {
+      expect(currentTier(trial, { t1: 3 })).toEqual({ tier: t2, remaining: 2, launch: true });
+    });
+    it("currentTier counts the last place", () => {
+      expect(currentTier(trial, { t1: 2 })).toEqual({ tier: t1, remaining: 1, launch: true });
+    });
+    it("currentTier ends on the unlimited tier", () => {
+      expect(currentTier(trial, { t1: 3, t2: 2 })).toEqual({ tier: last, remaining: null, launch: false });
+    });
+    it("currentTier ignores unknown tier ids", () => {
+      expect(currentTier(trial, { inconnu: 99 }).tier).toBe(t1);
+    });
+    it("normalTier is the last tier and priceOf reads its price", () => {
+      expect(normalTier(trial)).toBe(last);
+      expect(priceOf(last, "b")).toBe(300_00);
+    });
+    it("pricesBody gives tier and normal prices", () => {
+      expect(pricesBody(trial, currentTier(trial, {}))).toEqual({
+        tier: "t1", launch: true, remaining: 3, refillCents: 500,
+        plans: { a: { priceCents: 100_00, normalCents: 200_00 }, b: { priceCents: 200_00, normalCents: 300_00 } },
+      });
+    });
+    it("buildOffer refuses an offer without tiers", () => refused([]));
+    it("buildOffer refuses duplicate tier ids", () => refused([t1, { ...t2, id: "t1" }, last]));
+    it("buildOffer refuses a tier missing a plan price", () => refused([t1, { ...t2, prices: { a: 1 } }, last]));
+    it("buildOffer refuses a price for an unknown plan", () => refused([t1, t2, { ...last, prices: { ...last.prices, z: 1 } }]));
+    it("buildOffer refuses a non-final tier without places", () => refused([{ ...t1, places: undefined }, t2, last]));
+    it("buildOffer refuses places of 0", () => refused([{ ...t1, places: 0 }, t2, last]));
+    it("buildOffer refuses non-integer places", () => refused([{ ...t1, places: 1.5 }, t2, last]));
+    it("buildOffer refuses places on the last tier", () => refused([t1, t2, { ...last, places: 5 }]));
   });
 
   it("porte les règles de réservation du plan", () => {

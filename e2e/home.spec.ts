@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { euros, isBookable, offer, plansOf } from "./seed";
+import { euros, isBookable, normalPrice, offer, plansOf } from "./seed";
 
 const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
@@ -90,7 +90,7 @@ test("une carte par borne : ses formules et le lien pour la réserver, ou « Bie
       const row = card.getByRole("listitem").filter({ hasText: new RegExp(`^\\s*${plan.prints} tirages`) });
       await expect(row).toHaveCount(1);
       // Une formule encore sans prix (offre provisoire) n'affiche aucun montant.
-      if (plan.priceCents > 0) await expect(row).toContainText(euros(plan.priceCents));
+      if (normalPrice(plan) > 0) await expect(row).toContainText(euros(normalPrice(plan)));
       else await expect(row).not.toContainText("€");
     }
     // Un seul lien par borne : le nombre de tirages se choisit ensuite, sur la réservation.

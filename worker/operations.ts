@@ -2,7 +2,7 @@ import { checkDate, depositCents, isValidDate, nextStatus, type BookingAction, t
 import type { Deps, StripeGateway, StripeSession } from "./deps";
 import { plan, type PlanEvent } from "./notifications";
 import { sha256Hex, toHex } from "./http";
-import { offer, planById } from "./offer";
+import { normalTier, offer, planById, priceOf } from "./offer";
 import {
   applyTransition,
   countActiveByEmail,
@@ -166,13 +166,15 @@ export async function createRequest(deps: Deps, input: unknown, ip: string | nul
   if (ipHash !== null && (await countRecentByIp(db, ipHash, dayAgo)) >= offer.maxPerIpPer24h) return { kind: "too_many", reason: "ip" };
 
   const chosen = planById(request.plan)!; // validé par parseRequest
+  const price = priceOf(normalTier(offer), chosen.id);
   const nowIso = now.toISOString();
   const booking = blankBooking(
     { event_date: request.date, status: "pending_review", source: "site" },
     {
       plan: chosen.id,
-      price_cents: chosen.priceCents,
-      deposit_cents: depositCents(chosen.priceCents, offer.depositPercent),
+      // Provisoire : la Task 3 attribue le palier en cours.
+      price_cents: price,
+      deposit_cents: depositCents(price, offer.depositPercent),
       client_name: request.name,
       client_email: request.email,
       client_phone: request.phone,
