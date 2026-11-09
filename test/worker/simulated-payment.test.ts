@@ -107,6 +107,8 @@ describe("le parcours complet, sans Stripe", () => {
     expect(html).toContain('name="outcome" value="paid"');
     expect(html).toContain('name="outcome" value="abandon"');
     expect(html).not.toContain("<script");
+    // Elle reste telle qu'elle était : sans l'en-tête « Brotobooth » des pages client.
+    expect(html).not.toContain('<header class="site">');
   });
 
   it("abandonner laisse la date tenue et le lien réutilisable", async () => {

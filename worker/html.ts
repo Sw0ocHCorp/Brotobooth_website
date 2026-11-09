@@ -26,14 +26,17 @@ const PAGE_CSS = `
 .site .brand { display: inline-flex; align-items: center; min-height: 44px; color: var(--text); font-family: var(--font-title); font-weight: 800; text-decoration: none; }
 `;
 
+/** En tête d'une page client, « Brotobooth » ramène à l'accueil, comme la barre du site : qui arrive d'un e-mail sait où il est. */
+const SITE_HEADER = '<header class="site"><a class="brand" href="/">Brotobooth</a></header>\n';
+
 /**
- * Une page complète, en français, sur la charte sombre du site, sous « Brotobooth » qui ramène à l'accueil, comme la barre
- * du site : le client arrivé d'un e-mail sait où il est. `bodyHtml` est du HTML déjà sûr : l'appelant
+ * Une page complète, en français, sur la charte sombre du site. `bodyHtml` est du HTML déjà sûr : l'appelant
  * passe par `escapeHtml` pour tout ce qui vient d'un client. Aucune page n'est à indexer ni à garder. Sa feuille de
  * style est la seule chose écrite dans la page, ce que la politique de sécurité permet (`style-src 'unsafe-inline'`,
- * voir `CONTENT_SECURITY_POLICY`) : jamais un script, que cette politique refuse.
+ * voir `CONTENT_SECURITY_POLICY`) : jamais un script, que cette politique refuse. `home` ajoute l'en-tête des pages
+ * client (`/acompte`) ; les pages d'essai (`/demo`, la simulation du paiement) n'en ont pas.
  */
-export function page(title: string, bodyHtml: string): string {
+export function page(title: string, bodyHtml: string, { home = false }: { home?: boolean } = {}): string {
   return `<!doctype html>
 <html lang="fr">
 <head>
@@ -46,8 +49,7 @@ export function page(title: string, bodyHtml: string): string {
 <style>${PAGE_CSS}</style>
 </head>
 <body>
-<header class="site"><a class="brand" href="/">Brotobooth</a></header>
-<main class="page">
+${home ? SITE_HEADER : ""}<main class="page">
 ${bodyHtml}
 </main>
 </body>

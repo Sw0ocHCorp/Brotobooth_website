@@ -155,10 +155,14 @@ test("une demande déjà reçue rassure le client sans rien envoyer de plus", as
   await fillDetails(page);
   await page.route(REQUESTS, (route) => route.fulfill({ status: 200, json: { status: "already_requested" } }));
   await send(page).click();
-  await expect(confirmed(page)).toBeVisible();
-  const note = page.getByText("nous est déjà parvenue").filter({ visible: true });
+  // Son propre titre : « Merci, votre demande est envoyée ! » contredirait « inutile de la renvoyer ».
+  const heading = page.getByRole("heading", { level: 1, name: "Votre demande nous est déjà parvenue" });
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeFocused();
+  await expect(confirmed(page)).toHaveCount(0);
+  const note = page.getByText("inutile de la renvoyer").filter({ visible: true });
   await expect(note).toHaveText(
-    new RegExp(`^Bonne nouvelle\\s: votre demande pour le ${longDate(date)} nous est déjà parvenue, inutile de la renvoyer\\. Vous trouverez dans vos e-mails son récapitulatif, puis notre réponse\\.$`),
+    new RegExp(`^Votre demande pour le ${longDate(date)} est bien enregistrée, inutile de la renvoyer\\. Vous trouverez dans vos e-mails son récapitulatif, puis notre réponse\\.$`),
   );
   await expect(page.getByText(/premier envoi|répondons sous/).filter({ visible: true })).toHaveCount(0);
 });
@@ -278,8 +282,11 @@ test("un refus anti-robots ou trop de demandes s'expliquent, et un nouvel essai 
   if (hasContact) await expect(shared).toContainText("ou contactez-nous pour réserver dès maintenant.");
   else await expect(shared).toHaveText(/Réessayez demain\.$/);
   // La limite par adresse e-mail dit combien de demandes en cours elle permet, et ce qui suit.
+  // Vrai pour une demande qui attend notre réponse comme pour une demande acceptée qui attend son acompte.
   await expect(page.locator('[data-problem="too_many"]')).toContainText(
-    new RegExp(`déjà ${offer.maxActivePerEmail} demandes? en cours\\. Nous vous répondons d'abord sur celles?-ci, sous 72\\sh\\s; vous pourrez ensuite en envoyer une nouvelle\\.`),
+    new RegExp(
+      `déjà ${offer.maxActivePerEmail} demandes? en cours\\. Terminons d'abord celles?-ci\\s: nous vous répondons sous 72\\sh, puis vous réglez l'acompte\\. Vous pourrez ensuite en envoyer une nouvelle\\.`,
+    ),
   );
   await send(page).click();
   await expect(confirmed(page)).toBeVisible();

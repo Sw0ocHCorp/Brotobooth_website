@@ -47,9 +47,9 @@ function contactHtml(): string {
 
 const link = (href: string, text: string): string => `<a class="btn primary" href="${href}">${text}</a>`;
 
-/** Un titre, des paragraphes de HTML sûr, des actions éventuelles, puis le contact. */
+/** Sous l'en-tête qui ramène au site : un titre, des paragraphes de HTML sûr, des actions éventuelles, puis le contact. */
 const view = (title: string, ...parts: string[]): string =>
-  page(`${title} – Brotobooth`, `<h1>${escapeHtml(title)}</h1>${parts.join("")}${contactHtml()}`);
+  page(`${title} – Brotobooth`, `<h1>${escapeHtml(title)}</h1>${parts.join("")}${contactHtml()}`, { home: true });
 
 const untilDeadline = (b: Booking): string =>
   b.hold_until ? ` jusqu'au ${formatMoment(b.hold_until)}` : "";

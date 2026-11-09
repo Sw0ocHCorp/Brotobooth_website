@@ -187,9 +187,10 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
           <div id="send-problem" class="notice" role="alert" tabindex="-1" hidden>
             <p data-problem="failed">Votre demande n'a pas pu partir. Vos informations sont conservées&nbsp;: réessayez dans un instant.</p>
             <p data-problem="bot">La vérification de sécurité n'a pas abouti. Vos informations sont conservées&nbsp;: réessayez dans un instant.</p>
+            {/* Une demande en cours attend notre réponse, ou, acceptée, son acompte : la phrase vaut pour les deux. */}
             <p data-problem="too_many">
-              Vous avez déjà {active} demande{several} en cours. Nous vous répondons d'abord sur celle{several}-ci, sous {offer.reviewHours}&nbsp;h&nbsp;; vous pourrez
-              ensuite en envoyer une nouvelle.
+              Vous avez déjà {active} demande{several} en cours. Terminons d'abord celle{several}-ci&nbsp;: nous vous répondons sous {offer.reviewHours}&nbsp;h,
+              puis vous réglez l'acompte. Vous pourrez ensuite en envoyer une nouvelle.
             </p>
             <p data-problem="too_many_ip">
               Nous ne pouvons pas enregistrer de nouvelle demande depuis cette connexion pour le moment. Réessayez demain{
@@ -205,14 +206,17 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
         </form>
 
         <section class="pane" id="step-4" aria-labelledby="step-4-title" hidden>
-          <h1 id="step-4-title" tabindex="-1">Merci, votre demande est envoyée&nbsp;!</h1>
+          <h1 id="step-4-title" tabindex="-1">
+            <span data-outcome="created" hidden>Merci, votre demande est envoyée&nbsp;!</span>
+            <span data-outcome="already_requested" hidden>Votre demande nous est déjà parvenue</span>
+          </h1>
           <p class="res-note" data-outcome="created" hidden>
             Nous gardons le <span data-chosen></span> pour vous et vous répondons sous {offer.reviewHours}&nbsp;h. Un e-mail vient de partir avec le récapitulatif de votre
             demande. Si vous ne voyez pas l'e-mail, regardez dans vos courriers indésirables.
           </p>
           <p class="res-note" data-outcome="already_requested" hidden>
-            Bonne nouvelle&nbsp;: votre demande pour le <span data-chosen></span> nous est déjà parvenue, inutile de la renvoyer. Vous trouverez dans vos e-mails son
-            récapitulatif, puis notre réponse.
+            Votre demande pour le <span data-chosen></span> est bien enregistrée, inutile de la renvoyer. Vous trouverez dans vos e-mails son récapitulatif, puis
+            notre réponse.
           </p>
           <a class="btn ghost" href="/">Retour à l'accueil</a>
         </section>

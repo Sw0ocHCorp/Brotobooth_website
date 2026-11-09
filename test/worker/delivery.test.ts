@@ -947,6 +947,8 @@ describe("GET /demo", () => {
     expect(r.headers.get("Content-Type")).toMatch(/text\/html/);
     expect(r.headers.get("Cache-Control")).toBe("no-store");
     const body = await r.text();
+    // La page d'essai du propriétaire n'est pas une page client : elle ne porte pas l'en-tête « Brotobooth » des pages /acompte.
+    expect(body).not.toContain('<header class="site">');
     expect(body).toContain("Aucun message pour l'instant");
     expect(body).toContain('<meta name="robots" content="noindex">');
   });
