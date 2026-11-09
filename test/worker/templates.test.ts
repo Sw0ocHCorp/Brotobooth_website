@@ -75,9 +75,11 @@ describe("messages au client", () => {
   // Le vocabulaire du propriétaire, et celui que le client ne peut pas relier à sa réservation : « délai » seul ne dit pas
   // lequel, « solde » et « échéance » sont des mots de comptable, « libérer » une date est un geste de l'administration.
   it.each(CLIENT_TEMPLATES)("%s ne contient aucun vocabulaire interne", (t) => {
-    for (const b of [booking(), booking({ deposit_paid_at: T0 })]) {
+    // Les réservations portent un palier et une recharge : le client lit « Offre de lancement », jamais « palier ».
+    const tiered = { price_tier: offer.tiers[0].id, refill_cents: 3_750 };
+    for (const b of [booking(tiered), booking({ ...tiered, deposit_paid_at: T0 })]) {
       const { text, subject, html } = renderEmail(t, b, ctx);
-      expect(subject + text + html).not.toMatch(/bloqu|valid|statut|pending|awaiting|hold|prestation|solde|échéance|libér|délai|en attente/i);
+      expect(subject + text + html).not.toMatch(/palier|bloqu|valid|statut|pending|awaiting|hold|prestation|solde|échéance|libér|délai|en attente/i);
     }
   });
 
