@@ -1,17 +1,20 @@
 import { bookingWindow } from "../../worker/bookings";
+import { formatEuros } from "../../worker/html";
+import { normalTier, offer, priceOf, type PricesBody } from "../../worker/offer";
 import { dayState, lastDayOf, monthCells, monthOf, shiftMonth, type Availability, type DayState } from "./calendar-grid";
+import { applyPrices, fetchPrices } from "./prices";
 
 /**
  * La réservation (`/reserver`) : le calendrier, les trois étapes et l'envoi de la demande. Les textes sont dans la page ;
- * ce script ne fait que les montrer ou les cacher, et y poser les dates. Ce que le client saisit reste dans les champs
+ * ce script ne fait que les montrer ou les cacher, et y poser les dates et les prix. Ce que le client saisit reste dans les champs
  * d'un bout à l'autre : ni un aller-retour entre étapes (boutons de la carte ou du navigateur), ni une erreur ne les
  * vide, et le bouton d'envoi revient toujours. Le calendrier charge le mois affiché et le suivant ; la vidéo de la borne tourne derrière la carte, sauf
  * si le visiteur a demandé de réduire les animations ou d'économiser ses données. L'heure vient de l'horloge reçue
- * par `start`.
+ * par `start`. L'envoi transmet le prix que le client a vu pour sa formule, que le serveur vérifie (`price_changed`).
  */
 
 type Step = 1 | 2 | 3 | 4;
-type Reply = { status: number; data: { status?: string; error?: string; reason?: string; fields?: string[] } };
+type Reply = { status: number; data: { status?: string; error?: string; reason?: string; fields?: string[]; price_cents?: number } };
 
 /** Le widget anti-robots de Cloudflare, chargé à la demande (`render=explicit`). */
 type Turnstile = {
@@ -66,6 +69,10 @@ const asked = new Set<string>();
 let chosenDate: string | null = null;
 let chosenBooth: string | null = null;
 let chosenPlan: string | null = null;
+/** Les prix du moment (`/api/prices`) ; `null` avant la réponse ou sans elle : l'étape 2 montre alors les prix normaux. */
+let prices: PricesBody | null = null;
+/** Le prix qu'un refus `price_changed` a annoncé pour une formule : celui que le client accepte en envoyant de nouveau. */
+let announced: { plan: string; cents: number } | null = null;
 let sending = false;
 let widget: string | null = null;
 /** Le script du widget anti-robots tant qu'il charge ou qu'il est chargé ; `null` avant, ou après un échec de chargement. */
@@ -223,6 +230,34 @@ function choosePlan(choice: HTMLButtonElement | null): void {
   $("problem-plan").hidden = true;
 }
 
+// ---------- les prix ----------
+
+/** Les prix de l'étape 2 : ceux du moment, ou, sans eux (`null`), les prix normaux, jamais un prix plus bas que celui demandé. */
+function showPrices(body: PricesBody | null): void {
+  prices = body;
+  applyPrices($("step-2"), body);
+}
+
+/** Le prix que le client a vu pour `plan` : celui qu'un refus lui a annoncé, sinon celui du moment, sinon le prix normal. */
+function seenPrice(plan: string): number {
+  if (announced?.plan === plan) return announced.cents;
+  return prices?.plans[plan]?.priceCents ?? priceOf(normalTier(offer), plan);
+}
+
+/**
+ * Le serveur ne tient plus le prix envoyé : rien n'est enregistré. Le client lit le nouveau prix et l'ancien près du bouton
+ * d'envoi, sans rien perdre, et son prochain envoi transmet le nouveau, même si les prix ne peuvent pas être relus.
+ */
+function priceChanged(sent: { plan: string; price_cents: number }, now: number): void {
+  announced = { plan: sent.plan, cents: now };
+  const problem = $("problem-price");
+  problem.querySelector("[data-price-now]")!.textContent = formatEuros(now);
+  problem.querySelector("[data-price-was]")!.textContent = formatEuros(sent.price_cents);
+  problem.hidden = false;
+  problem.focus();
+  void fetchPrices(true).then(showPrices);
+}
+
 // ---------- les erreurs à côté de leur champ ----------
 
 const control = (name: string): HTMLInputElement | HTMLSelectElement | null =>
@@ -309,7 +344,7 @@ function done(outcome: string): void {
   go(4);
 }
 
-function answer({ status, data }: Reply): void {
+function answer({ status, data }: Reply, sent: { plan: string; price_cents: number }): void {
   // Un jeton ne sert qu'une fois : le prochain envoi en demande un nouveau. Sans widget (son script n'a pas pu se
   // charger), un refus anti-robots redemande le script, pour que « réessayez » puisse aboutir.
   const bot = status === 403 && data.error === "bot";
@@ -317,18 +352,21 @@ function answer({ status, data }: Reply): void {
   else if (bot) startTurnstile();
   if (status === 201) return done("created");
   if (status === 200 && data.status === "already_requested") return done("already_requested");
+  // Un prix changé passe avant la date prise : le serveur vérifie le prix d'abord, et répond toujours avec le nouveau.
+  if (status === 409 && data.error === "price_changed") return priceChanged(sent, data.price_cents!);
   if (status === 409) return backToCalendar($("problem-taken"), true);
   if (status === 422) return showProblems(data.fields ?? []);
   // Deux limites répondent 429 : celle des demandes en cours de ce client, et celle des demandes parties de sa connexion.
   sendProblem(status === 429 ? (data.reason === "ip" ? "too_many_ip" : "too_many") : bot ? "bot" : "failed");
 }
 
-/** Le corps de `POST /api/requests`, sous les noms de l'API. */
-function request(): object {
+/** Le corps de `POST /api/requests`, sous les noms de l'API, avec le prix que le client a vu pour `plan`. */
+function request(plan: string) {
   return {
     ...Object.fromEntries(FIELDS.map((name) => [name, control(name)!.value])),
     date: chosenDate,
-    plan: chosenPlan,
+    plan,
+    price_cents: seenPrice(plan),
     terms: ($("f-terms") as HTMLInputElement).checked,
     turnstile_token: turnstileToken(),
   };
@@ -337,6 +375,7 @@ function request(): object {
 async function submit(): Promise<void> {
   if (sending || chosenDate === null || chosenPlan === null) return;
   $("send-problem").hidden = true;
+  $("problem-price").hidden = true;
   for (const name of FIELDS) unflag(name);
   const missing = FIELDS.filter((name) => !control(name)!.checkValidity());
   if (missing.length > 0) return showProblems(missing);
@@ -344,7 +383,8 @@ async function submit(): Promise<void> {
   sending = true;
   sendButton.disabled = true;
   try {
-    answer(await post(request()));
+    const sent = request(chosenPlan);
+    answer(await post(sent), sent);
   } catch (error) {
     // Une panne de la page elle-même (le widget qui lève, par exemple) : le client le sait et peut renvoyer ; l'erreur
     // reste dans la console.
@@ -423,6 +463,7 @@ function start(now: () => Date): void {
 
   renderMonth();
   void load();
+  void fetchPrices().then(showPrices);
   startFilm();
 }
 

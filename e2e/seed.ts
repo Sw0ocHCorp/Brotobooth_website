@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { depositCents } from "../worker/bookings";
-import { isBookable, normalTier, offer, plansOf, priceOf, type Plan, type PricesBody } from "../worker/offer";
+import { currentTier, isBookable, normalTier, offer, plansOf, priceOf, pricesBody, type Plan, type PricesBody } from "../worker/offer";
 
 /**
  * L'offre telle que le propriétaire l'écrit dans `config/offer.json`. Il y change les bornes, les identifiants et les prix :
@@ -11,6 +11,12 @@ export const [FIRST_PLAN, SECOND_PLAN] = offer.plans;
 
 /** Le prix normal d'une formule, celui du dernier palier. */
 export const normalPrice = (plan: Plan): number => priceOf(normalTier(offer), plan.id);
+
+/** Ce que `/api/prices` répond avec `remaining` places encore au premier palier, quel que soit l'état de la base d'essai. */
+export function launchBody(remaining: number): PricesBody {
+  const first = offer.tiers[0];
+  return pricesBody(offer, currentTier(offer, { [first.id]: (first.places ?? 0) - remaining }));
+}
 
 /** L'acompte que l'offre prévoit pour ce prix, quel que soit son pourcentage. */
 export const depositFor = (priceCents: number): number => depositCents(priceCents, offer.depositPercent);

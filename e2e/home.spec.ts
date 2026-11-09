@@ -1,9 +1,9 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { currentTier, normalTier, pricesBody, type PricesBody } from "../worker/offer";
+import { normalTier, pricesBody, type PricesBody } from "../worker/offer";
 import { placesLine } from "../src/scripts/prices";
-import { euros, isBookable, normalPrice, offer, plansOf } from "./seed";
+import { euros, isBookable, launchBody, normalPrice, offer, plansOf } from "./seed";
 
 const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
@@ -209,12 +209,6 @@ test("une page 404 ramène à l'accueil", async ({ page }) => {
 });
 
 // ---------- l'offre de lancement sur la carte du BrotoBooth ----------
-
-/** Ce que `/api/prices` répond avec `remaining` places encore au premier palier, quel que soit l'état de la base d'essai. */
-function launchBody(remaining: number): PricesBody {
-  const first = offer.tiers[0];
-  return pricesBody(offer, currentTier(offer, { [first.id]: (first.places ?? 0) - remaining }));
-}
 
 const answerWith = (page: Page, body: PricesBody) =>
   page.route("**/api/prices", (route) => route.fulfill({ json: body }));

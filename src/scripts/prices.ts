@@ -1,5 +1,5 @@
 import { formatEuros } from "../../worker/html";
-import type { PricesBody } from "../../worker/offer";
+import { normalTier, offer, pricesBody, type PricesBody } from "../../worker/offer";
 
 /**
  * Les prix du moment, lus sur `GET /api/prices` : l'accueil les pose sur la carte du BrotoBooth, la réservation sur ses
@@ -32,14 +32,20 @@ function showDiscount(amount: Element, priceCents: number, normalCents: number):
   amount.replaceChildren(price, struck);
 }
 
-/** Met à jour `root` ; avec `null`, ou hors offre, les prix normaux, rien de barré et `[data-launch]` caché. */
-export function applyPrices(root: ParentNode, body: PricesBody | null): void {
-  const launch = Boolean(body?.launch);
+/** Les prix normaux, sans offre : ce que la page écrit d'avance, et ce qu'elle remontre sans réponse de `/api/prices`. */
+const NORMAL_PRICES = pricesBody(offer, { tier: normalTier(offer), remaining: null, launch: false });
+
+/**
+ * Met à jour `root` ; hors offre, les prix normaux, rien de barré et `[data-launch]` caché. Avec `null`, de même, y compris
+ * sur une page qui montrait l'offre : un prix que le serveur ne tient plus ne reste pas affiché.
+ */
+export function applyPrices(root: ParentNode, fetched: PricesBody | null): void {
+  const body = fetched ?? NORMAL_PRICES;
+  const launch = body.launch;
   for (const line of root.querySelectorAll<HTMLElement>("[data-launch]")) line.hidden = !launch;
   for (const places of root.querySelectorAll("[data-places]")) {
-    places.textContent = launch && body?.remaining != null ? placesLine(body.remaining) : "";
+    places.textContent = launch && body.remaining != null ? placesLine(body.remaining) : "";
   }
-  if (!body) return;
   for (const [id, { priceCents, normalCents }] of Object.entries(body.plans)) {
     for (const amount of root.querySelectorAll(`[data-plan="${CSS.escape(id)}"] [data-amount]`)) {
       if (launch && priceCents !== normalCents) showDiscount(amount, priceCents, normalCents);

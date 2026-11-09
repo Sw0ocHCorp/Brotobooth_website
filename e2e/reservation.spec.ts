@@ -1,5 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { placesLine } from "../src/scripts/prices";
+import { currentTier, normalTier, pricesBody, type Plan, type PricesBody } from "../worker/offer";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
 import {
   FIRST_PLAN,
@@ -13,6 +15,7 @@ import {
   fillDetails,
   isBookable,
   isoDate,
+  launchBody,
   normalPrice,
   offer,
   pickFreeDate,
@@ -29,6 +32,7 @@ const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
 const CLEAR = "rgba(0, 0, 0, 0)";
 const REQUESTS = "**/api/requests";
+const PRICES = "**/api/prices";
 const isAvailability = (url: URL) => url.pathname === "/api/availability";
 const POSTER = /\/media\/borne-boucle-poster\.webp$/;
 const FILM = "/media/borne-boucle.mp4";
@@ -298,6 +302,157 @@ test("une formule que le serveur refuse ramène aux tirages, avec le message jus
   await planButton(page, FIRST_PLAN).click();
   await expect(problem).toBeHidden();
   await expect(goOn(page)).toBeEnabled();
+});
+
+// ---------- le prix du moment (spec de l'offre de lancement, sections 7 et 8) ----------
+// Aucun test ne suppose le palier en cours : la base d'essai se remplit pendant la série. Ils lisent `/api/prices` ou le remplacent.
+
+/** Le montant qu'un bouton de formule affiche pour `body` : « 150 €, au lieu de 250 € » pendant l'offre, sinon le prix seul. */
+function amountFor({ launch, plans }: PricesBody, plan: Plan): string {
+  const { priceCents, normalCents } = plans[plan.id];
+  return launch && priceCents !== normalCents ? `${euros(priceCents)}, au lieu de ${euros(normalCents)}` : euros(priceCents);
+}
+
+const amount = (page: Page, plan: Plan) => planButton(page, plan).locator("[data-amount]");
+
+test("l'envoi transmet le prix affiché", async ({ page }) => {
+  const read = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/prices");
+  // Intercepté puis relayé : le serveur reçoit la demande telle que la page l'envoie, et l'accepte.
+  let sent: Record<string, unknown> | undefined;
+  await page.route(REQUESTS, (route) => {
+    sent = route.request().postDataJSON();
+    return route.continue();
+  });
+  await reachDetails(page);
+  const shown: PricesBody = await (await read).json();
+  await expect(amount(page, FIRST_PLAN)).toHaveText(amountFor(shown, FIRST_PLAN));
+  await fillDetails(page);
+  await send(page).click();
+  await expect(confirmed(page)).toBeVisible();
+  expect(sent).toMatchObject({ plan: FIRST_PLAN.id, price_cents: shown.plans[FIRST_PLAN.id].priceCents });
+});
+
+test.describe("l'offre de lancement", () => {
+  test.skip(offer.tiers[0].places === undefined, "aucun palier limité dans l'offre");
+
+  test("l'étape 2 montre le prix du moment", async ({ page }) => {
+    const body = launchBody(7);
+    await page.route(PRICES, (route) => route.fulfill({ json: body }));
+    await page.goto("/reserver");
+    await pickFreeDate(page);
+    await goOn(page).click();
+    await boothButton(page, FIRST_PLAN.booth).click();
+
+    // « Plus que 7 places à ce prix » au-dessus des tirages, la recharge après eux.
+    const launch = prints(page).locator("[data-launch]");
+    await expect(launch).toBeVisible();
+    await expect(launch).toContainText("Offre de lancement");
+    await expect(launch).toContainText(placesLine(7));
+    const refill = prints(page).getByText("Recharge de 100 tirages, le jour J");
+    await expect(refill).toBeVisible();
+    await expect(refill).toContainText(euros(body.refillCents));
+    const own = plansOf(offer, FIRST_PLAN.booth);
+    const [top, first, last, bottom] = await Promise.all([
+      launch.boundingBox(),
+      planButton(page, own[0]).boundingBox(),
+      planButton(page, own.at(-1)!).boundingBox(),
+      refill.boundingBox(),
+    ]);
+    expect(top!.y + top!.height).toBeLessThanOrEqual(first!.y);
+    expect(bottom!.y).toBeGreaterThanOrEqual(last!.y + last!.height);
+
+    // Chaque bouton : le prix du moment, puis le prix normal barré, atténué, qui passe avant lui à l'écran et se lit comme lui.
+    const soft = await page.locator(".choices-label").first().evaluate((label) => getComputedStyle(label).color);
+    for (const plan of own) {
+      await expect(planButton(page, plan)).toContainText(`${plan.prints} tirages`);
+      await expect(amount(page, plan)).toHaveText(amountFor(body, plan));
+      const [price, struck] = [amount(page, plan).locator("b"), amount(page, plan).locator("s")];
+      await expect(struck).toBeVisible();
+      await expect(struck).toHaveCSS("color", soft);
+      await expect(price).not.toHaveCSS("color", soft);
+      await expect(struck).toHaveCSS("font-size", await price.evaluate((element) => getComputedStyle(element).fontSize));
+      const [priceBox, struckBox] = await Promise.all([price.boundingBox(), struck.boundingBox()]);
+      expect(struckBox!.x + struckBox!.width).toBeLessThanOrEqual(priceBox!.x);
+    }
+  });
+
+  test("sans réponse à la relecture, l'étape 2 revient aux prix normaux, jamais au prix refusé", async ({ page }) => {
+    const body = launchBody(7);
+    let reads = 0;
+    await page.route(PRICES, (route) => (++reads === 1 ? route.fulfill({ json: body }) : route.abort()));
+    await page.route(REQUESTS, (route) => route.fulfill({ status: 409, json: { error: "price_changed", price_cents: normalPrice(FIRST_PLAN) } }));
+    await reachDetails(page);
+    await expect(amount(page, FIRST_PLAN)).toHaveText(amountFor(body, FIRST_PLAN));
+    await fillDetails(page);
+    await send(page).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Le prix de cette formule vient de changer" })).toBeFocused();
+    await expect.poll(() => reads).toBe(2);
+
+    await page.getByRole("button", { name: "Retour" }).click();
+    await expect(prints(page)).toBeVisible();
+    await expect(prints(page).locator("[data-launch]")).toBeHidden();
+    await expect(prints(page).locator("s")).toHaveCount(0);
+    for (const plan of plansOf(offer, FIRST_PLAN.booth)) await expect(amount(page, plan)).toHaveText(euros(normalPrice(plan)));
+    await expect(prints(page).locator("[data-refill]")).toHaveText(euros(normalTier(offer).refillCents));
+  });
+
+  /** Un `/api/prices` périmé pour `FIRST_PLAN` : le prix normal pendant l'offre réelle, celui du premier palier une fois l'offre finie. */
+  const outdated = (real: PricesBody): PricesBody =>
+    real.launch ? pricesBody(offer, { tier: normalTier(offer), remaining: null, launch: false }) : pricesBody(offer, currentTier(offer, {}));
+
+  // Le client a vu un prix que le serveur ne tient plus (le cache de 30 s, un palier rempli entre-temps) : le serveur répond
+  // vraiment `price_changed`. La page relit les prix ; si elle n'y arrive pas, le renvoi part quand même au prix annoncé.
+  for (const [name, reread] of [
+    ["un prix changé est expliqué, puis le renvoi aboutit", "answers"],
+    ["renvoi au nouveau prix même si /api/prices ne répond plus", "fails"],
+  ] as const) {
+    test(name, async ({ page, request }) => {
+      const real: PricesBody = await (await request.get("/api/prices")).json();
+      const stale = outdated(real);
+      const [was, now] = [stale.plans[FIRST_PLAN.id].priceCents, real.plans[FIRST_PLAN.id].priceCents];
+      expect(was, "le corps de remplacement doit porter un autre prix que le vrai").not.toBe(now);
+      let reads = 0;
+      await page.route(PRICES, (route) => {
+        if (++reads === 1) return route.fulfill({ json: stale });
+        return reread === "answers" ? route.continue() : route.abort();
+      });
+      const sent: unknown[] = [];
+      let held = Promise.resolve();
+      await page.route(REQUESTS, async (route) => {
+        sent.push(route.request().postDataJSON().price_cents);
+        await held;
+        return route.continue();
+      });
+
+      await reachDetails(page);
+      await expect(amount(page, FIRST_PLAN)).toHaveText(amountFor(stale, FIRST_PLAN));
+      const who = await fillDetails(page);
+      await send(page).click();
+
+      // Près du bouton d'envoi, sans quitter les coordonnées : la formule reste choisie et rien n'est à ressaisir.
+      const problem = page.getByRole("alert").filter({ hasText: "Le prix de cette formule vient de changer" });
+      await expect(problem).toHaveText(
+        `Le prix de cette formule vient de changer : ${euros(now)} au lieu de ${euros(was)}. Si ce prix vous convient, envoyez à nouveau votre demande.`,
+      );
+      await expect(problem).toBeFocused();
+      await expect(page.getByRole("heading", { name: "Vos coordonnées" })).toBeVisible();
+      await expectKept(page, who);
+      await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "true");
+      // Les prix de l'étape 2 sont relus ; sans réponse, ce sont les prix normaux, jamais un prix que le serveur a refusé.
+      await expect.poll(() => reads).toBe(2);
+      await expect(amount(page, FIRST_PLAN)).toHaveText(reread === "answers" ? amountFor(real, FIRST_PLAN) : euros(normalPrice(FIRST_PLAN)));
+
+      // Le message s'efface dès l'envoi suivant, avant la réponse.
+      let release = () => {};
+      held = new Promise((resolve) => (release = resolve));
+      await send(page).click();
+      await expect(send(page)).toBeDisabled();
+      await expect(problem).toBeHidden();
+      release();
+      await expect(confirmed(page)).toBeVisible();
+      expect(sent).toEqual([was, now]);
+    });
+  }
 });
 
 // Le client renvoie une demande déjà reçue (double envoi, autre onglet) : rien n'est en double, et il sait où lire la suite.

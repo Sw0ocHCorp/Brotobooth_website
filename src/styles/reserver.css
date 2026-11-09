@@ -189,6 +189,16 @@
 .choice span { font-size: 14px; color: var(--text-soft); }
 .choice .includes { display: block; margin-top: 4px; }
 
+/* L'offre de lancement au-dessus des tirages, la recharge après eux : à la taille des notes de la carte (site.css les dessine). */
+.choices .launch,
+.choices .refill { font-size: 14px; }
+.choices .launch { margin-bottom: 6px; }
+.choices .refill { margin-bottom: 12px; }
+
+/* Pendant l'offre, le prix du moment en blanc ; le prix normal barré, atténué, garde la taille du texte du bouton. */
+.choice [data-amount] b { color: var(--text); }
+.choice [data-amount] s { font-size: inherit; font-weight: inherit; }
+
 /* Une borne à venir : atténuée par l'absence de fond, sans opacité, pour que « Bientôt disponible » reste lisible. */
 .choice:disabled { background: none; box-shadow: inset 0 0 0 1px var(--glass-border); cursor: default; }
 .choice:disabled b { color: var(--text-soft); }
@@ -277,6 +287,9 @@
 }
 
 .problem:focus { outline: none; }
+
+/* Le prix changé, juste au-dessus du bouton d'envoi, sans le toucher. */
+#problem-price { margin-bottom: 12px; }
 
 .notice {
   margin: 10px 0;

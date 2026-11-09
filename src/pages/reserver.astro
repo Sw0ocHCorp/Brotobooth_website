@@ -139,17 +139,28 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
               ))
             }
           </div>
-          {/* Puis le nombre de tirages : le script ne montre que ceux de la borne choisie. */}
+          {/*
+            Puis le nombre de tirages : le script ne montre que ceux de la borne choisie. Écrits au prix normal, sans mention
+            d'offre ; pendant l'offre de lancement, le script y pose les places restantes et le prix du moment, le prix normal
+            barré (`src/scripts/prices.ts`).
+          */}
           <div class="choices" id="prints" role="group" aria-labelledby="prints-label" hidden>
             <p class="choices-label" id="prints-label">Nombre de tirages</p>
+            <p class="launch" data-launch hidden>
+              <strong>Offre de lancement</strong>
+              <span data-places></span>
+            </p>
             {
               offer.plans.map((plan) => (
                 <button type="button" class="choice" data-plan={plan.id} data-booth={plan.booth} aria-pressed="false">
                   <b>{plan.prints} tirages</b>
-                  {priceOf(normalTier(offer), plan.id) > 0 && <span>{formatEuros(priceOf(normalTier(offer), plan.id))}</span>}
+                  {priceOf(normalTier(offer), plan.id) > 0 && <span data-amount>{formatEuros(priceOf(normalTier(offer), plan.id))}</span>}
                 </button>
               ))
             }
+            <p class="refill">
+              Recharge de 100 tirages, le jour J <b data-refill>{formatEuros(normalTier(offer).refillCents)}</b>
+            </p>
           </div>
           <p class="problem" id="problem-plan" role="alert" tabindex="-1" hidden>Cette formule n'est plus proposée. Choisissez-en une autre.</p>
           <div class="res-foot">
@@ -217,6 +228,11 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
             </p>
             <ContactLine />
           </div>
+          {/* Le serveur ne tient plus le prix envoyé (`price_changed`) : le script pose le nouveau prix, puis l'ancien. */}
+          <p class="problem" id="problem-price" role="alert" tabindex="-1" hidden>
+            Le prix de cette formule vient de changer&nbsp;: <span data-price-now></span> au lieu de <span data-price-was></span>. Si ce prix vous
+            convient, envoyez à nouveau votre demande.
+          </p>
           <div class="res-foot">
             <button type="button" class="link" data-back="2"><span aria-hidden="true">←</span> Retour</button>
             <button type="submit" class="btn primary" id="send">Envoyer ma demande</button>
