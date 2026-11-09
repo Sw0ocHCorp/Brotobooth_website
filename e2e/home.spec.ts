@@ -229,13 +229,16 @@ test.describe("l'offre de lancement", () => {
     await answerWith(page, body);
     await page.goto("/");
     const card = bookableCard(page);
+    await expect(card.locator("[data-launch]")).toBeVisible();
     await expect(card).toContainText("Offre de lancement");
     await expect(card).toContainText(placesLine(7));
     for (const plan of plansOf(offer, offer.booths.find((booth) => isBookable(offer, booth.id))!.id)) {
       const row = card.getByRole("listitem").filter({ hasText: new RegExp(`^\\s*${plan.prints} tirages`) });
       const { priceCents, normalCents } = body.plans[plan.id];
       await expect(row).toContainText(`${euros(priceCents)}, au lieu de ${euros(normalCents)}`);
+      await expect(row.locator("s")).toBeVisible();
       await expect(row.locator("s")).toHaveText(new RegExp(euros(normalCents)));
+      await expect(row.locator("b")).toHaveCSS("font-weight", "800");
     }
     await expect(card).toContainText(`Recharge de 100 tirages, le jour J`);
     await expect(card.locator("[data-refill]")).toHaveText(euros(body.refillCents));
@@ -251,6 +254,7 @@ test.describe("l'offre de lancement", () => {
     await answerWith(page, pricesBody(offer, { tier: normalTier(offer), remaining: null, launch: false }));
     await page.goto("/");
     await expect(page.locator("#formules [data-amount]").first()).toBeVisible();
+    await expect(page.locator("#formules [data-amount]").first()).toHaveCSS("font-weight", "800");
     await expect(page.locator("#formules [data-launch]")).toBeHidden();
     await expect(page.locator("#formules s")).toHaveCount(0);
     await expect(bookableCard(page).locator("[data-refill]")).toHaveText(euros(normalTier(offer).refillCents));
