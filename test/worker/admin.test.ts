@@ -586,6 +586,8 @@ describe("POST /api/admin/bookings : réservation manuelle", () => {
     ["avec des notes de 2001 caractères", { notes: "x".repeat(2001) }, ["notes"]],
     ["avec un type d'événement inconnu", { event_type: "Baptême" }, ["event_type"]],
     ["avec une formule inconnue", { plan: "inconnue" }, ["plan"]],
+    ["avec un palier inconnu", { tier: "inconnu" }, ["tier"]],
+    ["avec un palier qui n'est pas un texte", { tier: 1 }, ["tier"]],
     ["avec un champ inconnu", { eventType: "Mariage" }, ["eventType"]],
   ])("répond 422 %s", async (_name, change, fields) => {
     const r = await create({ ...manual, ...change });
@@ -635,6 +637,22 @@ describe("POST /api/admin/bookings : réservation manuelle", () => {
       price_tier: tier.id,
       refill_cents: tier.refillCents,
     });
+  });
+
+  it("enregistre la réservation au palier que le formulaire a montré", async () => {
+    const { tier } = currentTier(offer, {});
+    const r = await create({ ...manual, tier: tier.id });
+    expect(r.status).toBe(201);
+    expect((await reply(r)).booking).toMatchObject({ price_tier: tier.id, refill_cents: tier.refillCents });
+  });
+
+  it("répond 409 tier_changed si le palier montré par le formulaire est complet, sans rien écrire", async () => {
+    useTiers(testTier("t1", 10_000, 1), testTier("t2", 20_000));
+    await takePlace("t1");
+    const r = await create({ ...manual, tier: "t1" });
+    expect(r.status).toBe(409);
+    expect(await reply(r)).toEqual({ error: "tier_changed" });
+    expect(await listRange(env.DB, manual.date, manual.date)).toEqual([]);
   });
 
   it("répond 409 tier_changed si le palier se remplit pendant l'ajout", async () => {

@@ -750,6 +750,21 @@ describe("le palier d'une réservation", () => {
     expect(await allBookings()).toHaveLength(1);
   });
 
+  it("createManual takes the tier the form showed", async () => {
+    const { tier } = currentTier(offer, {});
+    const b = ok(await createManual(deps, { date: "2026-12-19", name: "Camille", tier: tier.id, priceCents: 0, depositCents: 0 }));
+    expect(b).toMatchObject({ price_tier: tier.id, refill_cents: tier.refillCents });
+  });
+
+  it("createManual answers tier_changed when the tier the form showed is full", async () => {
+    useTiers(testTier("t1", 10_000, 1), testTier("t2", 20_000));
+    await takePlace("t1");
+    const r = await createManual(deps, { date: "2026-12-19", name: "Camille", tier: "t1", priceCents: 0, depositCents: 0 });
+    expect(r).toEqual({ ok: false, reason: "tier_changed" });
+    expect(await listRange(env.DB, "2026-12-19", "2026-12-19")).toEqual([]);
+    expect(await countTakenByTier(env.DB)).toEqual({ t1: 1 });
+  });
+
   it("blockDate takes no place", async () => {
     const b = ok(await blockDate(deps, "2026-12-24"));
     expect(b).toMatchObject({ price_tier: null, refill_cents: null });

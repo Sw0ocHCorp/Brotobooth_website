@@ -445,15 +445,18 @@ export const markBalancePaid = (deps: Deps, id: string): Promise<OpResult> =>
 /**
  * Enregistre une réservation du propriétaire. Le délai minimum ne s'applique pas, mais la date doit exister.
  * Une prestation prend une place du palier en cours ; une date bloquée n'en prend pas, et `plan` n'y prévient personne.
+ * `shownTier`, le palier que le formulaire a montré, doit être encore le palier en cours : sinon `tier_changed`.
  */
 async function insertOwnerBooking(
   deps: Deps,
   status: "confirmed" | "blocked",
   date: string,
   fields: Partial<NewBooking>,
+  shownTier?: string,
 ): Promise<OpResult> {
   if (!isValidDate(date)) return { ok: false, reason: "invalid" };
   const current = status === "confirmed" ? await readCurrentTier(deps.env.DB) : undefined;
+  if (shownTier !== undefined && shownTier !== current?.tier.id) return { ok: false, reason: "tier_changed" };
   const booking = blankBooking({ event_date: date, status, source: "manual" }, fields);
   const inserted = await insertAtTier(deps, booking, "manual_confirmed", deps.now(), current);
   return inserted.ok ? inserted : { ok: false, reason: inserted.reason === "tier_full" ? "tier_changed" : inserted.reason };
@@ -464,6 +467,8 @@ export type ManualInput = {
   name: string;
   /** La formule, si le propriétaire en a choisi une ; sans elle, le prix est libre. */
   plan?: string;
+  /** Le palier que le formulaire a montré, dont il a proposé le prix. */
+  tier?: string;
   phone?: string;
   email?: string;
   eventType?: string;
@@ -476,18 +481,24 @@ export type ManualInput = {
 
 /** Une prestation confirmée pour un client qui appelle : prix et acompte saisis à la main, pas encore encaissés en ligne. */
 export const createManual = (deps: Deps, a: ManualInput): Promise<OpResult> =>
-  insertOwnerBooking(deps, "confirmed", a.date, {
-    plan: a.plan ?? null,
-    client_name: a.name,
-    client_phone: a.phone ?? null,
-    client_email: a.email ?? null,
-    event_type: a.eventType ?? null,
-    venue: a.venue ?? null,
-    event_hours: a.hours ?? null,
-    price_cents: a.priceCents,
-    deposit_cents: a.depositCents,
-    notes: a.notes ?? null,
-  });
+  insertOwnerBooking(
+    deps,
+    "confirmed",
+    a.date,
+    {
+      plan: a.plan ?? null,
+      client_name: a.name,
+      client_phone: a.phone ?? null,
+      client_email: a.email ?? null,
+      event_type: a.eventType ?? null,
+      venue: a.venue ?? null,
+      event_hours: a.hours ?? null,
+      price_cents: a.priceCents,
+      deposit_cents: a.depositCents,
+      notes: a.notes ?? null,
+    },
+    a.tier,
+  );
 
 /** Réserve une date pour le propriétaire (congés, par exemple). Elle se retire avec `cancelBooking`. */
 export const blockDate = (deps: Deps, date: string, notes?: string): Promise<OpResult> =>

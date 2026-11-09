@@ -4,6 +4,7 @@ import { LAST_RUN_KEY } from "./cron";
 import type { Deps } from "./deps";
 import { findRoute, fromOtherOrigin, json, readJson, type Handler, type Route } from "./http";
 import { sendSoon } from "./notifications";
+import { tierById } from "./offer";
 import {
   adjustPrice,
   blockDate,
@@ -39,7 +40,7 @@ import {
  * | `GET  /overview` | `{ todo, health: { lastCronRun, failedNotifications } }` |
  * | `GET  /bookings?from&to` | `{ bookings }` de la période |
  * | `GET  /bookings/:id` | `{ booking, history }`, l'historique commençant par la demande reçue |
- * | `POST /bookings` | `{ kind: "manual" \| "blocked", ... }`, 201 `{ booking }` ; une prestation prend une place du palier en cours |
+ * | `POST /bookings` | `{ kind: "manual" \| "blocked", ... }`, 201 `{ booking }` ; une prestation prend une place du palier en cours, celui que dit `tier` s'il est donné |
  * | `POST /bookings/:id/<action>` | `validate`, `refuse`, `cancel`, `resend-link`, `balance-paid` : `{ booking }` |
  * | `PATCH /bookings/:id` | `{ price_cents?, deposit_cents?, notes? }` : `{ booking }` |
  *
@@ -82,6 +83,9 @@ type Rule<T> = (value: unknown, now: Date) => T | null;
 
 const dateRule: Rule<string> = (value) => (typeof value === "string" && isValidDate(value) ? value : null);
 
+/** Un palier de l'offre, par son identifiant. */
+const tierRule: Rule<string> = (value) => (typeof value === "string" && tierById(value) ? value : null);
+
 /** Un prix ou un acompte, en centimes, avec la règle du prix de la demande publique. */
 const centsRule: Rule<number> = PARSERS.price_cents;
 
@@ -121,6 +125,7 @@ function parseManual(raw: Record<string, unknown>, now: Date): Parsed<ManualInpu
   const venue = read("venue", PARSERS.venue);
   const hours = read("event_hours", PARSERS.event_hours);
   const plan = read("plan", PARSERS.plan);
+  const tier = read("tier", tierRule);
   const price = read("price_cents", centsRule);
   const deposit = read("deposit_cents", centsRule);
   const notes = read("notes", PARSERS.message) || undefined;
@@ -128,7 +133,7 @@ function parseManual(raw: Record<string, unknown>, now: Date): Parsed<ManualInpu
   if (fields().length > 0) return { ok: false, fields: fields() };
   return {
     ok: true,
-    value: { date: date!, name: name!, phone, email, eventType, venue, hours, plan, priceCents: price ?? 0, depositCents: deposit ?? 0, notes },
+    value: { date: date!, name: name!, phone, email, eventType, venue, hours, plan, tier, priceCents: price ?? 0, depositCents: deposit ?? 0, notes },
   };
 }
 
