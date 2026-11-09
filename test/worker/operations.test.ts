@@ -707,6 +707,13 @@ describe("le palier d'une réservation", () => {
     expect(await countTakenByTier(env.DB)).toEqual({ t1: 1, t2: 1 });
   });
 
+  it("createRequest answers date_taken when the date is taken while the tier fills", async () => {
+    useTiers(testTier("t1", 10_000, 1), testTier("t2", 20_000));
+    const input = await requestBody();
+    expect(await createRequest(racingDeps(() => takePlace("t1", input.date as string)), input, null)).toEqual({ kind: "date_taken" });
+    expect(await allBookings()).toHaveLength(1);
+  });
+
   it("treats an identical send that took the last place as already requested", async () => {
     useTiers(testTier("t1", 10_000, 1), testTier("t2", 20_000));
     const input = await requestBody();
@@ -747,6 +754,13 @@ describe("le palier d'une réservation", () => {
     const r = await createManual(racingDeps(() => takePlace("t1")), { date: "2026-12-19", name: "Camille", priceCents: 0, depositCents: 0 });
     expect(r).toEqual({ ok: false, reason: "tier_changed" });
     expect(await countTakenByTier(env.DB)).toEqual({ t1: 1 });
+    expect(await allBookings()).toHaveLength(1);
+  });
+
+  it("createManual answers date_taken when the date is taken while the tier fills", async () => {
+    useTiers(testTier("t1", 10_000, 1), testTier("t2", 20_000));
+    const r = await createManual(racingDeps(() => takePlace("t1", "2026-12-19")), { date: "2026-12-19", name: "Camille", priceCents: 0, depositCents: 0 });
+    expect(r).toEqual({ ok: false, reason: "date_taken" });
     expect(await allBookings()).toHaveLength(1);
   });
 

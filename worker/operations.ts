@@ -11,6 +11,7 @@ import {
   findActiveByDateAndEmail,
   getBooking,
   insertBooking,
+  listUnavailableDates,
   patchBooking,
   type Booking,
   type NewBooking,
@@ -158,13 +159,23 @@ export const readCurrentTier = async (db: D1Database): Promise<CurrentTier> => c
 /**
  * Insère `booking` et les messages de `event`. Avec `current`, la réservation prend une place de ce palier, dont le tarif
  * de recharge est figé avec elle, et un palier de lancement déjà plein refuse l'insertion (`tier_full`). Sans lui (une
- * date bloquée), elle n'en prend aucune.
+ * date bloquée), elle n'en prend aucune. Une date prise passe avant un palier plein.
  */
-function insertAtTier(deps: Deps, booking: NewBooking, event: PlanEvent, now: Date, current?: CurrentTier) {
+async function insertAtTier(
+  deps: Deps,
+  booking: NewBooking,
+  event: PlanEvent,
+  now: Date,
+  current?: CurrentTier,
+): Promise<{ ok: true; booking: Booking } | { ok: false; reason: "date_taken" | "tier_full" }> {
+  const db = deps.env.DB;
   const nowIso = now.toISOString();
   const placed = current ? { ...booking, price_tier: current.tier.id, refill_cents: current.tier.refillCents } : booking;
   const cap: TierCap | undefined = current?.launch ? { tier: current.tier.id, places: current.tier.places! } : undefined;
-  return insertBooking(deps.env.DB, placed, plan(event, { ...placed, created_at: nowIso, updated_at: nowIso }, now), nowIso, cap);
+  const inserted = await insertBooking(db, placed, plan(event, { ...placed, created_at: nowIso, updated_at: nowIso }, now), nowIso, cap);
+  // Un palier plein n'écrit rien : l'index des dates n'a pas joué, et une date prise entre-temps reste à vérifier.
+  const dateTaken = !inserted.ok && inserted.reason === "tier_full" && (await listUnavailableDates(db, booking.event_date, booking.event_date)).length > 0;
+  return dateTaken ? { ok: false, reason: "date_taken" } : inserted;
 }
 
 /** `price_changed` si le prix de la formule au palier `current` n'est plus celui que la page a montré, sinon `null`. */
