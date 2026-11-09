@@ -244,10 +244,11 @@ main { overflow-x: clip; }
   .extras span { display: block; text-align: left; }
 }
 
-/* Les formules : le bouton descend au bas de chaque carte, pour que les trois s'alignent. */
+/* Les formules : une carte par borne, toutes de même largeur côte à côte ; le bouton descend au bas de chaque carte, pour qu'elles s'alignent. */
 .plans {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
   gap: clamp(12px, 1.6vw, 22px);
   max-width: 1320px;
   margin: auto;
@@ -263,12 +264,27 @@ main { overflow-x: clip; }
 }
 
 .plan h3 { font: 800 clamp(18px, 1.6vw, 22px) / 1.2 var(--font-title); }
-.price { font: 800 clamp(28px, 3vw, 42px) / 1.1 var(--font-title); white-space: nowrap; }
 .includes { list-style: none; color: var(--text-soft); }
+
+/* Les nombres de tirages d'une borne, chacun en face de son prix. */
+.prints { list-style: none; margin-bottom: 1em; border-top: 1px solid var(--glass-border-soft); }
+
+.prints li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: .7em 0;
+  border-bottom: 1px solid var(--glass-border-soft);
+}
+
+.prints span { font-weight: 600; }
+.price { font: 800 clamp(20px, 2vw, 26px) / 1.1 var(--font-title); white-space: nowrap; }
+.soon { color: var(--text-soft); }
 .plan .btn { align-self: flex-start; margin-top: auto; }
 
 @media (max-width: 860px) {
-  .plans { grid-template-columns: 1fr; }
+  .plans { grid-auto-flow: row; }
 }
 
 /* Les fondateurs. */

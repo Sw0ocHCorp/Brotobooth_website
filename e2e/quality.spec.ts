@@ -154,7 +154,7 @@ test.describe("la case des conditions de vente", () => {
     await expect(link).toHaveAttribute("href", "/cgv");
     await expect(link).toHaveAttribute("target", "_blank");
     await expect(link).toHaveAttribute("rel", /\bnoopener\b/);
-    await page.getByLabel("Nom").fill("Camille Durand");
+    await page.getByLabel("Nom", { exact: true }).fill("Camille Durand");
 
     // Le lien ouvre les CGV à côté : la page, sa saisie et la case restent comme ils étaient.
     const [opened] = await Promise.all([page.waitForEvent("popup"), link.click()]);
@@ -162,7 +162,7 @@ test.describe("la case des conditions de vente", () => {
     expect(new URL(opened.url()).pathname).toMatch(/^\/cgv\/?$/);
     await expect(opened.getByRole("heading", { level: 1 })).toHaveText("Conditions générales de vente");
     await opened.close();
-    await expect(page.getByLabel("Nom")).toHaveValue("Camille Durand");
+    await expect(page.getByLabel("Nom", { exact: true })).toHaveValue("Camille Durand");
     await expect(terms).not.toBeChecked();
 
     // La case se coche par elle-même, et par le début de sa phrase, hors du lien.

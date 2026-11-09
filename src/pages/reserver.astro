@@ -1,6 +1,6 @@
 ---
 import { formatEuros } from "../../worker/html";
-import { finalDepositPercent, hasContact, offer } from "../../worker/offer";
+import { finalDepositPercent, hasContact, isBookable, offer } from "../../worker/offer";
 import ContactLine from "../components/ContactLine.astro";
 import TopBar from "../components/TopBar.astro";
 import Base from "../layouts/Base.astro";
@@ -126,13 +126,27 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
         <section class="pane" id="step-2" aria-labelledby="step-2-title" hidden>
           <h1 id="step-2-title" tabindex="-1">Choisissez votre formule</h1>
-          <div role="group" aria-labelledby="step-2-title">
+          {/* La borne d'abord. Une borne encore sans formule se voit, sans pouvoir être choisie. */}
+          <div class="choices" id="booths" role="group" aria-labelledby="booths-label">
+            <p class="choices-label" id="booths-label">Votre borne</p>
+            {
+              offer.booths.map((booth) => (
+                <button type="button" class="choice" data-booth={booth.id} aria-pressed="false" disabled={!isBookable(offer, booth.id)}>
+                  <b>{booth.name}</b>
+                  {!isBookable(offer, booth.id) && <span>Bientôt disponible</span>}
+                  {booth.includes.length > 0 && <span class="includes">{booth.includes.join(" · ")}</span>}
+                </button>
+              ))
+            }
+          </div>
+          {/* Puis le nombre de tirages : le script ne montre que ceux de la borne choisie. */}
+          <div class="choices" id="prints" role="group" aria-labelledby="prints-label" hidden>
+            <p class="choices-label" id="prints-label">Nombre de tirages</p>
             {
               offer.plans.map((plan) => (
-                <button type="button" class="choice" data-plan={plan.id} aria-pressed="false">
-                  <b>{plan.name}</b>
+                <button type="button" class="choice" data-plan={plan.id} data-booth={plan.booth} aria-pressed="false">
+                  <b>{plan.prints} tirages</b>
                   {plan.priceCents > 0 && <span>{formatEuros(plan.priceCents)}</span>}
-                  {plan.includes.length > 0 && <span class="includes">{plan.includes.join(" · ")}</span>}
                 </button>
               ))
             }

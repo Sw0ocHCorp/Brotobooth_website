@@ -1,7 +1,7 @@
 import { parseEnv } from "node:util";
 import { describe, expect, it } from "vitest";
 import { findLaunchBlockers, parseJsonc, siteKeyFrom } from "../../scripts/check-launch.mjs";
-import type { Offer } from "../../worker/offer";
+import { buildOffer, type Offer } from "../../worker/offer";
 
 /** Le contrôle d'avant publication (spec, sections 13 et 14) : il refuse tant qu'un contenu manque ou qu'un réglage d'essai reste. */
 
@@ -9,7 +9,8 @@ const REAL_DATABASE_ID = "4f1c2d3e-5a6b-4c7d-8e9f-0a1b2c3d4e5f";
 const ZERO_DATABASE_ID = "00000000-0000-0000-0000-000000000000";
 const DRAFT_COMMENT = "<!-- Brouillon à faire valider par un professionnel avant la mise en ligne. -->";
 
-const completeOffer: Offer = {
+// Construite comme le contrôle lit `config/offer.json` : chaque formule nommée par sa borne et ses tirages.
+const completeOffer: Offer = buildOffer({
   draft: false,
   depositPercent: 30,
   reviewHours: 72,
@@ -22,11 +23,12 @@ const completeOffer: Offer = {
   termsVersion: "2026-11-07",
   eventTypes: ["Mariage"],
   contact: { phone: "06 12 34 56 78", email: "contact@example.test", social: [] },
+  booths: [{ id: "borne", name: "La borne", includes: ["Un fond au choix"] }],
   plans: [
-    { id: "formule-1", name: "Formule 1", priceCents: 90_000, includes: ["La borne"] },
-    { id: "formule-2", name: "Formule 2", priceCents: 120_000, includes: ["La borne", "Un fond au choix"] },
+    { id: "borne-100", booth: "borne", prints: 100, priceCents: 90_000 },
+    { id: "borne-300", booth: "borne", prints: 300, priceCents: 120_000 },
   ],
-};
+});
 const draftOffer: Offer = { ...completeOffer, draft: true, contact: { phone: "", email: "", social: [] } };
 
 const complete = {
@@ -69,10 +71,10 @@ describe("findLaunchBlockers", () => {
     const plans = [
       { ...completeOffer.plans[0], priceCents: 0 },
       completeOffer.plans[1],
-      { id: "formule-3", name: "Formule 3", priceCents: 0, includes: [] },
+      { id: "borne-500", name: "La borne · 500 tirages", booth: "borne", prints: 500, priceCents: 0 },
     ];
     const blockers = findLaunchBlockers({ ...complete, offer: { ...completeOffer, plans } });
-    expect(blockers).toEqual([expect.stringContaining("Formule 1"), expect.stringContaining("Formule 3")]);
+    expect(blockers).toEqual([expect.stringContaining("« La borne · 100 tirages »"), expect.stringContaining("« La borne · 500 tirages »")]);
     expect(blockers.every((blocker) => blocker.includes("0 €"))).toBe(true);
   });
 
@@ -141,7 +143,7 @@ describe("findLaunchBlockers", () => {
 
   it("écrit chaque blocage en une phrase complète, sur une seule ligne", () => {
     const blockers = findLaunchBlockers({
-      offer: { ...draftOffer, plans: [{ id: "formule-1", name: "Formule 1", priceCents: 0, includes: [] }] },
+      offer: { ...draftOffer, plans: [{ ...completeOffer.plans[0], priceCents: 0 }] },
       legalPages: { "src/pages/cgv.astro": `[À compléter] ${DRAFT_COMMENT}` },
       databaseId: ZERO_DATABASE_ID,
       vars: { PAYMENT_MODE: "simulated", FAKE_GATEWAYS: "1" },

@@ -11,9 +11,12 @@
   "termsVersion": "2026-11-07",
   "eventTypes": ["Mariage", "Anniversaire", "Événement d'entreprise", "Autre"],
   "contact": { "phone": "", "email": "", "social": [] },
+  "booths": [
+    { "id": "brotobooth", "name": "BrotoBooth", "includes": [] },
+    { "id": "brotobooth-tiny", "name": "BrotoBooth tiny", "includes": [] }
+  ],
   "plans": [
-    { "id": "formule-1", "name": "Formule 1", "priceCents": 0, "includes": [] },
-    { "id": "formule-2", "name": "Formule 2", "priceCents": 0, "includes": [] },
-    { "id": "formule-3", "name": "Formule 3", "priceCents": 0, "includes": [] }
+    { "id": "brotobooth-200", "booth": "brotobooth", "prints": 200, "priceCents": 25000 },
+    { "id": "brotobooth-400", "booth": "brotobooth", "prints": 400, "priceCents": 40000 }
   ]
 }

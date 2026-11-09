@@ -1,11 +1,12 @@
 ---
 import { formatEuros } from "../../worker/html";
-import { offer } from "../../worker/offer";
+import { isBookable, offer, plansOf } from "../../worker/offer";
 
 /**
- * « Les formules » (`#formules`), telles que `config/offer.json` les décrit. Une formule encore sans prix (offre
- * provisoire) n'affiche aucun montant, et ce qu'elle comprend n'apparaît qu'une fois renseigné. « Choisir cette formule »
- * ouvre la réservation sur elle ; le nom de la formule décrit le lien, pour qui ne voit pas la carte.
+ * « Les formules » (`#formules`), telles que `config/offer.json` les décrit : une carte par borne, avec ce qu'elle comprend
+ * une fois renseigné. Une borne réservable donne ses nombres de tirages et leurs prix (aucun montant tant qu'une formule
+ * est encore à 0 €), puis un seul lien qui ouvre la réservation sur elle : le nombre de tirages se choisit ensuite. Une
+ * borne encore sans formule le dit en toutes lettres, sans lien.
  */
 ---
 
@@ -13,20 +14,33 @@ import { offer } from "../../worker/offer";
   <div class="head"><h2>Les formules</h2></div>
   <div class="plans">
     {
-      offer.plans.map((plan) => (
+      offer.booths.map((booth) => (
         <article class="plan">
-          <h3 id={`plan-${plan.id}`}>{plan.name}</h3>
-          {plan.priceCents > 0 && <p class="price">{formatEuros(plan.priceCents)}</p>}
-          {plan.includes.length > 0 && (
+          <h3>{booth.name}</h3>
+          {booth.includes.length > 0 && (
             <ul class="includes">
-              {plan.includes.map((line) => (
+              {booth.includes.map((line) => (
                 <li>{line}</li>
               ))}
             </ul>
           )}
-          <a class="btn ghost" href={`/reserver?formule=${encodeURIComponent(plan.id)}`} aria-describedby={`plan-${plan.id}`}>
-            Choisir cette formule
-          </a>
+          {isBookable(offer, booth.id) ? (
+            <>
+              <ul class="prints">
+                {plansOf(offer, booth.id).map((plan) => (
+                  <li>
+                    <span>{plan.prints} tirages</span>
+                    {plan.priceCents > 0 && <b class="price">{formatEuros(plan.priceCents)}</b>}
+                  </li>
+                ))}
+              </ul>
+              <a class="btn ghost" href={`/reserver?borne=${encodeURIComponent(booth.id)}`}>
+                Choisir le {booth.name}
+              </a>
+            </>
+          ) : (
+            <p class="soon">Bientôt disponible.</p>
+          )}
         </article>
       ))
     }

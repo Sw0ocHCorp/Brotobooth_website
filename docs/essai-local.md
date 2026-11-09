@@ -24,11 +24,11 @@ Après une minute environ (le temps de construire le site), le terminal affiche 
 
 **1. L'accueil et son ouverture** : http://localhost:8790/. Le logo s'anime pendant deux secondes ; un clic ou un défilement la termine, et elle ne rejoue pas pendant la même visite (fermez l'onglet pour la revoir). Descendez la page : les images arrivent une à une. Si votre système demande de réduire les animations, rien ne bouge.
 
-**2. Une demande, sur téléphone puis sur ordinateur.** Cliquez sur « Choisir une date » : la date, la formule, puis vos coordonnées. Pour voir la page à la taille d'un téléphone, ouvrez les outils du navigateur (`F12`) puis la vue mobile (`Ctrl+Maj+M`). Faites une demande dans chaque taille, avec une adresse e-mail différente à chaque fois (deux demandes en cours au plus par adresse).
+**2. Une demande, sur téléphone puis sur ordinateur.** Cliquez sur « Choisir une date » : la date, la borne et son nombre de tirages, puis vos coordonnées. Pour voir la page à la taille d'un téléphone, ouvrez les outils du navigateur (`F12`) puis la vue mobile (`Ctrl+Maj+M`). Faites une demande dans chaque taille, avec une adresse e-mail différente à chaque fois (deux demandes en cours au plus par adresse).
 
 **3. L'administration** : http://localhost:8790/admin/. Aucune connexion n'est demandée en essai. Vos demandes sont dans « À traiter ».
 
-**4. Valider une demande.** Ouvrez-la, puis « Ajuster le prix » : les formules sont encore à 0 € tant que vous n'avez pas choisi leurs prix, et l'acompte se calcule à partir du prix. Enregistrez, puis « Valider ». La demande passe en « Attente d'acompte ».
+**4. Valider une demande.** Ouvrez-la : le prix est celui de la formule choisie, et « Ajuster le prix » permet de le changer ; l'acompte se calcule à partir du prix. Enregistrez si vous l'avez changé, puis « Valider ». La demande passe en « Attente d'acompte ».
 
 **5. Le lien de paiement.** La fiche le montre (« Copier le lien »). Le client le reçoit aussi par e-mail : sur http://localhost:8790/demo, le message « Bonne nouvelle : nous pouvons être là le … » contient ce lien.
 
@@ -50,4 +50,4 @@ Après une minute environ (le temps de construire le site), le terminal affiche 
 | L'anti-robots | Il laisse tout passer et n'appelle aucun service extérieur. |
 | La connexion à l'administration | Aucune en essai. En ligne, un code reçu par e-mail sera demandé. |
 
-Les contenus sont encore provisoires : formules à 0 €, contact vide, pages légales avec des passages « [À compléter] ». C'est normal, et c'est ce qui empêche de publier par erreur.
+Les contenus sont encore provisoires : contact vide, pages légales avec des passages « [À compléter] ». C'est normal, et c'est ce qui empêche de publier par erreur.

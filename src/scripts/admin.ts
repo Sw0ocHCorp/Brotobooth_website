@@ -1,4 +1,4 @@
-import offer from "../../config/offer.json";
+import { planById } from "../../worker/offer";
 
 /**
  * La page d'administration : tout vient de l'API `/api/admin`, derrière Cloudflare Access. Chaque texte du
@@ -184,7 +184,7 @@ function monthWeeks(month: string): (string | null)[][] {
   return Array.from({ length: cells.length / 7 }, (_, week) => cells.slice(week * 7, week * 7 + 7));
 }
 
-const planName = (id: string | null): string | null => offer.plans.find((plan) => plan.id === id)?.name ?? id;
+const planName = (id: string | null): string | null => planById(id ?? "")?.name ?? id;
 
 // ---------- l'API ----------
 

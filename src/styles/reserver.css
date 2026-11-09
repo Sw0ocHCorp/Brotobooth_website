@@ -6,7 +6,8 @@
 
    Le rose est le bouton de l'étape (« Continuer », « Envoyer ma
    demande »), un seul à la fois. L'orange est le choix fait (le jour,
-   la formule, la case cochée), toujours en anneau. Le texte est blanc.
+   la borne, le nombre de tirages, la case cochée), toujours en anneau.
+   Le texte est blanc.
    ========================================================== */
 
 /* ---------- la vidéo et la carte ---------- */
@@ -165,7 +166,10 @@
   vertical-align: -2px;
 }
 
-/* ---------- les formules ---------- */
+/* ---------- la formule : la borne, puis le nombre de tirages ---------- */
+
+.choices { margin-top: 12px; }
+.choices-label { margin-bottom: 6px; font-size: 14px; color: var(--text-soft); }
 
 .choice {
   display: block;
@@ -184,6 +188,10 @@
 .choice b { display: block; font-weight: 600; }
 .choice span { font-size: 14px; color: var(--text-soft); }
 .choice .includes { display: block; margin-top: 4px; }
+
+/* Une borne à venir : atténuée par l'absence de fond, sans opacité, pour que « Bientôt disponible » reste lisible. */
+.choice:disabled { background: none; box-shadow: inset 0 0 0 1px var(--glass-border); cursor: default; }
+.choice:disabled b { color: var(--text-soft); }
 
 /* ---------- les coordonnées ---------- */
 

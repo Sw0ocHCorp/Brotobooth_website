@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { addDays, cleanup, depositFor, euros, freeDate, ORIGIN, seed, type Kind } from "./seed";
+import { addDays, cleanup, depositFor, euros, FIRST_PLAN, freeDate, ORIGIN, seed, type Kind } from "./seed";
 
 test.afterEach(({ request }) => cleanup(request));
 
@@ -39,6 +39,8 @@ test("traiter une demande depuis le téléphone", async ({ page, request, contex
   const sheet = sheetOf(page, booking.name);
   await expect(sheet.getByRole("link", { name: /06 12 34 56 78/ })).toHaveAttribute("href", /^tel:/);
   await expect(page).toHaveURL(new RegExp(`#${booking.id}$`));
+  // La formule de la demande, sous son nom (sa borne et ses tirages), jamais sous son identifiant.
+  await expect(sheet.locator("dt", { hasText: "Formule" }).locator("+ dd")).toHaveText(FIRST_PLAN.name);
 
   // Le rose est réservé à l'action principale : un seul bouton plein, en gras et d'au moins 19 px.
   await expect(page.locator(".btn.primary:visible")).toHaveCount(1);

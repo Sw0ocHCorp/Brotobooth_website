@@ -13,7 +13,7 @@ import {
   type BookingAction,
   type BookingStatus,
 } from "../../worker/bookings";
-import { offer, planById } from "../../worker/offer";
+import { buildOffer, isBookable, offer, planById, plansOf, type OfferConfig } from "../../worker/offer";
 
 describe("transitions de statut", () => {
   const transitions: [BookingStatus, BookingAction, BookingStatus | null][] = [
@@ -128,6 +128,47 @@ describe("offre", () => {
     expect(new Set(offer.plans.map((plan) => plan.id)).size).toBe(offer.plans.length);
     expect(new Set(offer.plans.map((plan) => plan.name)).size).toBe(offer.plans.length);
   });
+  describe("les bornes et leurs formules", () => {
+    // Une offre d'essai, pas celle du site : une borne réservable, et une autre encore sans formule.
+    const config: OfferConfig = {
+      ...offer,
+      booths: [
+        { id: "grande", name: "Grande borne", includes: ["Un fond au choix"] },
+        { id: "petite", name: "Petite borne", includes: [] },
+      ],
+      plans: [
+        { id: "grande-100", booth: "grande", prints: 100, priceCents: 10_000 },
+        { id: "grande-300", booth: "grande", prints: 300, priceCents: 20_000 },
+      ],
+    };
+    const trial = buildOffer(config);
+
+    it("nomme chaque formule par sa borne et son nombre de tirages, sans rien changer d'autre", () => {
+      expect(trial.plans).toEqual([
+        { id: "grande-100", name: "Grande borne · 100 tirages", booth: "grande", prints: 100, priceCents: 10_000 },
+        { id: "grande-300", name: "Grande borne · 300 tirages", booth: "grande", prints: 300, priceCents: 20_000 },
+      ]);
+      expect(trial.booths).toEqual(config.booths);
+      expect(trial.depositPercent).toBe(config.depositPercent);
+    });
+
+    it("donne les formules d'une borne, dans l'ordre de l'offre, et aucune à une borne à venir", () => {
+      expect(plansOf(trial, "grande").map((plan) => plan.id)).toEqual(["grande-100", "grande-300"]);
+      expect(plansOf(trial, "petite")).toEqual([]);
+    });
+
+    it("une borne n'est réservable qu'avec au moins une formule", () => {
+      expect(isBookable(trial, "grande")).toBe(true);
+      expect(isBookable(trial, "petite")).toBe(false);
+    });
+
+    // Une faute de frappe dans `config/offer.json` casse les tests au lieu d'afficher une formule sans borne.
+    it("refuse une formule dont la borne n'existe pas, en nommant l'une et l'autre", () => {
+      const orphan = { id: "geante-500", booth: "geante", prints: 500, priceCents: 50_000 };
+      expect(() => buildOffer({ ...config, plans: [...config.plans, orphan] })).toThrow(/« geante-500 ».*« geante »/);
+    });
+  });
+
   it("porte les règles de réservation du plan", () => {
     expect(offer).toMatchObject({
       reviewHours: 72, paymentHours: 72,

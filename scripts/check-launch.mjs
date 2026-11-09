@@ -26,7 +26,7 @@ const isBlank = (text) => !text || text.trim() === "";
  * Fonction pure : le script la nourrit après avoir lu les fichiers (voir le bas de ce fichier).
  *
  * @param {object} input
- * @param {import("../worker/offer").Offer} input.offer `config/offer.json`
+ * @param {import("../worker/offer").Offer} input.offer `config/offer.json`, ses formules nommées (`buildOffer`)
  * @param {Record<string, string>} input.legalPages le texte des fichiers sources, par chemin (`src/pages/cgv.astro`)
  * @param {string} input.databaseId le `database_id` de la base D1 dans `wrangler.jsonc`
  * @param {Record<string, string>} input.vars les `vars` de `wrangler.jsonc`
@@ -112,8 +112,10 @@ async function readLaunchInput(root) {
   const { parseEnv } = await import("node:util");
   const siteKey = siteKeyFrom(process.env, await read(".env.production").catch(() => ""), parseEnv);
   const realPaymentWired = await access(join(root, REAL_PAYMENT_FILE)).then(() => true, () => false);
+  // Les formules y sont nommées, comme sur le site ; une formule sans borne fait échouer le contrôle avec son explication.
+  const { buildOffer } = await import("../worker/offer.ts");
   return {
-    offer: JSON.parse(await read("config/offer.json")),
+    offer: buildOffer(JSON.parse(await read("config/offer.json"))),
     legalPages,
     databaseId: database?.database_id ?? "",
     vars: wrangler.vars ?? {},

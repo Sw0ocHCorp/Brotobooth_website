@@ -181,7 +181,7 @@ Une date passée reste dans son état : « terminée » n'est pas un état, mais
 
 ### Demande du client
 
-La page `/reserver` enchaîne trois étapes dans une carte en verre dépoli, sur la vidéo de la borne : date, formule, coordonnées (type d'événement, horaires, lieu, nom, téléphone, e-mail, acceptation des CGV). Un lien « Choisir » sur une formule de l'accueil ouvre `/reserver?formule=<id>` avec la formule présélectionnée.
+La page `/reserver` enchaîne trois étapes dans une carte en verre dépoli, sur la vidéo de la borne : date, formule, coordonnées (type d'événement, horaires, lieu, nom, téléphone, e-mail, acceptation des CGV). La formule se choisit en deux temps : la borne, puis le nombre de tirages ; une borne sans formule est montrée « Bientôt disponible », sans pouvoir être choisie. Le lien « Choisir le … » d'une borne de l'accueil ouvre `/reserver?borne=<id>` avec la borne présélectionnée.
 
 Le calendrier désactive les dates avant le délai minimum et au-delà de l'horizon, et barre les dates indisponibles. Il ne montre jamais pourquoi une date est prise.
 
@@ -274,7 +274,7 @@ La référence est la DA « Sunset » de la borne (`templates/_theme.css`, `ui/s
 1. Ouverture : animation du logo, mur de tirages, « Réservez votre photobooth », boutons « Choisir une date » et « Voir la borne ».
 2. « Ce que vivent vos invités » : quatre étapes avec les vrais écrans de la borne et une photo des tirages en main.
 3. « Un combiné sur le côté ? » : le message audio-vidéo, puis le cadre à votre image, les filtres et le dessin, la boîte à questions annoncée pour bientôt.
-4. « Les formules » : les formules de `config/offer.json`.
+4. « Les formules » : une carte par borne de `config/offer.json`, avec ses nombres de tirages et leurs prix, ou « Bientôt disponible. » tant qu'elle n'a pas de formule.
 5. La présentation des fondateurs : « On lance notre premier photobooth ! », avec leur vraie photo.
 6. « Une date en tête ? » et le dernier bouton de réservation.
 7. Pied de page : téléphone, e-mail, réseaux, pages légales.
@@ -357,7 +357,7 @@ Ces points sont à valider par un professionnel avant la mise en ligne.
 
 ## 13. Contenus à fournir avant la mise en ligne
 
-- Formules : noms, prix, contenu.
+- Ce que comprend chaque borne (les formules, nombres de tirages et prix, sont fournies).
 - Pourcentage d'acompte.
 - Confirmation de la phrase sur l'histoire : « Nous avons construit cette borne nous-mêmes, du meuble en bois au logiciel. C'est notre première, et nous venons l'installer chez vous. »
 - Téléphone, e-mail de contact, réseaux.

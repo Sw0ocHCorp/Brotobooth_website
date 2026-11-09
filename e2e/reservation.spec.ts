@@ -1,7 +1,25 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { FIRST_PLAN, SECOND_PLAN, addDays, cleanup, client, fillDetails, isoDate, offer, pickFreeDate, planButton, reachDetails, seed, showDay } from "./seed";
+import { isBookable, plansOf } from "../worker/offer";
+import {
+  FIRST_PLAN,
+  SECOND_PLAN,
+  addDays,
+  boothButton,
+  choosePlan,
+  cleanup,
+  client,
+  euros,
+  fillDetails,
+  isoDate,
+  offer,
+  pickFreeDate,
+  planButton,
+  reachDetails,
+  seed,
+  showDay,
+} from "./seed";
 
 /** `/reserver` : la date, la formule et les coordonnées, dans la carte posée sur la vidéo de la borne (spec, sections 4 et 7). */
 
@@ -24,6 +42,9 @@ const days = (page: Page) => page.locator("#days");
 const send = (page: Page) => page.getByRole("button", { name: "Envoyer ma demande" });
 const terms = (page: Page) => page.getByLabel("J'accepte les conditions générales de vente");
 const confirmed = (page: Page) => page.getByRole("heading", { name: "Merci, votre demande est envoyée !" });
+const goOn = (page: Page) => page.getByRole("button", { name: "Continuer" });
+const booths = (page: Page) => page.getByRole("group", { name: "Votre borne" });
+const prints = (page: Page) => page.getByRole("group", { name: "Nombre de tirages" });
 
 /** Une zone donne le contact de l'offre : un lien par moyen renseigné, aucun pour un moyen encore vide. */
 async function expectContact(zone: Locator) {
@@ -69,7 +90,7 @@ async function expectKept(page: Page, who: ReturnType<typeof client>) {
   await expect(page.getByLabel("Type d'événement")).toHaveValue("Anniversaire");
   await expect(page.getByLabel("Horaires de l'événement")).toHaveValue(who.hours);
   await expect(page.getByLabel("Lieu")).toHaveValue(who.venue);
-  await expect(page.getByLabel("Nom")).toHaveValue(who.name);
+  await expect(page.getByLabel("Nom", { exact: true })).toHaveValue(who.name);
   await expect(page.getByLabel("Téléphone")).toHaveValue(who.phone);
   await expect(page.getByLabel("E-mail")).toHaveValue(who.email);
   await expect(terms(page)).toBeChecked();
@@ -93,10 +114,17 @@ test("le parcours complet", async ({ page, request }) => {
   await page.getByRole("button", { name: "Continuer" }).click();
   await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeVisible();
   await expect(current).toHaveText("2 · Formule");
-  await expect(page.getByRole("button", { name: "Continuer" })).toBeDisabled();
+  await expect(goOn(page)).toBeDisabled();
+  // La formule se choisit en deux temps : la borne, puis le nombre de tirages, qui n'apparaît qu'ensuite.
+  await expect(prints(page)).toBeHidden();
+  await boothButton(page, FIRST_PLAN.booth).click();
+  await expect(boothButton(page, FIRST_PLAN.booth)).toHaveAttribute("aria-pressed", "true");
+  await expect(prints(page)).toBeVisible();
+  await expect(goOn(page)).toBeDisabled();
   await planButton(page, FIRST_PLAN).click();
   await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Continuer" }).click();
+  await expect(planButton(page, FIRST_PLAN)).toHaveCSS("box-shadow", new RegExp(ORANGE.replace(/[()]/g, "\\$&")));
+  await goOn(page).click();
 
   await expect(current).toHaveText("3 · Coordonnées");
   const who = await fillDetails(page);
@@ -125,28 +153,134 @@ test("le parcours complet", async ({ page, request }) => {
   ]);
 });
 
-test("une formule présélectionnée passe directement aux coordonnées après la date", async ({ page }) => {
-  await page.goto(`/reserver?formule=${SECOND_PLAN.id}`);
+test("la borne vient avant les tirages : une borne à venir se voit sans se choisir, une autre montre ses seules formules", async ({ page }) => {
+  await page.goto("/reserver");
   await pickFreeDate(page);
-  await page.getByRole("button", { name: "Continuer" }).click();
-  await expect(page.getByRole("heading", { name: "Vos coordonnées" })).toBeVisible();
+  await goOn(page).click();
+  await expect(booths(page).getByRole("button")).toHaveCount(offer.booths.length);
+  await expect(prints(page)).toBeHidden();
 
-  // Un retour montre la formule choisie, qui peut encore changer.
-  await page.getByRole("button", { name: "Retour" }).click();
-  await expect(planButton(page, SECOND_PLAN)).toHaveAttribute("aria-pressed", "true");
+  for (const booth of offer.booths) {
+    const button = boothButton(page, booth.id);
+    await expect(button).toContainText(booth.name);
+    if (booth.includes.length > 0) await expect(button).toContainText(booth.includes.join(" · "));
+    if (!isBookable(offer, booth.id)) {
+      // Atténuée sans être effacée : « Bientôt disponible » se lit comme les autres notes de la carte.
+      await expect(button).toBeDisabled();
+      await expect(button).toContainText("Bientôt disponible");
+      await expect(button).toHaveCSS("opacity", "1");
+      const soft = await page.locator(".res-note").first().evaluate((note) => getComputedStyle(note).color);
+      await expect(button.getByText("Bientôt disponible")).toHaveCSS("color", soft);
+      continue;
+    }
+    await expect(button).toBeEnabled();
+    await expect(button).not.toContainText("Bientôt");
+    await button.click();
+    // Le focus reste sur la borne ; ses tirages apparaissent dessous, et seulement les siens.
+    await expect(button).toBeFocused();
+    const own = plansOf(offer, booth.id);
+    await expect(prints(page).getByRole("button")).toHaveCount(own.length);
+    for (const plan of own) {
+      await expect(planButton(page, plan)).toBeVisible();
+      await expect(planButton(page, plan)).toContainText(`${plan.prints} tirages`);
+      if (plan.priceCents > 0) await expect(planButton(page, plan)).toContainText(euros(plan.priceCents));
+      else await expect(planButton(page, plan)).not.toContainText("€");
+    }
+    const [group, list] = await Promise.all([booths(page).boundingBox(), prints(page).boundingBox()]);
+    expect(list!.y).toBeGreaterThanOrEqual(group!.y + group!.height);
+    await expect(goOn(page)).toBeDisabled();
+  }
+});
+
+test("choisir une autre borne efface le nombre de tirages choisi", async ({ page }) => {
+  // Une seconde borne réservable, posée dans la page servie : l'offre du site n'en a peut-être qu'une.
+  await page.route(
+    (url) => url.pathname === "/reserver",
+    async (route) => {
+      const response = await route.fetch();
+      const other = '<button type="button" class="choice" data-booth="borne-d-essai" aria-pressed="false"><b>Borne d\'essai</b></button>';
+      await route.fulfill({ response, body: (await response.text()).replace("Votre borne</p>", `Votre borne</p>${other}`) });
+    },
+  );
+  await page.goto("/reserver");
+  await pickFreeDate(page);
+  await goOn(page).click();
+  await choosePlan(page, FIRST_PLAN);
+  await expect(goOn(page)).toBeEnabled();
+
+  await boothButton(page, "borne-d-essai").click();
+  await expect(boothButton(page, "borne-d-essai")).toHaveAttribute("aria-pressed", "true");
+  await expect(boothButton(page, FIRST_PLAN.booth)).toHaveAttribute("aria-pressed", "false");
+  await expect(planButton(page, FIRST_PLAN)).toBeHidden();
+  await expect(goOn(page)).toBeDisabled();
+  // De retour sur la première borne, ses tirages sont à choisir de nouveau.
+  await boothButton(page, FIRST_PLAN.booth).click();
   await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("button", { name: "Continuer" })).toBeEnabled();
+  await expect(goOn(page)).toBeDisabled();
+});
+
+test("le lien d'une borne la présélectionne : après la date, il reste le nombre de tirages à choisir", async ({ page }) => {
+  await page.goto(`/reserver?borne=${SECOND_PLAN.booth}`);
+  await pickFreeDate(page);
+  await goOn(page).click();
+  await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeVisible();
+  await expect(boothButton(page, SECOND_PLAN.booth)).toHaveAttribute("aria-pressed", "true");
+  await expect(prints(page).getByRole("button")).toHaveCount(plansOf(offer, SECOND_PLAN.booth).length);
+  await expect(goOn(page)).toBeDisabled();
+  await planButton(page, SECOND_PLAN).click();
+  await goOn(page).click();
+
+  // Un retour montre la borne et la formule choisies, qui peuvent encore changer.
+  await page.getByRole("button", { name: "Retour" }).click();
+  await expect(boothButton(page, SECOND_PLAN.booth)).toHaveAttribute("aria-pressed", "true");
+  await expect(planButton(page, SECOND_PLAN)).toHaveAttribute("aria-pressed", "true");
+  await expect(goOn(page)).toBeEnabled();
 
   let sent: Record<string, unknown> | undefined;
   await page.route(REQUESTS, (route) => {
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: { status: "created" } });
   });
-  await page.getByRole("button", { name: "Continuer" }).click();
+  await goOn(page).click();
   await fillDetails(page);
   await send(page).click();
   await expect(confirmed(page)).toBeVisible();
   expect(sent).toMatchObject({ plan: SECOND_PLAN.id, terms: true, turnstile_token: "" });
+});
+
+test("le lien d'une borne à venir ou inconnue ne présélectionne rien", async ({ page }) => {
+  const unbookable = offer.booths.filter((booth) => !isBookable(offer, booth.id)).map((booth) => booth.id);
+  for (const wanted of [...unbookable, "inconnue"]) {
+    await page.goto(`/reserver?borne=${wanted}`);
+    await pickFreeDate(page);
+    await goOn(page).click();
+    await expect(page.getByRole("heading", { name: "Choisissez votre formule" }), wanted).toBeVisible();
+    await expect(booths(page).getByRole("button"), wanted).toHaveCount(offer.booths.length);
+    await expect(booths(page).locator('[aria-pressed="true"]'), wanted).toHaveCount(0);
+    await expect(prints(page), wanted).toBeHidden();
+  }
+});
+
+test("une formule que le serveur refuse ramène aux tirages, avec le message juste dessous", async ({ page }) => {
+  await reachDetails(page);
+  await fillDetails(page);
+  await page.route(REQUESTS, (route) => route.fulfill({ status: 422, json: { error: "invalid", fields: ["plan"] } }));
+  await send(page).click();
+
+  const problem = page.getByText("Cette formule n'est plus proposée. Choisissez-en une autre.");
+  await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeVisible();
+  await expect(problem).toBeVisible();
+  await expect(problem).toBeFocused();
+  // La borne reste choisie ; le nombre de tirages est à choisir de nouveau.
+  await expect(boothButton(page, FIRST_PLAN.booth)).toHaveAttribute("aria-pressed", "true");
+  await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "false");
+  await expect(goOn(page)).toBeDisabled();
+  const [list, text] = await Promise.all([prints(page).boundingBox(), problem.boundingBox()]);
+  expect(text!.y).toBeGreaterThanOrEqual(list!.y + list!.height);
+
+  await planButton(page, FIRST_PLAN).click();
+  await expect(problem).toBeHidden();
+  await expect(goOn(page)).toBeEnabled();
 });
 
 // Le client renvoie une demande déjà reçue (double envoi, autre onglet) : rien n'est en double, et il sait où lire la suite.
@@ -314,7 +448,7 @@ test("une erreur de champ se voit à côté du champ", async ({ page }) => {
   expect(text!.y - (field!.y + field!.height)).toBeLessThan(12);
   expect(Math.abs(text!.x - field!.x)).toBeLessThan(4);
   // Les autres champs ne sont pas mis en cause, et corriger le champ efface le message.
-  await expect(page.getByLabel("Nom")).not.toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByLabel("Nom", { exact: true })).not.toHaveAttribute("aria-invalid", "true");
   await phone.fill("06 98 76 54 32");
   await expect(message).toBeHidden();
   await expect(phone).not.toHaveAttribute("aria-invalid", "true");
@@ -328,7 +462,7 @@ test("un champ oublié est signalé avant l'envoi, sans rien envoyer", async ({ 
   await expect(type.locator("option").first()).toHaveText("Choisir…");
   await fillDetails(page);
   await type.selectOption({ index: 0 });
-  await page.getByLabel("Nom").fill("");
+  await page.getByLabel("Nom", { exact: true }).fill("");
   await terms(page).uncheck();
   let posts = 0;
   await page.route(REQUESTS, (route) => {
@@ -366,6 +500,7 @@ test("le bouton Précédent du navigateur revient à l'étape d'avant, sans rien
 
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeVisible();
+  await expect(boothButton(page, FIRST_PLAN.booth)).toHaveAttribute("aria-pressed", "true");
   await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "true");
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Choisissez votre date" })).toBeVisible();
@@ -559,6 +694,8 @@ test("tient sur un téléphone, sans débordement", async ({ page, viewport }) =
   await pickFreeDate(page);
   await page.getByRole("button", { name: "Continuer" }).click();
   await check("formule");
+  await boothButton(page, FIRST_PLAN.booth).click();
+  await check("nombre de tirages");
   await planButton(page, FIRST_PLAN).click();
   await page.getByRole("button", { name: "Continuer" }).click();
   await check("coordonnées");
@@ -594,9 +731,15 @@ test("le calendrier s'utilise au clavier", async ({ page }) => {
   await expect(go).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Choisissez votre formule" })).toBeFocused();
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Space");
-  await expect(planButton(page, FIRST_PLAN)).toHaveAttribute("aria-pressed", "true");
+  // La borne, puis ses tirages : le focus reste sur la borne choisie, et les tirages viennent juste après.
+  for (const target of [boothButton(page, FIRST_PLAN.booth), planButton(page, FIRST_PLAN)]) {
+    for (let step = 0; step < 10 && !(await target.evaluate((button) => button === document.activeElement)); step++) await page.keyboard.press("Tab");
+    await expect(target).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(target).toHaveAttribute("aria-pressed", "true");
+    await expect(target).toBeFocused();
+  }
+  await expect(go).toBeEnabled();
 });
 
 test("la barre se réduit au logo et à Accueil", async ({ page }) => {
@@ -623,7 +766,8 @@ test("chaque étape passe le contrôle d'accessibilité automatique", async ({ p
   await pickFreeDate(page);
   await page.getByRole("button", { name: "Continuer" }).click();
   await audit("formule");
-  await planButton(page, FIRST_PLAN).click();
+  await choosePlan(page, FIRST_PLAN);
+  await audit("formule choisie");
   await page.getByRole("button", { name: "Continuer" }).click();
   await page.route(REQUESTS, (route) => route.fulfill({ status: 422, json: { error: "invalid", fields: ["phone", "email"] } }));
   await fillDetails(page);

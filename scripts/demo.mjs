@@ -72,7 +72,6 @@ async function seedExamples() {
   await request(saturdayAfter(45), first, { name: "Camille Martin", phone: "06 12 34 56 78", email: "camille.martin@example.test", venue, event_hours: "18h-02h", message: "Un fond rose, si possible." });
   // Une demande validée, qui attend son acompte : le lien de paiement est dans le message lisible sur /demo.
   const awaiting = await request(saturdayAfter(60), second, { name: "Nadia Lefèvre", phone: "06 98 76 54 32", email: "nadia.lefevre@example.test", venue: "Salle des fêtes, Annecy", event_hours: "19h-01h" });
-  await call("PATCH", `/api/admin/bookings/${awaiting.id}`, { price_cents: 90_000 }); // les formules d'essai sont à 0 € : un acompte à payer demande un prix
   await call("POST", `/api/admin/bookings/${awaiting.id}/validate`, {});
   // Une prestation déjà confirmée, et une date bloquée.
   await call("POST", "/api/admin/bookings", { kind: "manual", date: saturdayAfter(75), name: "Julien Moreau", phone: "06 55 44 33 22", email: "julien.moreau@example.test", event_type: "Événement d'entreprise", venue: "Hôtel du Parc, Grenoble", event_hours: "20h-02h", price_cents: 150_000, deposit_cents: 45_000, notes: "Rappeler avant la date." });

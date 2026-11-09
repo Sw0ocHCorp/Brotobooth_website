@@ -1,20 +1,16 @@
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
-// Le chargeur de Playwright n'importe un JSON qu'avec son attribut de type, d'où l'import direct plutôt que `worker/offer.ts`.
-import offerJson from "../config/offer.json" with { type: "json" };
-import type { Offer, Plan } from "../worker/offer";
+import { depositCents } from "../worker/bookings";
+import { offer, type Plan } from "../worker/offer";
 
 /**
- * L'offre telle que le propriétaire l'écrit dans `config/offer.json`. Il y change les noms, les identifiants et les prix :
- * aucun essai ne suppose ceux d'aujourd'hui, ils passent par `FIRST_PLAN`, `SECOND_PLAN` et `planButton`.
+ * L'offre telle que le propriétaire l'écrit dans `config/offer.json`. Il y change les bornes, les identifiants et les prix :
+ * aucun essai ne suppose ceux d'aujourd'hui, ils passent par `FIRST_PLAN`, `SECOND_PLAN`, `boothButton`, `planButton` et `choosePlan`.
  */
-export const offer: Offer = offerJson;
+export { offer };
 export const [FIRST_PLAN, SECOND_PLAN] = offer.plans;
 
-/**
- * L'acompte que l'offre prévoit pour ce prix : son pourcentage, arrondi à l'euro le plus proche. Écrit ici plutôt que repris de
- * `worker/bookings.ts`, que le chargeur de Playwright ne lit pas (il importe `config/offer.json` sans son attribut de type).
- */
-export const depositFor = (priceCents: number): number => Math.round((priceCents * offer.depositPercent) / 10_000) * 100;
+/** L'acompte que l'offre prévoit pour ce prix, quel que soit son pourcentage. */
+export const depositFor = (priceCents: number): number => depositCents(priceCents, offer.depositPercent);
 
 const EUROS = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
 /** Un montant comme l'écran l'écrit (« 1 050,00 € »), avec des espaces ordinaires. */
@@ -41,8 +37,17 @@ export type Kind = "pending" | "awaiting" | "confirmed" | "blocked" | "refused" 
 /** `name` identifie la réservation à l'écran : le nom du client, ou les notes d'une date bloquée. */
 export type Seeded = { id: string; token: string; date: string; name: string; phone: string };
 
-/** Le bouton de `plan` à la deuxième étape de `/reserver`. */
+/** Le bouton de la borne `booth` à la deuxième étape de `/reserver`. */
+export const boothButton = (page: Page, booth: string): Locator => page.locator(`#booths button[data-booth="${booth}"]`);
+
+/** Le bouton de `plan` à la deuxième étape de `/reserver`, qui n'apparaît qu'une fois sa borne choisie. */
 export const planButton = (page: Page, plan: Plan): Locator => page.locator(`button[data-plan="${plan.id}"]`);
+
+/** Choisit `plan` comme un client : sa borne, puis son nombre de tirages. */
+export async function choosePlan(page: Page, plan: Plan): Promise<void> {
+  await boothButton(page, plan.booth).click();
+  await planButton(page, plan).click();
+}
 
 export const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
 
@@ -106,7 +111,7 @@ export async function reachDetails(page: Page): Promise<string> {
   await page.goto("/reserver");
   const day = await pickFreeDate(page);
   await page.getByRole("button", { name: "Continuer" }).click();
-  await planButton(page, FIRST_PLAN).click();
+  await choosePlan(page, FIRST_PLAN);
   await page.getByRole("button", { name: "Continuer" }).click();
   await expect(page.getByRole("heading", { name: "Vos coordonnées" })).toBeVisible();
   return (await day.getAttribute("data-date"))!;
@@ -127,7 +132,7 @@ export async function fillDetails(page: Page, who = client()) {
   await page.getByLabel("Type d'événement").selectOption("Anniversaire");
   await page.getByLabel("Horaires de l'événement").fill(who.hours);
   await page.getByLabel("Lieu").fill(who.venue);
-  await page.getByLabel("Nom").fill(who.name);
+  await page.getByLabel("Nom", { exact: true }).fill(who.name);
   await page.getByLabel("Téléphone").fill(who.phone);
   await page.getByLabel("E-mail").fill(who.email);
   await page.getByLabel("J'accepte les conditions générales de vente").check();

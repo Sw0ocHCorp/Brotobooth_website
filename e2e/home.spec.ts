@@ -1,7 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { FIRST_PLAN, offer } from "./seed";
+import { isBookable, plansOf } from "../worker/offer";
+import { euros, offer } from "./seed";
 
 const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
@@ -70,22 +71,33 @@ test("la barre est claire sur l'ouverture, puis voilée pour rester lisible", as
   await expect(bar).toHaveCSS("background-color", CLEAR);
 });
 
-test("les formules viennent de la configuration et mènent à la réservation", async ({ page }) => {
+test("une carte par borne : ses formules et le lien pour la réserver, ou « Bientôt disponible »", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "Choisir cette formule", exact: true }).first()).toHaveAttribute("href", `/reserver?formule=${FIRST_PLAN.id}`);
-
   const cards = page.locator("#formules").getByRole("article");
-  await expect(cards).toHaveCount(offer.plans.length);
-  for (const [index, plan] of offer.plans.entries()) {
+  await expect(cards).toHaveCount(offer.booths.length);
+  for (const [index, booth] of offer.booths.entries()) {
     const card = cards.nth(index);
-    await expect(card.getByRole("heading", { level: 3 })).toHaveText(plan.name);
-    const choose = card.getByRole("link", { name: "Choisir cette formule", exact: true });
-    await expect(choose).toHaveAttribute("href", `/reserver?formule=${plan.id}`);
-    await expect(choose).toHaveAccessibleDescription(plan.name);
-    // Une formule encore sans prix (offre provisoire) n'affiche aucun montant.
-    if (plan.priceCents > 0) await expect(card).toContainText("€");
-    else await expect(card).not.toContainText("€");
-    for (const line of plan.includes) await expect(card).toContainText(line);
+    await expect(card.getByRole("heading", { level: 3 })).toHaveText(booth.name);
+    for (const line of booth.includes) await expect(card).toContainText(line);
+
+    // Une borne à venir le dit en toutes lettres, et rien ne mène à sa réservation.
+    if (!isBookable(offer, booth.id)) {
+      await expect(card).toContainText("Bientôt disponible.");
+      await expect(card.getByRole("link")).toHaveCount(0);
+      continue;
+    }
+    await expect(card).not.toContainText("Bientôt");
+    for (const plan of plansOf(offer, booth.id)) {
+      const row = card.getByRole("listitem").filter({ hasText: new RegExp(`^\\s*${plan.prints} tirages`) });
+      await expect(row).toHaveCount(1);
+      // Une formule encore sans prix (offre provisoire) n'affiche aucun montant.
+      if (plan.priceCents > 0) await expect(row).toContainText(euros(plan.priceCents));
+      else await expect(row).not.toContainText("€");
+    }
+    // Un seul lien par borne : le nombre de tirages se choisit ensuite, sur la réservation.
+    await expect(card.getByRole("link")).toHaveCount(1);
+    await expect(card.getByRole("link")).toHaveText(`Choisir le ${booth.name}`);
+    await expect(card.getByRole("link")).toHaveAttribute("href", `/reserver?borne=${booth.id}`);
   }
 });
 
@@ -97,7 +109,8 @@ test("l'accueil parle à celui qui réserve", async ({ page }) => {
   await expect(page.locator(".founders p")).toHaveText(
     "Nous avons construit cette borne nous-mêmes, du meuble en bois au logiciel. Nous l'installons chez vous, sur le lieu de votre événement.",
   );
-  await expect(page.getByRole("main")).not.toContainText(/Bientôt|Boîte à questions|notre premier/);
+  // Seule la borne à venir, à la demande du propriétaire, dit « Bientôt disponible. » : rien d'autre n'est annoncé pour plus tard.
+  await expect(page.getByRole("main")).not.toContainText(/Bientôt(?! disponible\.)|Boîte à questions|notre premier/);
 });
 
 test("au plus un bouton rose par écran", async ({ page }) => {

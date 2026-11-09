@@ -49,7 +49,9 @@ const prev = $<HTMLButtonElement>("prev");
 const next = $<HTMLButtonElement>("next");
 const form = $<HTMLFormElement>("step-3");
 const sendButton = $<HTMLButtonElement>("send");
-const choices = [...document.querySelectorAll<HTMLButtonElement>(".choice")];
+const prints = $("prints");
+const boothChoices = [...$("booths").querySelectorAll<HTMLButtonElement>(".choice")];
+const planChoices = [...prints.querySelectorAll<HTMLButtonElement>(".choice")];
 const NO_DATE = picked.textContent ?? "";
 
 // ---------- l'état de la page ----------
@@ -62,6 +64,7 @@ let availability: Availability | null = null;
 const known = new Set<string>();
 const asked = new Set<string>();
 let chosenDate: string | null = null;
+let chosenBooth: string | null = null;
 let chosenPlan: string | null = null;
 let sending = false;
 let widget: string | null = null;
@@ -200,9 +203,22 @@ function reachable(step: Step): Step {
   return step;
 }
 
+/**
+ * La borne choisie, ou aucune : seuls ses nombres de tirages apparaissent, juste dessous, et le focus reste où il est.
+ * Une autre borne efface le nombre de tirages choisi.
+ */
+function chooseBooth(choice: HTMLButtonElement | null): void {
+  const booth = choice?.dataset.booth ?? null;
+  if (booth !== chosenBooth) choosePlan(null);
+  chosenBooth = booth;
+  for (const other of boothChoices) other.setAttribute("aria-pressed", String(other === choice));
+  for (const plan of planChoices) plan.hidden = plan.dataset.booth !== booth;
+  prints.hidden = booth === null;
+}
+
 function choosePlan(choice: HTMLButtonElement | null): void {
   chosenPlan = choice?.dataset.plan ?? null;
-  for (const other of choices) other.setAttribute("aria-pressed", String(other === choice));
+  for (const other of planChoices) other.setAttribute("aria-pressed", String(other === choice));
   goPlan.disabled = choice === null;
   $("problem-plan").hidden = true;
 }
@@ -385,7 +401,8 @@ function start(now: () => Date): void {
 
   goDate.addEventListener("click", () => go(chosenPlan ? 3 : 2));
   goPlan.addEventListener("click", () => go(3));
-  for (const choice of choices) choice.addEventListener("click", () => choosePlan(choice));
+  for (const choice of boothChoices) choice.addEventListener("click", () => chooseBooth(choice));
+  for (const choice of planChoices) choice.addEventListener("click", () => choosePlan(choice));
   for (const back of document.querySelectorAll<HTMLElement>("[data-back]")) {
     back.addEventListener("click", () => go(Number(back.dataset.back) as Step));
   }
@@ -398,9 +415,9 @@ function start(now: () => Date): void {
     void submit();
   });
 
-  // « Choisir » sur une formule de l'accueil : `?formule=<id>`.
-  const wanted = new URLSearchParams(location.search).get("formule");
-  choosePlan(choices.find((choice) => choice.dataset.plan === wanted) ?? null);
+  // « Choisir le … » sur une borne de l'accueil : `?borne=<id>`. Une borne à venir ne se choisit pas, même par l'adresse.
+  const wanted = new URLSearchParams(location.search).get("borne");
+  chooseBooth(boothChoices.find((choice) => choice.dataset.booth === wanted && !choice.disabled) ?? null);
 
   renderMonth();
   void load();
