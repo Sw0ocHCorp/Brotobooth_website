@@ -281,13 +281,17 @@ test("un refus anti-robots ou trop de demandes s'expliquent, et un nouvel essai 
   await expect(shared).not.toContainText(/beaucoup|24 heures/i);
   if (hasContact) await expect(shared).toContainText("ou contactez-nous pour réserver dès maintenant.");
   else await expect(shared).toHaveText(/Réessayez demain\.$/);
-  // La limite par adresse e-mail dit combien de demandes en cours elle permet, et ce qui suit.
-  // Vrai pour une demande qui attend notre réponse comme pour une demande acceptée qui attend son acompte.
-  await expect(page.locator('[data-problem="too_many"]')).toContainText(
+  // La limite par adresse e-mail dit combien de demandes en cours elle permet, et quand en envoyer une autre. Une demande
+  // en cours attend notre réponse, ou, acceptée, son acompte : la phrase ne promet ni délai de réponse ni acompte.
+  const several = offer.maxActivePerEmail > 1;
+  const limit = page.locator('[data-problem="too_many"]');
+  await expect(limit).toHaveText(
     new RegExp(
-      `déjà ${offer.maxActivePerEmail} demandes? en cours\\. Terminons d'abord celles?-ci\\s: nous vous répondons sous 72\\sh, puis vous réglez l'acompte\\. Vous pourrez ensuite en envoyer une nouvelle\\.`,
+      `^\\s*Vous avez déjà ${offer.maxActivePerEmail} demandes? en cours avec nous\\. Vous pourrez en envoyer une nouvelle ` +
+        `${several ? "dès que l'une d'elles" : "dès qu'elle"} sera confirmée ou terminée\\s; la suite vous arrive par e-mail\\.\\s*$`,
     ),
   );
+  await expect(limit).not.toContainText(/répondons|acompte|72/);
   await send(page).click();
   await expect(confirmed(page)).toBeVisible();
 });
