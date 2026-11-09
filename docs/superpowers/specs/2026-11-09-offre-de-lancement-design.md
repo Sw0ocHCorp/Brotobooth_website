@@ -91,7 +91,7 @@ Une fonction pure calcule le palier en cours à partir de l'offre et des places 
 
 ## 6. API
 
-- `GET /api/prices` (nouvelle, publique) : `{ launch, remaining, refillCents, plans: { [id]: { priceCents, normalCents } } }`, où `launch` vaut `true` sur un palier limité. `Cache-Control: public, max-age=30`, comme `/api/availability` : le prix peut dater de 30 secondes, l'envoi le vérifie. Aucune donnée de réservation n'y figure, seulement des comptes.
+- `GET /api/prices` (nouvelle, publique) : `{ tier, launch, remaining, refillCents, plans: { [id]: { priceCents, normalCents } } }`, où `tier` est l'`id` du palier en cours et `launch` vaut `true` sur un palier limité. `Cache-Control: public, max-age=30`, comme `/api/availability` : le prix peut dater de 30 secondes, l'envoi le vérifie. Aucune donnée de réservation n'y figure, seulement des comptes.
 - `POST /api/requests` : `price_cents` obligatoire. Nouvelle réponse `409 { error: "price_changed", price_cents }`.
 - Administration : les réservations renvoyées portent `price_tier` et `refill_cents`. L'ajout manuel accepte `plan` (facultatif) et répond `409 { error: "tier_changed" }` dans le cas décrit plus haut. Le bandeau de l'administration lit `/api/prices` et nomme le palier par son `name`.
 
