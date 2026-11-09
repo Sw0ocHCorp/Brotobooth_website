@@ -1,6 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
+import { currentTier, normalTier, pricesBody, type PricesBody } from "../worker/offer";
+import { placesLine } from "../src/scripts/prices";
 import { euros, isBookable, normalPrice, offer, plansOf } from "./seed";
 
 const ROSE = "rgb(242, 85, 155)";
@@ -204,4 +206,66 @@ test("une page 404 ramène à l'accueil", async ({ page }) => {
   await page.getByRole("main").getByRole("link", { name: "Retour à l'accueil" }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Réservez votre photobooth");
+});
+
+// ---------- l'offre de lancement sur la carte du BrotoBooth ----------
+
+/** Ce que `/api/prices` répond avec `remaining` places encore au premier palier, quel que soit l'état de la base d'essai. */
+function launchBody(remaining: number): PricesBody {
+  const first = offer.tiers[0];
+  return pricesBody(offer, currentTier(offer, { [first.id]: (first.places ?? 0) - remaining }));
+}
+
+const answerWith = (page: Page, body: PricesBody) =>
+  page.route("**/api/prices", (route) => route.fulfill({ json: body }));
+
+const bookableCard = (page: Page) => page.locator("#formules").getByRole("article").nth(offer.booths.findIndex((booth) => isBookable(offer, booth.id)));
+
+test.describe("l'offre de lancement", () => {
+  test.skip(offer.tiers[0].places === undefined, "aucun palier limité dans l'offre");
+
+  test("pendant l'offre, la carte montre le prix du moment, le prix normal barré et les places", async ({ page }) => {
+    const body = launchBody(7);
+    await answerWith(page, body);
+    await page.goto("/");
+    const card = bookableCard(page);
+    await expect(card).toContainText("Offre de lancement");
+    await expect(card).toContainText(placesLine(7));
+    for (const plan of plansOf(offer, offer.booths.find((booth) => isBookable(offer, booth.id))!.id)) {
+      const row = card.getByRole("listitem").filter({ hasText: new RegExp(`^\\s*${plan.prints} tirages`) });
+      const { priceCents, normalCents } = body.plans[plan.id];
+      await expect(row).toContainText(`${euros(priceCents)}, au lieu de ${euros(normalCents)}`);
+      await expect(row.locator("s")).toHaveText(new RegExp(euros(normalCents)));
+    }
+    await expect(card).toContainText(`Recharge de 100 tirages, le jour J`);
+    await expect(card.locator("[data-refill]")).toHaveText(euros(body.refillCents));
+  });
+
+  test("une seule place restante se dit au singulier", async ({ page }) => {
+    await answerWith(page, launchBody(1));
+    await page.goto("/");
+    await expect(bookableCard(page)).toContainText("Plus qu'une place à ce prix");
+  });
+
+  test("hors offre, la carte garde les prix normaux", async ({ page }) => {
+    await answerWith(page, pricesBody(offer, { tier: normalTier(offer), remaining: null, launch: false }));
+    await page.goto("/");
+    await expect(page.locator("#formules [data-amount]").first()).toBeVisible();
+    await expect(page.locator("#formules [data-launch]")).toBeHidden();
+    await expect(page.locator("#formules s")).toHaveCount(0);
+    await expect(bookableCard(page).locator("[data-refill]")).toHaveText(euros(normalTier(offer).refillCents));
+  });
+
+  for (const [name, fail] of [
+    ["injoignable", (page: Page) => page.route("**/api/prices", (route) => route.abort())],
+    ["en erreur 500", (page: Page) => page.route("**/api/prices", (route) => route.fulfill({ status: 500, body: "boom" }))],
+  ] as const) {
+    test(`sans réponse de /api/prices (${name}), la carte garde les prix normaux`, async ({ page }) => {
+      await fail(page);
+      await page.goto("/");
+      await expect(page.locator("#formules [data-amount]").first()).toBeVisible();
+      await expect(page.locator("#formules [data-launch]")).toBeHidden();
+      await expect(page.locator("#formules s")).toHaveCount(0);
+    });
+  }
 });

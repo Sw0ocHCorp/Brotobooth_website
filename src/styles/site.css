@@ -282,6 +282,22 @@ main { overflow-x: clip; }
 
 .prints span { font-weight: 600; }
 .price { font: 800 clamp(20px, 2vw, 26px) / 1.1 var(--font-title); white-space: nowrap; }
+/* Le prix barré passe avant le prix du palier, mais se lit après lui (« 150 €, au lieu de 250 € »). */
+[data-amount] { display: inline-flex; align-items: baseline; gap: .5em; }
+[data-amount] s { order: -1; color: var(--text-soft); font-family: inherit; font-size: .6em; font-weight: 600; }
+.launch, .refill { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; }
+.launch[hidden] { display: none; }
+.launch strong { font-weight: 800; }
+.launch span, .refill { color: var(--text-soft); }
+.refill b { color: inherit; font-weight: 700; white-space: nowrap; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .soon { color: var(--text-soft); }
 .plan .btn { align-self: flex-start; margin-top: auto; }
 

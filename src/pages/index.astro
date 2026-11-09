@@ -46,8 +46,12 @@ const business = {
 
 <script>
   import { startIntro } from "../scripts/logo-intro";
+  import { applyPrices, fetchPrices } from "../scripts/prices";
   import { initToss } from "../scripts/toss";
 
   initToss();
   startIntro();
+  // Les formules sont bien sous la ligne de flottaison : la mise à jour ne déplace rien de ce que le client regarde.
+  const formulas = document.querySelector("#formules");
+  if (formulas) void fetchPrices().then((body) => applyPrices(formulas, body));
 </script>

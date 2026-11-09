@@ -7,6 +7,8 @@ import { isBookable, normalTier, offer, plansOf, priceOf } from "../../worker/of
  * une fois renseigné. Une borne réservable donne ses nombres de tirages et leurs prix (aucun montant tant qu'une formule
  * est encore à 0 €), puis un seul lien qui ouvre la réservation sur elle : le nombre de tirages se choisit ensuite. Une
  * borne encore sans formule le dit en toutes lettres, sans lien.
+ * Elle est écrite au prix normal, sans mention d'offre : c'est ce que lit un client sans JavaScript. Le script de
+ * l'accueil y pose l'offre de lancement quand `/api/prices` en annonce une (`src/scripts/prices.ts`).
  */
 ---
 
@@ -26,14 +28,25 @@ import { isBookable, normalTier, offer, plansOf, priceOf } from "../../worker/of
           )}
           {isBookable(offer, booth.id) ? (
             <>
+              <p class="launch" data-launch hidden>
+                <strong>Offre de lancement</strong>
+                <span data-places />
+              </p>
               <ul class="prints">
                 {plansOf(offer, booth.id).map((plan) => (
-                  <li>
+                  <li data-plan={plan.id}>
                     <span>{plan.prints} tirages</span>
-                    {priceOf(normalTier(offer), plan.id) > 0 && <b class="price">{formatEuros(priceOf(normalTier(offer), plan.id))}</b>}
+                    {priceOf(normalTier(offer), plan.id) > 0 && (
+                      <span class="price" data-amount>
+                        {formatEuros(priceOf(normalTier(offer), plan.id))}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
+              <p class="refill">
+                Recharge de 100 tirages, le jour J <b data-refill>{formatEuros(normalTier(offer).refillCents)}</b>
+              </p>
               <a class="btn ghost" href={`/reserver?borne=${encodeURIComponent(booth.id)}`}>
                 Choisir le {booth.name}
               </a>
