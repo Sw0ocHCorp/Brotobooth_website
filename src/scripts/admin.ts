@@ -409,12 +409,16 @@ async function loadTier(fresh = false): Promise<void> {
   renderTier();
 }
 
+/** Le palier de la réponse dont le prix proposé vient ; `undefined` sans prix proposé ou au prix normal de repli. */
+let prefilledTier: string | undefined;
+
 /** Le prix d'une formule au palier montré, ou au prix normal quand le serveur n'a pas dit lequel. */
 const proposedPrice = (planId: string): number => shownPrices?.plans[planId]?.priceCents ?? priceOf(normalTier(offer), planId);
 
 /** Une formule choisie propose son prix et son acompte, que le propriétaire peut modifier ; « Prix libre » ne touche à rien. */
 function proposePrice(form: HTMLFormElement): void {
   const planId = $<HTMLSelectElement>("[name=plan]", form).value;
+  prefilledTier = planId ? shownPrices?.tier : undefined;
   if (!planId) return;
   const cents = proposedPrice(planId);
   $<HTMLInputElement>("[name=price_cents]", form).value = euroInput(cents);
@@ -695,8 +699,8 @@ function openPrice(b: Booking): void {
  * dans tous les cas la fiche de la réservation s'ouvre.
  */
 const FORMS: Record<string, { send: (body: Record<string, string | number>) => Promise<Reply<{ booking: Booking }>>; jump: boolean }> = {
-  // Le palier que le formulaire a montré : le serveur refuse l'ajout s'il n'est plus en cours.
-  add: { send: (body) => call("POST", BOOKINGS, { kind: "manual", ...body, ...(shownPrices && { tier: shownPrices.tier }) }), jump: true },
+  // Le palier dont vient le prix proposé (pas celui que la page montre maintenant) : le serveur refuse l'ajout s'il n'est plus en cours.
+  add: { send: (body) => call("POST", BOOKINGS, { kind: "manual", ...body, ...(prefilledTier && { tier: prefilledTier }) }), jump: true },
   block: { send: (body) => call("POST", BOOKINGS, { kind: "blocked", ...body }), jump: true },
   price: { send: (body) => call("PATCH", `${BOOKINGS}/${priceTarget}`, body), jump: false },
 };
@@ -753,7 +757,10 @@ function start(now: () => Date): void {
   }
   for (const form of document.querySelectorAll<HTMLFormElement>("form[data-form]")) wireForm(form);
   $("[name=plan]").addEventListener("change", (event) => proposePrice((event.target as HTMLSelectElement).form!));
-  $("[data-open=add]").addEventListener("click", () => void loadTier(true));
+  $("[data-open=add]").addEventListener("click", () => {
+    prefilledTier = undefined;
+    void loadTier(true);
+  });
 
   for (const dialog of document.querySelectorAll<HTMLDialogElement>("dialog")) {
     dialog.addEventListener("click", (event) => {

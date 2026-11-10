@@ -582,3 +582,25 @@ test("une formule refusée se lit « Vérifiez la formule. »", async ({ page })
   await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
   await expect(form.getByRole("alert")).toHaveText("Vérifiez la formule.");
 });
+
+test("l'ajout porte le palier du prix proposé, pas celui que la page montre ensuite", async ({ page }) => {
+  await pricesAre(page, launchBody(5));
+  const bodies = await interceptAdds(page, { status: 409, json: { error: "tier_changed" } });
+  await page.goto("/admin");
+  const form = await addForm(page);
+  await form.getByLabel("Formule").selectOption(FIRST_PLAN.id);
+  await form.getByLabel("Date").fill(await freeDate(page.request));
+  await form.getByLabel("Nom").fill("Inès Lefèvre");
+
+  // La page relit un autre palier (retour sur l'onglet) sans que le prix proposé change.
+  const later = pricesBody(offer, currentTier(offer, Object.fromEntries(offer.tiers.map((t) => [t.id, t.places ?? 0]))));
+  await page.unroute("**/api/prices");
+  await pricesAre(page, later);
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.locator("#tier")).toHaveText(`Palier en cours : ${normalTier(offer).name}`);
+  await expect(form.getByLabel("Prix (€)")).toHaveValue(typed(priceOf(offer.tiers[0], FIRST_PLAN.id)));
+
+  await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
+  await expect.poll(() => bodies.length).toBe(1);
+  expect(bodies[0].tier).toBe(offer.tiers[0].id);
+});
