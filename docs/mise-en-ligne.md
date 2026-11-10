@@ -113,7 +113,7 @@ BASE_URL=https://brotobooth.fr node scripts/set-telegram-webhook.mjs
 
 Tant qu'un contenu manque, `node scripts/check-launch.mjs` refuse la publication et liste ce qui reste. Il faut :
 
-- remplir `config/offer.json` : ce que comprend chaque borne (`includes` dans `booths`), pourcentage d'acompte, téléphone, e-mail et réseaux ; puis retirer la ligne `draft`. Chaque formule (`plans`) désigne sa borne par son identifiant (`booth`), avec son nombre de tirages (`prints`), sans prix : les prix sont dans `tiers`, une liste de paliers où chacun donne son `id`, son `name` (vu du propriétaire seulement), ses `places` (absentes du dernier palier, le prix normal, qui est illimité), son `refillCents` (tarif de la recharge) et son `prices`, le prix en centimes de chaque formule par identifiant. Un palier sans prix pour une formule, ou avec un prix pour une formule inconnue, fait échouer les tests et le contrôle. L'`id` d'un palier est enregistré dans chaque réservation : il ne change plus une fois le site en ligne ; son nom (« BrotoBooth · 200 tirages ») s'en déduit et ne s'écrit pas. Une borne sans formule s'affiche « Bientôt disponible » et ne se réserve pas : pour ouvrir BrotoBooth tiny, il suffit de lui ajouter ses formules. Une formule dont la borne n'existe pas fait échouer les tests et le contrôle d'avant publication. Les noms, les tirages et les prix se changent librement, et aucun test n'en dépend : `npm run deploy` ne s'arrête pas pour cela. Les identifiants des bornes servent aux liens « Choisir le … » de l'accueil, ceux des formules aux demandes déjà enregistrées : une fois le site en ligne, mieux vaut ne plus les changer ;
+- remplir `config/offer.json` : ce que comprend chaque borne (`includes` dans `booths`), pourcentage d'acompte, téléphone, e-mail et réseaux ; puis retirer la ligne `draft`. Chaque formule (`plans`) désigne sa borne par son identifiant (`booth`), avec son nombre de tirages (`prints`), sans prix : les prix sont dans `tiers`, une liste de paliers où chacun donne son `id`, son `name` (vu du propriétaire seulement), ses `places` (absentes du dernier palier, le prix normal, qui est illimité), son `refillCents` (tarif de la recharge) et son `prices`, le prix en centimes de chaque formule par identifiant. Un palier sans prix pour une formule, ou avec un prix pour une formule inconnue, fait échouer les tests et le contrôle. Le nom d'une formule se déduit de sa borne et de ses tirages (« BrotoBooth · 200 tirages ») et ne s'écrit pas ; un palier a au contraire un `id`, enregistré dans chaque réservation, qui ne change plus une fois le site en ligne, et un `name` que vous écrivez. **Pour terminer l'offre de lancement plus tôt**, retirez de `tiers` les paliers de lancement (ne gardez que le prix normal) et relancez `npm run deploy` : les réservations déjà prises gardent leurs prix, et leur palier s'affiche dans l'administration par son `id`. Une borne sans formule s'affiche « Bientôt disponible » et ne se réserve pas : pour ouvrir BrotoBooth tiny, il suffit de lui ajouter ses formules. Une formule dont la borne n'existe pas fait échouer les tests et le contrôle d'avant publication. Les noms, les tirages et les prix se changent librement, et aucun test n'en dépend : `npm run deploy` ne s'arrête pas pour cela. Les identifiants des bornes servent aux liens « Choisir le … » de l'accueil, ceux des formules aux demandes déjà enregistrées : une fois le site en ligne, mieux vaut ne plus les changer ;
 - renseigner chaque `[À compléter]` des pages légales (informations de l'entreprise, zone et frais de déplacement, médiateur, conservation des photos…) ;
 - faire valider les trois pages légales par un professionnel, puis retirer le commentaire de brouillon de `src/layouts/Legal.astro` ;
 - confirmer la présentation des fondateurs : la citation « Une borne construite de nos mains, que nous venons installer chez vous. » et la phrase « Nous avons construit cette borne nous-mêmes, du meuble en bois au logiciel. Nous l'installons chez vous, sur le lieu de votre événement. » ;
@@ -144,7 +144,9 @@ N'activez jamais, dans Cloudflare, **Rocket Loader** ni l'insertion automatique 
 
 ## 12. Avant d'ouvrir au public
 
-Chaque point se vérifie sur le site publié :
+Chaque point se vérifie sur le site publié.
+
+**Avant de commencer, retirez de `config/offer.json` les paliers de lancement** : `tiers` ne garde que le prix normal, puis `npm run deploy`. Chaque demande, essai compris, prend définitivement une place du palier en cours (une annulation ne la rend pas) ; les places étant comptées par `id` de palier, les réservations d'essai restent au palier normal et ne comptent jamais contre les paliers de lancement. **Une fois tous les essais faits, remettez les deux paliers de lancement dans `tiers` et relancez `npm run deploy`, juste avant d'ouvrir.**
 
 - [ ] **Un vrai paiement de faible montant**, puis son remboursement depuis Stripe. La réservation passe en « Confirmée ».
 - [ ] **Un e-mail reçu sur une boîte Gmail**, dans la boîte de réception et non dans les courriers indésirables.
@@ -154,11 +156,12 @@ Chaque point se vérifie sur le site publié :
 - [ ] **Le point du lundi** reçu un lundi matin.
 - [ ] **Une restauration Time Travel répétée à blanc** : notez le repère actuel (`npx wrangler d1 time-travel info DB`), restaurez la base à un instant récent (`npx wrangler d1 time-travel restore DB --timestamp=<horodatage>`), vérifiez, puis revenez au repère noté avec `--bookmark`. La restauration remonte jusqu'à 30 jours.
 - [ ] **Le widget Turnstile** et **l'erreur « date déjà prise »** contrôlés en ligne (étapes 7 et 2).
-- [ ] **Une vraie demande** faite comme un client le ferait, de bout en bout, puis supprimée.
+- [ ] **Une vraie demande** faite comme un client le ferait, de bout en bout, puis annulée : elle reste une réservation annulée, sa place reste comptée au palier normal et elle est sans effet sur l'offre de lancement.
+- [ ] **Les paliers de lancement remis** dans `config/offer.json`, puis `npm run deploy` : la carte de l'accueil annonce « Offre de lancement » et ses places.
 
 ## Après l'ouverture
 
-Pendant la première heure : `/api/availability` répond, la zone « Santé » de `/admin/` montre un « Dernier passage » de moins de 15 minutes et aucun envoi en échec, et une demande d'essai arrive bien sur Telegram.
+Pendant la première heure : `/api/availability` répond, la zone « Santé » de `/admin/` montre un « Dernier passage » de moins de 15 minutes et aucun envoi en échec, et la première vraie demande arrive bien sur Telegram. Ne faites plus d'essai sur le site ouvert : chacun prendrait une place de l'offre de lancement.
 
 ## Revenir en arrière
 
