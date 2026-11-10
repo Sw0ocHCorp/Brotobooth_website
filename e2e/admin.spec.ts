@@ -1,7 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { addDays, cleanup, depositFor, euros, FIRST_PLAN, freeDate, ORIGIN, seed, type Kind } from "./seed";
+import { currentTier, normalTier, priceOf, pricesBody, tierById, type PricesBody } from "../worker/offer";
+import { addDays, cleanup, depositFor, euros, FIRST_PLAN, freeDate, launchBody, normalPrice, offer, ORIGIN, seed, type Kind } from "./seed";
 
 test.afterEach(({ request }) => cleanup(request));
 
@@ -420,4 +421,164 @@ test("aucune violation d'accessibilité détectée par axe", async ({ page, requ
   await expect(sheetOf(page, awaiting.name)).toBeVisible();
   await settled(page);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+
+// ---------- l'offre de lancement : le palier en cours et le prix proposé ----------
+
+/** Le palier en cours tel que `/api/prices` le dit : remplace la réponse du serveur, dont l'état change pendant la série. */
+const pricesAre = (page: Page, body: PricesBody) => page.route("**/api/prices", (route) => route.fulfill({ json: body }));
+
+/** Le prix tel qu'on le tape dans le formulaire. */
+const typed = (cents: number) => String(cents / 100).replace(".", ",");
+
+const tierName = (id: string) => tierById(id)!.name;
+
+/** Un ajout qui ne part pas au serveur : il répond ce que le test veut et garde les corps reçus. */
+async function interceptAdds(page: Page, reply: { status: number; json: object }) {
+  const bodies: Record<string, unknown>[] = [];
+  await page.route("**/api/admin/bookings", (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    bodies.push(route.request().postDataJSON());
+    return route.fulfill(reply);
+  });
+  return bodies;
+}
+
+const addForm = async (page: Page) => {
+  await page.getByRole("button", { name: "Ajouter une réservation" }).click();
+  return page.getByRole("dialog", { name: "Ajouter une réservation" });
+};
+
+test("le bandeau nomme le palier en cours", async ({ page, request }) => {
+  const real: PricesBody = await (await request.get("/api/prices")).json();
+  await page.goto("/admin");
+  const banner = page.locator("#tier");
+  const places = real.remaining === null ? "" : ` · ${real.remaining} ${real.remaining === 1 ? "place restante" : "places restantes"}`;
+  await expect(banner).toHaveText(`Palier en cours : ${tierName(real.tier)}${places}`);
+
+  await page.unroute("**/api/prices");
+  await pricesAre(page, launchBody(1));
+  await page.reload();
+  await expect(banner).toHaveText(`Palier en cours : ${offer.tiers[0].name} · 1 place restante`);
+
+  await page.unroute("**/api/prices");
+  await pricesAre(page, launchBody(4));
+  await page.reload();
+  await expect(banner).toHaveText(`Palier en cours : ${offer.tiers[0].name} · 4 places restantes`);
+
+  await page.unroute("**/api/prices");
+  await pricesAre(page, pricesBody(offer, currentTier(offer, Object.fromEntries(offer.tiers.map((t) => [t.id, t.places ?? 0])))));
+  await page.reload();
+  await expect(banner).toHaveText(`Palier en cours : ${normalTier(offer).name}`);
+});
+
+test("choisir une formule préremplit prix et acompte", async ({ page }) => {
+  await pricesAre(page, launchBody(5));
+  await page.goto("/admin");
+  const form = await addForm(page);
+  const price = form.getByLabel("Prix (€)");
+  const deposit = form.getByLabel("Acompte (€)");
+
+  // « Prix libre » ne touche à rien.
+  await price.fill("777");
+  await form.getByLabel("Formule").selectOption("");
+  await expect(price).toHaveValue("777");
+
+  const cents = priceOf(offer.tiers[0], FIRST_PLAN.id);
+  await form.getByLabel("Formule").selectOption(FIRST_PLAN.id);
+  await expect(price).toHaveValue(typed(cents));
+  await expect(deposit).toHaveValue(typed(depositFor(cents)));
+  await expect(form.getByLabel("Formule").locator("option").first()).toHaveText("Prix libre");
+  await expect(form.getByLabel("Formule").locator(`option[value="${FIRST_PLAN.id}"]`)).toHaveText(FIRST_PLAN.name);
+
+  // Les deux restent modifiables, et le choix « Prix libre » ensuite les laisse comme ils sont.
+  await price.fill("999");
+  await form.getByLabel("Formule").selectOption("");
+  await expect(price).toHaveValue("999");
+});
+
+test("le formulaire d'ajout dit au serveur quel palier il a montré", async ({ page }) => {
+  await pricesAre(page, launchBody(5));
+  const bodies = await interceptAdds(page, { status: 409, json: { error: "tier_changed" } });
+  await page.goto("/admin");
+  const form = await addForm(page);
+  await form.getByLabel("Formule").selectOption(FIRST_PLAN.id);
+  await form.getByLabel("Date").fill(await freeDate(page.request));
+  await form.getByLabel("Nom").fill("Inès Lefèvre");
+  await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
+  await expect(form.getByRole("alert")).toBeVisible();
+  expect(bodies[0]).toMatchObject({ kind: "manual", plan: FIRST_PLAN.id, tier: offer.tiers[0].id });
+});
+
+test("sans /api/prices, le formulaire préremplit au prix normal", async ({ page, request }) => {
+  await page.route("**/api/prices", (route) => route.abort());
+  const sent: Record<string, unknown>[] = [];
+  page.on("request", (req) => {
+    if (req.method() === "POST" && req.url().endsWith("/api/admin/bookings")) sent.push(req.postDataJSON());
+  });
+  await page.goto("/admin");
+  await expect(page.locator("#tier")).toBeHidden();
+  const form = await addForm(page);
+  await form.getByLabel("Formule").selectOption(FIRST_PLAN.id);
+  await expect(form.getByLabel("Prix (€)")).toHaveValue(typed(normalPrice(FIRST_PLAN)));
+  await expect(form.getByLabel("Acompte (€)")).toHaveValue(typed(depositFor(normalPrice(FIRST_PLAN))));
+
+  await form.getByLabel("Date").fill(await freeDate(request));
+  await form.getByLabel("Nom").fill("Jules Bernard");
+  await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
+  const sheet = sheetOf(page, "Jules Bernard");
+  await expect(sheet.getByText("Confirmée", { exact: true })).toBeVisible();
+  expect(sent[0]).not.toHaveProperty("tier");
+
+  // La fiche montre le palier que le serveur a attribué.
+  const id = page.url().split("#")[1];
+  const { booking } = await (await request.get(`/api/admin/bookings/${id}`)).json();
+  await expect(sheet.locator("dt", { hasText: "Palier" }).locator("+ dd")).toHaveText(tierName(booking.price_tier));
+});
+
+test("un palier rempli entre-temps est signalé", async ({ page }) => {
+  await pricesAre(page, launchBody(5));
+  const bodies = await interceptAdds(page, { status: 409, json: { error: "tier_changed" } });
+  await page.goto("/admin");
+  const form = await addForm(page);
+  await form.getByLabel("Formule").selectOption(FIRST_PLAN.id);
+  await form.getByLabel("Date").fill(await freeDate(page.request));
+  await form.getByLabel("Nom").fill("Inès Lefèvre");
+
+  // Entre-temps le dernier palier limité s'est rempli : le serveur répond autre chose que ce que le formulaire a montré.
+  const later = pricesBody(offer, currentTier(offer, Object.fromEntries(offer.tiers.map((t) => [t.id, t.places ?? 0]))));
+  await page.unroute("**/api/prices");
+  await pricesAre(page, later);
+  await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
+
+  await expect(form.getByRole("alert")).toHaveText("Le palier vient de changer : vérifiez le prix.");
+  await expect(page.locator("#tier")).toHaveText(`Palier en cours : ${normalTier(offer).name}`);
+  await expect(form.getByLabel("Prix (€)")).toHaveValue(typed(normalPrice(FIRST_PLAN)));
+  await expect(form.getByLabel("Acompte (€)")).toHaveValue(typed(depositFor(normalPrice(FIRST_PLAN))));
+
+  await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
+  await expect.poll(() => bodies.length).toBe(2);
+  expect(bodies[0].tier).toBe(offer.tiers[0].id);
+  expect(bodies[1].tier).toBe(later.tier);
+});
+
+test("la fiche montre le palier et la recharge", async ({ page, request }) => {
+  const booking = await seed(request, "confirmed");
+  const { booking: stored } = await (await request.get(`/api/admin/bookings/${booking.id}`)).json();
+  await page.goto(`/admin#${booking.id}`);
+  const sheet = sheetOf(page, booking.name);
+  await expect(sheet.locator("dt", { hasText: "Palier" }).locator("+ dd")).toHaveText(tierName(stored.price_tier));
+  await expect(sheet.locator("dt", { hasText: "Recharge de 100 tirages" }).locator("+ dd")).toHaveText(euros(stored.refill_cents));
+});
+
+test("une formule refusée se lit « Vérifiez la formule. »", async ({ page }) => {
+  await interceptAdds(page, { status: 422, json: { error: "invalid", fields: ["plan"] } });
+  await page.goto("/admin");
+  const form = await addForm(page);
+  await form.getByLabel("Date").fill(await freeDate(page.request));
+  await form.getByLabel("Nom").fill("Inès Lefèvre");
+  await form.getByLabel("Prix (€)").fill("100");
+  await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
+  await expect(form.getByRole("alert")).toHaveText("Vérifiez la formule.");
 });

@@ -1,5 +1,5 @@
 ---
-import offer from "../../config/offer.json";
+import { offer } from "../../worker/offer";
 import Base from "../layouts/Base.astro";
 import "../styles/admin.css";
 
@@ -15,6 +15,8 @@ type Field = {
   required?: boolean;
   maxlength?: number;
   options?: string[];
+  /** Le choix de la formule : les identifiants de l'offre en valeurs, leurs noms en libellés, « Prix libre » en premier. */
+  plan?: boolean;
   long?: boolean;
   money?: boolean;
   hint?: string;
@@ -37,6 +39,7 @@ const forms: { id: string; title: string; submit: string; fields: Field[] }[] = 
       { name: "event_type", label: "Type d'événement", options: offer.eventTypes },
       { name: "venue", label: "Lieu", maxlength: 300 },
       { name: "event_hours", label: "Horaires", maxlength: 60 },
+      { name: "plan", label: "Formule", plan: true, hint: "Propose le prix et l'acompte du palier en cours ; vous pouvez les modifier." },
       price,
       { name: "deposit_cents", label: "Acompte (€)", money: true, hint: "Il ne peut pas dépasser le prix." },
       notes,
@@ -75,6 +78,7 @@ const forms: { id: string; title: string; submit: string; fields: Field[] }[] = 
           <button type="button" class="btn ghost" data-open="block">Bloquer une date</button>
         </div>
       </header>
+      <p id="tier" class="notice" role="status" hidden></p>
 
       <section id="login" class="glass zone" aria-labelledby="login-title" hidden>
         <h2 id="login-title">Connexion requise</h2>
@@ -136,7 +140,14 @@ const forms: { id: string; title: string; submit: string; fields: Field[] }[] = 
               return (
                 <div class="fld">
                   <label for={id}>{field.label}</label>
-                  {field.options ? (
+                  {field.plan ? (
+                    <select class="field" id={id} name={field.name} aria-describedby={field.hint ? `${id}-hint` : undefined}>
+                      <option value="">Prix libre</option>
+                      {offer.plans.map((plan) => (
+                        <option value={plan.id}>{plan.name}</option>
+                      ))}
+                    </select>
+                  ) : field.options ? (
                     <select class="field" id={id} name={field.name}>
                       <option value="">Non précisé</option>
                       {field.options.map((option) => (

@@ -1,5 +1,7 @@
 import { formatEuros } from "../../worker/html";
-import { planById } from "../../worker/offer";
+import { depositCents } from "../../worker/bookings";
+import { normalTier, offer, planById, priceOf, tierById, type PricesBody } from "../../worker/offer";
+import { fetchPrices } from "./prices";
 
 /**
  * La page d'administration : tout vient de l'API `/api/admin`, derrière Cloudflare Access. Chaque texte du
@@ -17,6 +19,8 @@ type Booking = {
   event_date: string;
   status: Status;
   plan: string | null;
+  price_tier: string | null;
+  refill_cents: number | null;
   price_cents: number | null;
   deposit_cents: number | null;
   client_name: string | null;
@@ -78,6 +82,7 @@ const FIELD_LABEL: Record<string, string> = {
   name: "le nom",
   phone: "le téléphone",
   email: "l'adresse e-mail",
+  plan: "la formule",
   event_type: "le type d'événement",
   venue: "le lieu",
   event_hours: "les horaires",
@@ -185,6 +190,7 @@ function monthWeeks(month: string): (string | null)[][] {
 }
 
 const planName = (id: string | null): string | null => planById(id ?? "")?.name ?? id;
+const tierName = (id: string | null): string | null => (id === null ? null : (tierById(id)?.name ?? id));
 
 // ---------- l'API ----------
 
@@ -203,6 +209,7 @@ async function call<T = unknown>(method: "GET" | "POST" | "PATCH", path: string,
 /** Ce que dit la page quand le serveur refuse ou ne répond pas. */
 function explain({ status, data }: Reply): string {
   if (status === 503) return "Le service de paiement ne répond pas. Rien n'a été modifié : réessayez dans un moment.";
+  if (status === 409 && data.error === "tier_changed") return "Le palier vient de changer : vérifiez le prix.";
   if (status === 409) return data.error === "date_taken" ? "Cette date est déjà prise." : "Cette réservation a changé entre-temps : la fiche vient d'être mise à jour.";
   if (status === 422) return `Vérifiez ${(data.fields ?? []).map((field) => FIELD_LABEL[field] ?? field).join(", ")}.`;
   return "L'opération a échoué. Vérifiez votre connexion, puis réessayez.";
@@ -379,7 +386,39 @@ async function loadOverview(): Promise<void> {
 
 async function refreshBoard(): Promise<void> {
   problem(null);
-  await Promise.all([loadOverview(), loadMonth()]);
+  await Promise.all([loadOverview(), loadMonth(), loadTier()]);
+}
+
+// ---------- le palier en cours ----------
+
+/** Ce que `/api/prices` a dit en dernier, `null` s'il n'a pas répondu : le formulaire d'ajout propose alors le prix normal. */
+let shownPrices: PricesBody | null = null;
+
+/** « Palier en cours : <nom> · 3 places restantes » ; caché quand `/api/prices` n'a pas répondu. */
+function renderTier(): void {
+  const banner = $("#tier");
+  banner.hidden = shownPrices === null;
+  if (shownPrices === null) return banner.replaceChildren();
+  const { tier, remaining } = shownPrices;
+  const places = remaining === null ? "" : ` · ${remaining} ${remaining === 1 ? "place restante" : "places restantes"}`;
+  banner.textContent = `Palier en cours : ${tierName(tier)}${places}`;
+}
+
+async function loadTier(fresh = false): Promise<void> {
+  shownPrices = await fetchPrices(fresh);
+  renderTier();
+}
+
+/** Le prix d'une formule au palier montré, ou au prix normal quand le serveur n'a pas dit lequel. */
+const proposedPrice = (planId: string): number => shownPrices?.plans[planId]?.priceCents ?? priceOf(normalTier(offer), planId);
+
+/** Une formule choisie propose son prix et son acompte, que le propriétaire peut modifier ; « Prix libre » ne touche à rien. */
+function proposePrice(form: HTMLFormElement): void {
+  const planId = $<HTMLSelectElement>("[name=plan]", form).value;
+  if (!planId) return;
+  const cents = proposedPrice(planId);
+  $<HTMLInputElement>("[name=price_cents]", form).value = euroInput(cents);
+  $<HTMLInputElement>("[name=deposit_cents]", form).value = euroInput(depositCents(cents, offer.depositPercent));
 }
 
 // ---------- confirmation ----------
@@ -555,7 +594,7 @@ function renderSheet(b: Booking, history: HistoryEntry[]): void {
           b.client_email && h("a", { class: "btn ghost", href: `mailto:${encodeURIComponent(b.client_email)}` }, `Écrire à ${b.client_email}`),
         ),
       left && h("p", { class: "notice" }, left.late ? "Délai dépassé : la date va être libérée." : `Il reste ${left.text} ${purpose}.`),
-      definitions([["Formule", planName(b.plan)], ["Type d'événement", b.event_type], ["Lieu", b.venue], ["Horaires", b.event_hours]]),
+      definitions([["Formule", planName(b.plan)], ["Palier", tierName(b.price_tier)], ["Recharge de 100 tirages", b.refill_cents === null ? null : euros(b.refill_cents)], ["Type d'événement", b.event_type], ["Lieu", b.venue], ["Horaires", b.event_hours]]),
       b.message && h("div", {}, h("h3", {}, "Message du client"), h("p", { class: "quote" }, b.message)),
       b.price_cents !== null && definitions([["Prix", euros(b.price_cents)], ["Acompte", euros(b.deposit_cents)], ["Solde restant", euros(balance)]]),
       b.deposit_paid_at && h("p", {}, `Acompte payé le ${formatMoment(b.deposit_paid_at)}.`),
@@ -656,7 +695,8 @@ function openPrice(b: Booking): void {
  * dans tous les cas la fiche de la réservation s'ouvre.
  */
 const FORMS: Record<string, { send: (body: Record<string, string | number>) => Promise<Reply<{ booking: Booking }>>; jump: boolean }> = {
-  add: { send: (body) => call("POST", BOOKINGS, { kind: "manual", ...body }), jump: true },
+  // Le palier que le formulaire a montré : le serveur refuse l'ajout s'il n'est plus en cours.
+  add: { send: (body) => call("POST", BOOKINGS, { kind: "manual", ...body, ...(shownPrices && { tier: shownPrices.tier }) }), jump: true },
   block: { send: (body) => call("POST", BOOKINGS, { kind: "blocked", ...body }), jump: true },
   price: { send: (body) => call("PATCH", `${BOOKINGS}/${priceTarget}`, body), jump: false },
 };
@@ -684,6 +724,10 @@ function wireForm(form: HTMLFormElement): void {
     }
     error.textContent = explain(reply);
     error.hidden = false;
+    if (reply.data.error === "tier_changed") {
+      await loadTier(true);
+      proposePrice(form);
+    }
     const invalid = (reply.data.fields ?? []).flatMap((name) => form.querySelector<Control>(`[name=${name}]`) ?? []);
     for (const control of invalid) control.setAttribute("aria-invalid", "true");
     invalid[0]?.focus();
@@ -708,6 +752,8 @@ function start(now: () => Date): void {
     button.addEventListener("click", () => openDialog($<HTMLDialogElement>(`#${button.dataset.open}`)));
   }
   for (const form of document.querySelectorAll<HTMLFormElement>("form[data-form]")) wireForm(form);
+  $("[name=plan]").addEventListener("change", (event) => proposePrice((event.target as HTMLSelectElement).form!));
+  $("[data-open=add]").addEventListener("click", () => void loadTier(true));
 
   for (const dialog of document.querySelectorAll<HTMLDialogElement>("dialog")) {
     dialog.addEventListener("click", (event) => {
