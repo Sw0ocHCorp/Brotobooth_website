@@ -51,6 +51,11 @@ export interface Offer {
 /** L'offre telle que `config/offer.json` l'écrit : les formules sans leur nom. */
 export type OfferConfig = Omit<Offer, "plans"> & { plans: Omit<Plan, "name">[] };
 
+const isCents = (value: unknown): boolean => Number.isInteger(value) && (value as number) >= 0;
+
+/** Le libellé client de la recharge, commandée le jour J ; le propriétaire lit « Recharge de 100 tirages ». */
+export const CLIENT_REFILL_LABEL = "Recharge de 100 tirages, le jour J";
+
 /** Refuse des paliers mal formés, pour qu'une faute dans `config/offer.json` casse les tests au lieu du site. */
 function checkTiers({ plans, tiers }: OfferConfig): void {
   const fail = (reason: string): never => {
@@ -61,10 +66,12 @@ function checkTiers({ plans, tiers }: OfferConfig): void {
   tiers.forEach((tier, index) => {
     if (ids.has(tier.id)) fail(`le palier « ${tier.id} » apparaît deux fois`);
     ids.add(tier.id);
+    if (!isCents(tier.refillCents)) fail(`le palier « ${tier.id} » a un prix de recharge qui n'est pas un montant en centimes entier, positif ou nul`);
     for (const plan of plans) {
       if (!(plan.id in tier.prices)) fail(`le palier « ${tier.id} » n'a pas de prix pour la formule « ${plan.id} »`);
     }
-    for (const planId of Object.keys(tier.prices)) {
+    for (const [planId, price] of Object.entries(tier.prices)) {
+      if (!isCents(price)) fail(`le palier « ${tier.id} » a un prix pour la formule « ${planId} » qui n'est pas un montant en centimes entier, positif ou nul`);
       if (!plans.some(({ id }) => id === planId)) fail(`le palier « ${tier.id} » a un prix pour la formule « ${planId} », qui n'existe pas`);
     }
     if (index < tiers.length - 1) {

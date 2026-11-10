@@ -14,7 +14,7 @@ export interface Booking {
   deposit_cents: number | null;
   /** Le palier de l'offre où la place a été prise ; nul pour une date bloquée. Jamais modifié ensuite. */
   price_tier: string | null;
-  /** Le prix d'un tirage de recharge, figé à la réservation. */
+  /** Le prix d'une recharge de 100 tirages, figé à la réservation. */
   refill_cents: number | null;
   client_name: string | null;
   client_email: string | null;

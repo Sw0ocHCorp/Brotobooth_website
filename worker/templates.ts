@@ -2,7 +2,7 @@ import { reminderAt, type BookingStatus } from "./bookings";
 import type { Button } from "./deps";
 import { escapeHtml, formatDay, formatEuros, formatHours, formatMoment } from "./html";
 import type { Template } from "./notifications";
-import { offer, planById, tierById } from "./offer";
+import { CLIENT_REFILL_LABEL, offer, planById, tierById } from "./offer";
 import type { Booking } from "./repository";
 
 /** `upcoming` : les prestations du point du lundi, que l'appelant lit dans la base. */
@@ -47,7 +47,7 @@ export const tierName = (b: Booking): string | null => (b.price_tier ? (tierById
 /** Le tarif figé d'une recharge de 100 tirages, ou rien quand la réservation n'en garde pas. */
 const refillPrice = (b: Booking): string | null => (b.refill_cents === null ? null : euros(b.refill_cents));
 /** La recharge sous le libellé du client, qui la commande le jour J. */
-const clientRefillRow = (b: Booking): Row => ["Recharge de 100 tirages, le jour J", refillPrice(b)];
+const clientRefillRow = (b: Booking): Row => [CLIENT_REFILL_LABEL, refillPrice(b)];
 /** Le palier puis la recharge, sous les libellés du propriétaire. */
 const ownerTierRows = (b: Booking): Row[] => [
   ["Palier", tierName(b)],

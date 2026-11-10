@@ -220,6 +220,8 @@ describe("offre", () => {
     it("buildOffer refuses places of 0", () => refused([{ ...t1, places: 0 }, t2, last]));
     it("buildOffer refuses non-integer places", () => refused([{ ...t1, places: 1.5 }, t2, last]));
     it("buildOffer refuses places on the last tier", () => refused([t1, t2, { ...last, places: 5 }]));
+    it.each([-1, 1.5, Number.NaN])("buildOffer refuses a price of %s", (price) => refused([t1, t2, { ...last, prices: { a: price, b: 1 } }]));
+    it.each([-1, 2.5])("buildOffer refuses a refill price of %s", (refillCents) => refused([t1, { ...t2, refillCents }, last]));
   });
 
   it("porte les règles de réservation du plan", () => {
