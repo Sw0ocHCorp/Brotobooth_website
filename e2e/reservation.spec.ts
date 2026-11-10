@@ -396,6 +396,31 @@ test.describe("l'offre de lancement", () => {
     await expect(prints(page).locator("[data-refill]")).toHaveText(euros(normalTier(offer).refillCents));
   });
 
+  test("le message d'un prix changé ne parle que de sa formule", async ({ page }) => {
+    const other = plansOf(offer, FIRST_PLAN.booth).find((plan) => plan.id !== FIRST_PLAN.id);
+    test.skip(!other, "une seule formule pour cette borne");
+    await page.route(PRICES, (route) => route.fulfill({ json: launchBody(7) }));
+    await page.route(REQUESTS, (route) => route.fulfill({ status: 409, json: { error: "price_changed", price_cents: normalPrice(FIRST_PLAN) } }));
+    await reachDetails(page);
+    await fillDetails(page);
+    await send(page).click();
+    const problem = page.getByRole("alert").filter({ hasText: "Le prix de cette formule vient de changer" });
+    await expect(problem).toBeVisible();
+
+    // La même formule choisie de nouveau : le message parle toujours d'elle et reste.
+    await page.getByRole("button", { name: "Retour" }).click();
+    await planButton(page, FIRST_PLAN).click();
+    await goOn(page).click();
+    await expect(page.getByRole("heading", { name: "Vos coordonnées" })).toBeVisible();
+    await expect(problem).toBeVisible();
+    // Une autre formule : le message dirait un prix faux pour elle, il s'efface.
+    await page.getByRole("button", { name: "Retour" }).click();
+    await planButton(page, other!).click();
+    await goOn(page).click();
+    await expect(page.getByRole("heading", { name: "Vos coordonnées" })).toBeVisible();
+    await expect(problem).toBeHidden();
+  });
+
   /** Un `/api/prices` périmé pour `FIRST_PLAN` : le prix normal pendant l'offre réelle, celui du premier palier une fois l'offre finie. */
   const outdated = (real: PricesBody): PricesBody =>
     real.launch ? pricesBody(offer, { tier: normalTier(offer), remaining: null, launch: false }) : pricesBody(offer, currentTier(offer, {}));
@@ -512,8 +537,10 @@ test("les dates trop proches sont inactives, et la page dit pourquoi", async ({ 
 test("si la date vient d'être prise, le client le voit et revient au calendrier à jour", async ({ page, request }) => {
   const date = await reachDetails(page);
   const who = await fillDetails(page);
-  // Un autre client demande la même date pendant que celui-ci remplit ses coordonnées.
-  await seed(request, "pending", { date });
+  // La date est prise pendant que le client remplit ses coordonnées. Prise par une date bloquée, qui ne prend aucune place
+  // d'un palier : le prix que la page a lu reste celui du moment, et le serveur répond bien « date prise », jamais
+  // `price_changed` (vérifié avant la date), quel que soit l'ordre des tests.
+  await seed(request, "blocked", { date });
 
   const refreshed = page.waitForRequest((req) => isAvailability(new URL(req.url())));
   await send(page).click();

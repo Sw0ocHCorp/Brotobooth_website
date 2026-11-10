@@ -223,11 +223,13 @@ function chooseBooth(choice: HTMLButtonElement | null): void {
   prints.hidden = booth === null;
 }
 
+/** Le nombre de tirages choisi, ou aucun. Le message d'un prix changé ne reste que pour la formule dont il parle. */
 function choosePlan(choice: HTMLButtonElement | null): void {
   chosenPlan = choice?.dataset.plan ?? null;
   for (const other of planChoices) other.setAttribute("aria-pressed", String(other === choice));
   goPlan.disabled = choice === null;
   $("problem-plan").hidden = true;
+  if (chosenPlan !== announced?.plan) $("problem-price").hidden = true;
 }
 
 // ---------- les prix ----------
