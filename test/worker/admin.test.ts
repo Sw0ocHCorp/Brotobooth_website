@@ -586,7 +586,6 @@ describe("POST /api/admin/bookings : réservation manuelle", () => {
     ["avec des notes de 2001 caractères", { notes: "x".repeat(2001) }, ["notes"]],
     ["avec un type d'événement inconnu", { event_type: "Baptême" }, ["event_type"]],
     ["avec une formule inconnue", { plan: "inconnue" }, ["plan"]],
-    ["avec un palier inconnu", { tier: "inconnu" }, ["tier"]],
     ["avec un palier qui n'est pas un texte", { tier: 1 }, ["tier"]],
     ["avec un champ inconnu", { eventType: "Mariage" }, ["eventType"]],
   ])("répond 422 %s", async (_name, change, fields) => {
@@ -650,6 +649,13 @@ describe("POST /api/admin/bookings : réservation manuelle", () => {
     useTiers(testTier("t1", 10_000, 1), testTier("t2", 20_000));
     await takePlace("t1");
     const r = await create({ ...manual, tier: "t1" });
+    expect(r.status).toBe(409);
+    expect(await reply(r)).toEqual({ error: "tier_changed" });
+    expect(await listRange(env.DB, manual.date, manual.date)).toEqual([]);
+  });
+
+  it("répond 409 tier_changed si le palier montré n'existe plus dans l'offre, sans rien écrire", async () => {
+    const r = await create({ ...manual, tier: "inconnu" });
     expect(r.status).toBe(409);
     expect(await reply(r)).toEqual({ error: "tier_changed" });
     expect(await listRange(env.DB, manual.date, manual.date)).toEqual([]);

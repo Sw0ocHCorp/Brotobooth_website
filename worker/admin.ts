@@ -4,7 +4,6 @@ import { LAST_RUN_KEY } from "./cron";
 import type { Deps } from "./deps";
 import { findRoute, fromOtherOrigin, json, readJson, type Handler, type Route } from "./http";
 import { sendSoon } from "./notifications";
-import { tierById } from "./offer";
 import {
   adjustPrice,
   blockDate,
@@ -40,7 +39,7 @@ import {
  * | `GET  /overview` | `{ todo, health: { lastCronRun, failedNotifications } }` |
  * | `GET  /bookings?from&to` | `{ bookings }` de la période |
  * | `GET  /bookings/:id` | `{ booking, history }`, l'historique commençant par la demande reçue |
- * | `POST /bookings` | `{ kind: "manual" \| "blocked", ... }`, 201 `{ booking }` ; une prestation prend une place du palier en cours, celui que dit `tier` s'il est donné |
+ * | `POST /bookings` | `{ kind: "manual" \| "blocked", ... }`, 201 `{ booking }` ; une prestation prend une place du palier en cours ; `plan` est facultatif (sans lui, le prix est libre) et `tier`, le palier que le formulaire a montré, n'est qu'une garde : s'il diffère du palier en cours, 409 `tier_changed` |
  * | `POST /bookings/:id/<action>` | `validate`, `refuse`, `cancel`, `resend-link`, `balance-paid` : `{ booking }` |
  * | `PATCH /bookings/:id` | `{ price_cents?, deposit_cents?, notes? }` : `{ booking }` |
  *
@@ -83,8 +82,8 @@ type Rule<T> = (value: unknown, now: Date) => T | null;
 
 const dateRule: Rule<string> = (value) => (typeof value === "string" && isValidDate(value) ? value : null);
 
-/** Un palier de l'offre, par son identifiant. */
-const tierRule: Rule<string> = (value) => (typeof value === "string" && tierById(value) ? value : null);
+/** Le palier que le formulaire a montré. Un identifiant que l'offre ne connaît plus n'est pas une faute de saisie : l'offre a changé, `tier_changed`. */
+const tierRule: Rule<string> = (value) => (typeof value === "string" && value !== "" ? value : null);
 
 /** Un prix ou un acompte, en centimes, avec la règle du prix de la demande publique. */
 const centsRule: Rule<number> = PARSERS.price_cents;
