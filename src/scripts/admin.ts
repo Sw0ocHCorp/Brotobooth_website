@@ -386,7 +386,7 @@ async function loadOverview(): Promise<void> {
 
 async function refreshBoard(): Promise<void> {
   problem(null);
-  await Promise.all([loadOverview(), loadMonth(), loadTier()]);
+  await Promise.all([loadOverview(), loadMonth(), loadTier(true)]);
 }
 
 // ---------- le palier en cours ----------

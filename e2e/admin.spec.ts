@@ -450,6 +450,27 @@ const addForm = async (page: Page) => {
   return page.getByRole("dialog", { name: "Ajouter une réservation" });
 };
 
+// Sans `page.route`, qui contourne le cache HTTP : `/api/prices` est gardé 30 s, le bandeau doit pourtant compter la place qu'on vient de prendre.
+test("le bandeau compte tout de suite la place prise par un ajout", async ({ page, request }) => {
+  const before: PricesBody = await (await request.get("/api/prices")).json();
+  test.skip(before.remaining === null, "le palier en cours est illimité : pas de places à compter");
+  await page.goto("/admin");
+  const places = (n: number) => `${n} ${n === 1 ? "place restante" : "places restantes"}`;
+  await expect(page.locator("#tier")).toContainText(places(before.remaining!));
+
+  const form = await addForm(page);
+  await form.getByLabel("Date").fill(await freeDate(request));
+  await form.getByLabel("Nom").fill("Inès Lefèvre");
+  await form.getByLabel("Prix (€)").fill("1200");
+  await form.getByLabel("Acompte (€)").fill("300");
+  await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
+  await expect(sheetOf(page, "Inès Lefèvre")).toBeVisible();
+  await sheetOf(page, "Inès Lefèvre").getByRole("button", { name: "Fermer" }).click();
+
+  const after = before.remaining! - 1;
+  await expect(page.locator("#tier")).toContainText(after > 0 ? places(after) : normalTier(offer).name);
+});
+
 test("le bandeau nomme le palier en cours", async ({ page, request }) => {
   const real: PricesBody = await (await request.get("/api/prices")).json();
   await page.goto("/admin");
