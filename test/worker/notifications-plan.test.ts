@@ -22,10 +22,11 @@ const EVENTS = Object.keys({
 } satisfies Record<PlanEvent, 0>) as PlanEvent[];
 
 describe("liste des modèles", () => {
-  it("nomme les dix-huit modèles de la spec", () => {
+  it("nomme les vingt modèles des specs : réservations, et les deux de la rubrique de contact", () => {
     expect([...ALL_TEMPLATES].sort()).toEqual([
       "client_cancelled", "client_confirmed", "client_d7", "client_deposit_link", "client_deposit_reminder",
       "client_received", "client_refused", "client_released", "client_unanswered",
+      "owner_contact", "owner_contact_failed",
       "owner_d1", "owner_d7", "owner_deposit_paid", "owner_digest", "owner_email_failed", "owner_late_payment",
       "owner_new_request", "owner_released", "owner_review_reminder",
     ]);

@@ -2,15 +2,32 @@ import { afterEach, describe, expect, it } from "vitest";
 import { escapeHtml, formatEuros } from "../../worker/html";
 import { ALL_TEMPLATES } from "../../worker/notifications";
 import { offer } from "../../worker/offer";
-import type { Booking } from "../../worker/repository";
+import type { Booking, ContactMessage } from "../../worker/repository";
 import { renderEmail, renderTelegram, tierName } from "../../worker/templates";
 import { SECOND_PLAN, T0, newBooking } from "../support";
 
-const ctx = { baseUrl: "https://brotobooth.fr" };
+/** Un message du formulaire de contact, reçu à `T0`. */
+const contactMessage = (over: Partial<ContactMessage> = {}): ContactMessage => ({
+  id: "c-7",
+  name: "Lou Bernard",
+  email: "lou@example.test",
+  phone: "06 98 76 54 32",
+  message: "Bonjour, êtes-vous libres le 12 juin ?",
+  ip_hash: "empreinte",
+  created_at: T0,
+  ...over,
+});
+/** Le message de contact ne sert qu'aux modèles qui en portent un : les autres l'ignorent. */
+const ctx = { baseUrl: "https://brotobooth.fr", contact: contactMessage() };
 /** L'espace insécable de la typographie française, devant « : ; ! ? » et entre un nombre et son unité. */
 const NBSP = "\u00a0";
 const CLIENT_TEMPLATES = ALL_TEMPLATES.filter((t) => t.startsWith("client_"));
 const OWNER_TEMPLATES = ALL_TEMPLATES.filter((t) => t.startsWith("owner_"));
+/** Les modèles qui ne parlent d'aucune réservation : le point du lundi, et ceux d'un message de contact. */
+const WITHOUT_BOOKING: readonly string[] = ["owner_digest", "owner_contact", "owner_contact_failed"];
+const BOOKING_TEMPLATES = ALL_TEMPLATES.filter((t) => !WITHOUT_BOOKING.includes(t));
+/** Le message d'un visiteur ne part jamais chez Telegram (spec de la rubrique de contact, §3). */
+const TELEGRAM_TEMPLATES = ALL_TEMPLATES.filter((t) => t !== "owner_contact");
 
 const booking = (over: Partial<Booking> = {}): Booking => ({
   ...newBooking({ id: "b-42", token: "jeton0123456789abcdef" }),
@@ -20,19 +37,23 @@ const booking = (over: Partial<Booking> = {}): Booking => ({
 });
 
 const hostile = { client_name: 'A<b>&"C', venue: "Salle, n°3; étage\n2 🎉", message: "<script>x</script>" };
+const hostileCtx = { ...ctx, contact: contactMessage({ name: 'A<b>&"C\nD', message: hostile.message }) };
 
 describe("champs libres", () => {
   it.each(ALL_TEMPLATES)("%s échappe les champs libres", (t) => {
-    const tg = renderTelegram(t, booking(hostile), ctx).html;
-    expect(tg).not.toContain("<script>");
-    expect(tg).not.toMatch(/<b>&/);
-    const m = renderEmail(t, booking(hostile), ctx);
+    const m = renderEmail(t, booking(hostile), hostileCtx);
     expect(m.html).not.toContain("<script>");
     expect(m.subject).not.toMatch(/[\r\n]/);
   });
 
-  it.each(ALL_TEMPLATES)("%s n'emploie que <b> et <a> côté Telegram", (t) => {
-    const { html } = renderTelegram(t, booking(hostile), ctx);
+  it.each(TELEGRAM_TEMPLATES)("%s échappe les champs libres côté Telegram", (t) => {
+    const tg = renderTelegram(t, booking(hostile), hostileCtx).html;
+    expect(tg).not.toContain("<script>");
+    expect(tg).not.toMatch(/<b>&/);
+  });
+
+  it.each(TELEGRAM_TEMPLATES)("%s n'emploie que <b> et <a> côté Telegram", (t) => {
+    const { html } = renderTelegram(t, booking(hostile), hostileCtx);
     expect(html.replace(/<\/?b>|<a href="[^"<>]*">|<\/a>/g, "")).not.toMatch(/[<>]/);
   });
 
@@ -45,7 +66,7 @@ describe("champs libres", () => {
 
   it("ne laisse aucun saut de ligne dans l'objet, même quand une valeur en contient", () => {
     for (const t of ALL_TEMPLATES) {
-      const { subject } = renderEmail(t, booking({ ...hostile, event_date: "2026-12-19" }), ctx);
+      const { subject } = renderEmail(t, booking({ ...hostile, event_date: "2026-12-19" }), hostileCtx);
       expect(subject).not.toMatch(/[\r\n]/);
       expect(subject.length).toBeGreaterThan(0);
     }
@@ -56,7 +77,7 @@ describe("la date de la prestation", () => {
   // Un horizon de 24 mois : « 19 décembre » seul ne dirait pas laquelle des deux années.
   const sunday = booking({ event_date: "2027-12-19" });
 
-  it.each(ALL_TEMPLATES.filter((t) => t !== "owner_digest"))("%s écrit toujours l'année", (t) => {
+  it.each(BOOKING_TEMPLATES)("%s écrit toujours l'année", (t) => {
     const mail = renderEmail(t, sunday, ctx);
     for (const text of [mail.subject + mail.text, renderTelegram(t, sunday, ctx).html]) {
       expect(text).toContain("dimanche 19 décembre 2027");
@@ -331,7 +352,7 @@ describe("messages au propriétaire", () => {
   });
 
   it("les autres messages n'ont pas de bouton", () => {
-    for (const t of ALL_TEMPLATES.filter((t) => t !== "owner_new_request")) {
+    for (const t of TELEGRAM_TEMPLATES.filter((t) => t !== "owner_new_request")) {
       expect(renderTelegram(t, booking(), ctx).buttons).toBeUndefined();
     }
   });
@@ -413,7 +434,7 @@ describe("messages au propriétaire", () => {
     expect(renderEmail("owner_late_payment", booking(), ctx).text).toContain("camille@example.test");
   });
 
-  it.each(ALL_TEMPLATES)("%s n'envoie jamais l'adresse e-mail du client à Telegram", (t) => {
+  it.each(TELEGRAM_TEMPLATES)("%s n'envoie jamais l'adresse e-mail du client à Telegram", (t) => {
     expect(renderTelegram(t, booking({ client_email: "camille@example.test" }), ctx).html).not.toContain("camille@example.test");
     expect(renderTelegram(t, booking({ client_email: "camille@example.test" }), ctx).html).not.toContain("camille%40example.test");
   });
@@ -487,26 +508,84 @@ describe("owner_digest", () => {
   });
 });
 
+describe("messages de contact", () => {
+  const ERASE = "Ce message est effacé du site au bout de 12 mois : supprimez cet e-mail à la même échéance.";
+  const FAILED = ["Un message de contact n'a pas pu vous être envoyé par e-mail.", "Lisez-le dans l'administration, zone Messages."];
+
+  it("owner_contact : objet « Message de {nom} », le message d'abord, puis les coordonnées, la date de réception et l'échéance d'effacement", () => {
+    const m = renderEmail("owner_contact", null, ctx);
+    expect(m.subject).toBe("Message de Lou Bernard");
+    expect(m.text.split("\n\n")).toEqual([
+      "Bonjour, êtes-vous libres le 12 juin ?",
+      "Nom : Lou Bernard\nE-mail : lou@example.test\nTéléphone : 06 98 76 54 32\nDate de réception : samedi 7 novembre à 11 h",
+      ERASE,
+    ]);
+    expect(m.html).toContain(`<p style="margin:0 0 16px">${escapeHtml(ERASE)}</p>`);
+  });
+
+  it("owner_contact : « Répondre » écrit au visiteur", () => {
+    expect(renderEmail("owner_contact", null, ctx).replyTo).toBe("lou@example.test");
+    for (const t of ["owner_contact_failed", "owner_new_request", "client_received"]) {
+      expect(renderEmail(t, booking(), ctx)).not.toHaveProperty("replyTo");
+    }
+  });
+
+  it("owner_contact n'écrit pas de téléphone quand le visiteur n'en a pas donné", () => {
+    const m = renderEmail("owner_contact", null, { ...ctx, contact: contactMessage({ phone: null }) });
+    expect(m.text).not.toContain("Téléphone");
+    expect(m.text).toContain("E-mail : lou@example.test\nDate de réception : ");
+  });
+
+  it("owner_contact escapes the message and keeps its lines", () => {
+    const message = '<script>alert("x")</script>\r\nDeuxième ligne, « entre guillemets »';
+    const m = renderEmail("owner_contact", null, { ...ctx, contact: contactMessage({ name: 'A<b>&"C', message }) });
+    expect(m.html).not.toContain("<script>");
+    expect(m.html).toContain("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;<br>Deuxième ligne, « entre guillemets »");
+    expect(m.html).toContain("<strong>Nom</strong> : A&lt;b&gt;&amp;&quot;C");
+    expect(m.html).not.toContain("\r");
+    expect(m.text.split("\n\n")[0]).toBe('<script>alert("x")</script>\nDeuxième ligne, « entre guillemets »');
+  });
+
+  it("owner_contact lève sans message, et ne se rend jamais pour Telegram", () => {
+    expect(() => renderEmail("owner_contact", null, { baseUrl: ctx.baseUrl })).toThrow(/message de contact manquant/);
+    expect(() => renderTelegram("owner_contact", null, ctx)).toThrow(/Telegram/);
+  });
+
+  it("owner_contact_failed dit le texte de la spec, et rien d'autre", () => {
+    expect(renderTelegram("owner_contact_failed", null, ctx)).toEqual({ html: `<b>${escapeHtml(FAILED[0])}</b>\n\n${escapeHtml(FAILED[1])}` });
+    const m = renderEmail("owner_contact_failed", null, ctx);
+    expect([m.subject, m.text]).toEqual(FAILED);
+  });
+
+  it("owner_contact_failed ne cite rien du message : ni nom, ni e-mail, ni téléphone, ni texte", () => {
+    const contact = contactMessage({ message: "Mariage au Domaine des Tilleuls" });
+    const m = renderEmail("owner_contact_failed", null, { ...ctx, contact });
+    const tg = renderTelegram("owner_contact_failed", null, { ...ctx, contact }).html;
+    for (const value of [contact.id, "Lou", "Bernard", contact.email, contact.phone!, "Mariage", "Tilleuls"]) {
+      expect(tg).not.toContain(value);
+      expect(m.subject + m.text + m.html).not.toContain(value);
+    }
+  });
+});
+
 describe("modèles inconnus", () => {
   it("lève sur un modèle inconnu", () => {
     expect(() => renderEmail("inconnu", booking(), ctx)).toThrow(/inconnu/);
     expect(() => renderTelegram("inconnu", booking(), ctx)).toThrow(/inconnu/);
   });
 
-  it("lève sans réservation, sauf pour le point du lundi", () => {
-    for (const t of ALL_TEMPLATES.filter((t) => t !== "owner_digest")) {
+  it("lève sans réservation, sauf pour les modèles qui n'en portent pas", () => {
+    for (const t of BOOKING_TEMPLATES) {
       expect(() => renderEmail(t, null, ctx)).toThrow();
       expect(() => renderTelegram(t, null, ctx)).toThrow();
     }
-    expect(() => renderEmail("owner_digest", null, ctx)).not.toThrow();
+    for (const t of WITHOUT_BOOKING) expect(() => renderEmail(t, null, ctx)).not.toThrow();
   });
 
-  it("rend chaque modèle, sur les deux canaux", () => {
+  it("rend chaque modèle par e-mail, et sur Telegram tous sauf le message de contact", () => {
     expect(OWNER_TEMPLATES.length + CLIENT_TEMPLATES.length).toBe(ALL_TEMPLATES.length);
-    for (const t of ALL_TEMPLATES) {
-      expect(renderEmail(t, booking(), ctx).text.length).toBeGreaterThan(0);
-      expect(renderTelegram(t, booking(), ctx).html.length).toBeGreaterThan(0);
-    }
+    for (const t of ALL_TEMPLATES) expect(renderEmail(t, booking(), ctx).text.length).toBeGreaterThan(0);
+    for (const t of TELEGRAM_TEMPLATES) expect(renderTelegram(t, booking(), ctx).html.length).toBeGreaterThan(0);
   });
 });
 

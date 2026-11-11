@@ -1,16 +1,22 @@
 import { createExecutionContext, createScheduledController, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import { createContact } from "../../worker/contact";
 import { enqueueWeeklyDigest, releaseDueHolds, runCron } from "../../worker/cron";
 import worker from "../../worker/index";
+import { processDue } from "../../worker/notifications";
 import { attachSession } from "../../worker/operations";
 import {
   getBooking,
+  getContactMessage,
   getHistory,
   getState,
   listUnavailableDates,
   patchBooking,
+  purgeContactMessages,
+  setState,
   type Booking,
+  type ContactMessage,
   type NewBooking,
 } from "../../worker/repository";
 import {
@@ -464,7 +470,7 @@ describe("runCron", () => {
       const due = await request();
       const refused = (await insert(newBooking({ status: "refused", event_date: "2026-12-26", hold_until: null }))).booking;
       deps.setNow(MONDAY_9H);
-      deps.env = { ...deps.env, DB: brokenFor(/FROM notifications/) };
+      deps.env = { ...deps.env, DB: brokenFor(/SELECT \* FROM notifications/) }; // l'envoi ne peut pas lire la file
       await runCron(deps);
       expect((await current(due)).status).toBe("expired");
       expect((await current(refused)).anonymized_at).toBe(MONDAY_9H);
@@ -534,6 +540,64 @@ describe("runCron", () => {
       expect((await current(late)).anonymized_at).toBe("2027-11-09T23:05:00.000Z");
       expect(await getState(env.DB, "last_anonymize")).toBe("2027-11-10");
     });
+  });
+});
+
+describe("effacement des messages de contact", () => {
+  /** Mardi 9 novembre 2027, 11 h à Paris. */
+  const NOW = "2027-11-09T10:00:00.000Z";
+  const IP = "203.0.113.5";
+
+  /** Un message du formulaire reçu à `at`, depuis `IP`, dont l'e-mail au propriétaire est parti aussitôt. */
+  async function receivedAt(at: string): Promise<ContactMessage> {
+    deps.setNow(at);
+    const body = { name: "Lou Bernard", email: "lou@example.test", message: "Bonjour", turnstile_token: "t" };
+    expect(await createContact(deps, body, IP)).toEqual({ kind: "sent" });
+    await processDue(deps);
+    return (await env.DB.prepare("SELECT * FROM contact_messages ORDER BY rowid DESC LIMIT 1").first<ContactMessage>())!;
+  }
+  const stored = (m: ContactMessage) => getContactMessage(env.DB, m.id);
+
+  it("supprime avec ses envois un message reçu il y a plus de 12 mois, garde ceux d'il y a 12 mois pile et 11 mois", async () => {
+    const old = await receivedAt("2026-11-09T09:59:59.999Z");
+    const twelve = await receivedAt("2026-11-09T10:00:00.000Z");
+    const eleven = await receivedAt("2026-12-09T10:00:00.000Z");
+    deps.setNow(NOW);
+    await runCron(deps);
+    expect(await stored(old)).toBeNull();
+    expect(await stored(twelve)).toMatchObject({ name: "Lou Bernard", message: "Bonjour" });
+    expect(await stored(eleven)).toMatchObject({ name: "Lou Bernard", message: "Bonjour" });
+    expect((await notificationRows()).map((n) => n.contact_id)).toEqual([twelve.id, eleven.id]);
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  it("efface l'empreinte de l'IP après 24 h, garde celles de 24 h pile et de 23 h, et le reste du message", async () => {
+    const dayOld = await receivedAt("2027-11-08T09:59:59.999Z");
+    const limit = await receivedAt("2027-11-08T10:00:00.000Z");
+    const recent = await receivedAt("2027-11-08T11:00:00.000Z");
+    expect(recent.ip_hash).not.toBeNull();
+    deps.setNow(NOW);
+    await runCron(deps);
+    expect(await stored(dayOld)).toEqual({ ...dayOld, ip_hash: null });
+    expect(await stored(limit)).toEqual(limit);
+    expect(await stored(recent)).toEqual(recent);
+  });
+
+  it("efface à chaque passage, même quand l'anonymisation du jour est déjà faite", async () => {
+    const m = await receivedAt("2027-11-08T09:59:59.999Z");
+    await setState(env.DB, "last_anonymize", "2027-11-09");
+    deps.setNow(NOW);
+    await runCron(deps);
+    expect((await stored(m))!.ip_hash).toBeNull();
+  });
+
+  it("purgeContactMessages rend le nombre de messages supprimés et d'empreintes effacées", async () => {
+    await receivedAt("2026-11-01T10:00:00.000Z");
+    await receivedAt("2027-11-01T10:00:00.000Z");
+    await receivedAt(NOW);
+    const cutoffs = ["2026-11-09T10:00:00.000Z", "2027-11-08T10:00:00.000Z"] as const;
+    expect(await purgeContactMessages(env.DB, ...cutoffs)).toEqual({ deleted: 1, cleared: 1 });
+    expect(await purgeContactMessages(env.DB, ...cutoffs)).toEqual({ deleted: 0, cleared: 0 });
   });
 });
 

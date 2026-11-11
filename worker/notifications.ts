@@ -7,6 +7,7 @@ import {
   claimNotification,
   enqueue,
   getBooking,
+  getContactMessage,
   listDueNotifications,
   listUpcoming,
   markFailed,
@@ -17,7 +18,10 @@ import {
 } from "./repository";
 import { renderEmail, renderTelegram, type MessageContext } from "./templates";
 
-/** Les modèles de message de la spec (section 5), partagés par la planification, l'envoi et les tests. */
+/**
+ * Les modèles de message de la spec (section 5) et de la rubrique de contact (section 3), partagés par la planification,
+ * l'envoi et les tests.
+ */
 export const ALL_TEMPLATES = [
   "client_received",
   "client_refused",
@@ -37,6 +41,8 @@ export const ALL_TEMPLATES = [
   "owner_digest",
   "owner_late_payment",
   "owner_email_failed",
+  "owner_contact",
+  "owner_contact_failed",
 ] as const;
 
 export type Template = (typeof ALL_TEMPLATES)[number];
@@ -162,7 +168,7 @@ const DEFAULT_LIMIT = 50;
 const CLAIM_LEASE_MS = 2 * 60_000;
 /** Un échec met en file une suite (alerte, message de secours) qui peut elle-même échouer : trois tours suffisent. */
 const MAX_ROUNDS = 3;
-/** À partir de ce nombre d'échecs d'un e-mail au client, le propriétaire est alerté. */
+/** À partir de ce nombre d'échecs d'un e-mail au client, ou de celui d'un message de contact, le propriétaire est alerté. */
 const ALERT_AFTER_FAILURES = 3;
 const MAX_ERROR_LENGTH = 200;
 const UPCOMING_STATUSES: readonly BookingStatus[] = ["pending_review", "awaiting_deposit", "confirmed"];
@@ -215,9 +221,19 @@ async function sendTelegram(deps: Deps, n: NotificationRow, booking: Booking | n
 type Outcome = { status: "sent" | "failed" | "skipped"; followUp?: true };
 
 /**
+ * L'alerte Telegram due au troisième échec de l'e-mail `n`, ou `null`. Seul l'e-mail qui porte le message de contact
+ * alerte : l'e-mail de secours de l'alerte, qui porte aussi ce message, n'en appelle pas une autre.
+ */
+const alertFor = (n: NotificationRow): Template | null => {
+  if (n.recipient === "client") return "owner_email_failed";
+  return n.template === "owner_contact" ? "owner_contact_failed" : null;
+};
+
+/**
  * Note l'échec de `n` (son `attempts`-ième essai), puis met en file ce qui doit suivre, dû tout de suite : un
- * e-mail au propriétaire quand Telegram échoue, une alerte Telegram quand l'e-mail au client échoue pour la
- * troisième fois. Les clés `<clé>:fallback` et `<clé>:alert` font que la suite n'est mise en file qu'une fois.
+ * e-mail au propriétaire quand Telegram échoue, une alerte Telegram quand l'e-mail au client, ou celui d'un message de
+ * contact, échoue pour la troisième fois. Les clés `<clé>:fallback` et `<clé>:alert` font que la suite n'est mise en
+ * file qu'une fois. Une suite porte le message de contact de `n` : effacer le message l'efface aussi.
  * Rend `true` si une suite a été mise en file.
  */
 async function settleFailure(deps: Deps, n: NotificationRow, attempts: number, error: unknown): Promise<boolean> {
@@ -225,6 +241,7 @@ async function settleFailure(deps: Deps, n: NotificationRow, attempts: number, e
   await markFailed(db, n.id, errorSummary(error));
   const followUp = (suffix: string, channel: NotificationSpec["channel"], template: string): NotificationSpec => ({
     booking_id: n.booking_id,
+    contact_id: n.contact_id,
     dedupe_key: `${n.dedupe_key}:${suffix}`,
     channel,
     recipient: "owner",
@@ -235,18 +252,20 @@ async function settleFailure(deps: Deps, n: NotificationRow, attempts: number, e
     await enqueue(db, [followUp("fallback", "email", n.template)]);
     return true;
   }
-  if (n.recipient === "client" && attempts >= ALERT_AFTER_FAILURES) {
-    await enqueue(db, [followUp("alert", "telegram", "owner_email_failed")]);
+  const alert = alertFor(n);
+  if (alert !== null && attempts >= ALERT_AFTER_FAILURES) {
+    await enqueue(db, [followUp("alert", "telegram", alert)]);
     return true;
   }
   return false;
 }
 
 /**
- * Un envoi : le message est rendu d'après la réservation à jour, l'envoi est réservé (aucun autre passage ne le
- * prend, et l'essai est compté), puis le message part. `skipped` quand il n'y a rien à envoyer : le rappel est
- * devenu inutile (la réservation a changé d'état depuis sa mise en file), il est annulé sans échec, ou un autre
- * passage a réservé l'envoi. Ne lève jamais : un échec est noté, et reste en file pour le passage suivant.
+ * Un envoi : le message est rendu d'après la réservation à jour (ou le message de contact qu'il porte), l'envoi est
+ * réservé (aucun autre passage ne le prend, et l'essai est compté), puis le message part. `skipped` quand il n'y a rien à
+ * envoyer : le rappel est devenu inutile (la réservation a changé d'état depuis sa mise en file) ou le message de contact
+ * a été effacé, et l'envoi est annulé sans échec ; ou un autre passage a réservé l'envoi. Ne lève jamais : un échec est
+ * noté, et reste en file pour le passage suivant.
  */
 async function deliver(deps: Deps, n: NotificationRow): Promise<Outcome> {
   const db = deps.env.DB;
@@ -254,7 +273,9 @@ async function deliver(deps: Deps, n: NotificationRow): Promise<Outcome> {
   let attempts = n.attempts + 1;
   try {
     const booking = n.booking_id === null ? null : await getBooking(db, n.booking_id);
-    if (!isRelevant(n.template, booking)) {
+    const contact = n.contact_id === null ? null : await getContactMessage(db, n.contact_id);
+    const erased = n.contact_id !== null && contact === null;
+    if (erased || !isRelevant(n.template, booking)) {
       await cancelNotification(db, n.id, now.toISOString());
       return { status: "skipped" };
     }
@@ -265,6 +286,7 @@ async function deliver(deps: Deps, n: NotificationRow): Promise<Outcome> {
     const context: MessageContext = {
       baseUrl: deps.env.BASE_URL,
       upcoming: n.template === "owner_digest" ? await listUpcoming(db, parisToday(now), UPCOMING_STATUSES) : undefined,
+      contact: contact ?? undefined,
     };
     await (n.channel === "email" ? sendEmail(deps, n, booking, context) : sendTelegram(deps, n, booking, context));
     await markSent(db, n.id, now.toISOString());

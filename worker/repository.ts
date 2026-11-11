@@ -60,6 +60,8 @@ export type NotificationSpec = {
 
 export type NotificationRow = NotificationSpec & {
   id: number;
+  /** Toujours lu dans la base : `null` pour un envoi lié à une réservation. */
+  contact_id: string | null;
   sent_at: string | null;
   cancelled_at: string | null;
   /** Les essais d'envoi : chacun est compté quand `claimNotification` réserve l'envoi. */
@@ -539,3 +541,33 @@ export const getContactMessage = (db: D1Database, id: string): Promise<ContactMe
 
 export const countRecentContactByIp = (db: D1Database, ipHash: string, sinceIso: string): Promise<number> =>
   count(db.prepare("SELECT COUNT(*) AS n FROM contact_messages WHERE ip_hash = ? AND created_at >= ?").bind(ipHash, sinceIso));
+
+/**
+ * L'effacement des messages de contact que choisit `where` (sur `contact_messages`), avec tous leurs envois, faits ou
+ * non : D1 vérifie les clés étrangères, les envois partent donc d'abord. La dernière instruction supprime les messages,
+ * son `changes` les compte. Toute suppression d'un message passe par ici.
+ */
+const contactErasure = (db: D1Database, where: Sql): D1PreparedStatement[] => [
+  db
+    .prepare(`DELETE FROM notifications WHERE contact_id IN (SELECT id FROM contact_messages WHERE ${where.sql})`)
+    .bind(...where.params),
+  db.prepare(`DELETE FROM contact_messages WHERE ${where.sql}`).bind(...where.params),
+];
+
+/**
+ * La conservation des messages de contact, en un seul lot : supprime ceux reçus avant `messagesBeforeIso` avec leurs
+ * envois, puis efface l'empreinte de l'IP de ceux reçus avant `ipBeforeIso`. Rend le nombre de messages supprimés et
+ * celui d'empreintes effacées.
+ */
+export async function purgeContactMessages(
+  db: D1Database,
+  messagesBeforeIso: string,
+  ipBeforeIso: string,
+): Promise<{ deleted: number; cleared: number }> {
+  const erasure = contactErasure(db, { sql: "created_at < ?", params: [messagesBeforeIso] });
+  const results = await db.batch([
+    ...erasure,
+    db.prepare("UPDATE contact_messages SET ip_hash = NULL WHERE created_at < ? AND ip_hash IS NOT NULL").bind(ipBeforeIso),
+  ]);
+  return { deleted: results[erasure.length - 1].meta.changes, cleared: results[erasure.length].meta.changes };
+}

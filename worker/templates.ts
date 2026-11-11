@@ -3,10 +3,10 @@ import type { Button } from "./deps";
 import { escapeHtml, formatDay, formatEuros, formatHours, formatMoment } from "./html";
 import type { Template } from "./notifications";
 import { REFILL_LABEL, offer, planById, tierById } from "./offer";
-import type { Booking } from "./repository";
+import type { Booking, ContactMessage } from "./repository";
 
-/** `upcoming` : les prestations du point du lundi, que l'appelant lit dans la base. */
-export type MessageContext = { baseUrl: string; upcoming?: Booking[] };
+/** `upcoming` : les prestations du point du lundi ; `contact` : le message de contact de l'envoi. L'appelant les lit dans la base. */
+export type MessageContext = { baseUrl: string; upcoming?: Booking[]; contact?: ContactMessage };
 
 type Channel = "email" | "telegram";
 
@@ -19,8 +19,11 @@ type Piece = string | { bold: string } | { link: string; url: string };
  */
 type Block = { lines: Piece[][]; only?: Channel; list?: true };
 
-/** Un message avant sa mise en forme : le même texte sert à l'e-mail (texte et HTML) et à Telegram. */
-type Message = { subject: string; blocks: Block[]; buttons?: Button[][] };
+/**
+ * Un message avant sa mise en forme : le même texte sert à l'e-mail (texte et HTML) et à Telegram. `replyTo` : l'adresse
+ * à laquelle « Répondre » écrit, quand ce n'est pas celle de Brotobooth.
+ */
+type Message = { subject: string; blocks: Block[]; buttons?: Button[][]; replyTo?: string };
 
 // ---------- les morceaux ----------
 
@@ -121,7 +124,9 @@ const expiry = (b: Booking): Block[] =>
 
 // ---------- les modèles ----------
 
-type BookingTemplate = Exclude<Template, "owner_digest">;
+/** Les modèles qui ne parlent d'aucune réservation : le point du lundi, et ceux d'un message de contact. */
+type NonBookingTemplate = "owner_digest" | "owner_contact" | "owner_contact_failed";
+type BookingTemplate = Exclude<Template, NonBookingTemplate>;
 type Build = (b: Booking, ctx: MessageContext) => Message;
 
 /** Les rappels du propriétaire avant la prestation : le lieu, les horaires, le téléphone et le solde à encaisser. */
@@ -377,8 +382,46 @@ function digest(ctx: MessageContext): Message {
   };
 }
 
+/** Le texte tel que le visiteur l'a écrit : une ligne du message, une ligne de l'e-mail. */
+const asWritten = (text: string): Block => ({ lines: text.split(/\r\n|\r|\n/).map((line) => [line]) });
+
+/** Le message d'un visiteur, au propriétaire : le message d'abord, puis qui l'a écrit et quand. « Répondre » écrit au visiteur. */
+function contactMessage(ctx: MessageContext): Message {
+  const c = ctx.contact;
+  if (!c) throw new Error("owner_contact : message de contact manquant");
+  return {
+    subject: `Message de ${c.name}`,
+    blocks: [
+      asWritten(c.message),
+      facts([
+        ["Nom", c.name],
+        ["E-mail", c.email],
+        ["Téléphone", c.phone],
+        ["Date de réception", formatMoment(c.created_at)],
+      ]),
+      para("Ce message est effacé du site au bout de 12 mois : supprimez cet e-mail à la même échéance."),
+    ],
+    replyTo: c.email,
+  };
+}
+
+/**
+ * L'alerte quand l'e-mail d'un message n'est pas parti : la phrase de la spec, que Telegram écrit objet en gras puis
+ * corps. Elle ne lit rien du message, dont aucune donnée ne part chez Telegram.
+ */
+const contactFailed = (): Message => ({
+  subject: "Un message de contact n'a pas pu vous être envoyé par e-mail.",
+  blocks: [para("Lisez-le dans l'administration, zone Messages.")],
+});
+
+const NON_BOOKING_MESSAGES: Record<NonBookingTemplate, (ctx: MessageContext) => Message> = {
+  owner_digest: digest,
+  owner_contact: contactMessage,
+  owner_contact_failed: contactFailed,
+};
+
 function build(template: string, b: Booking | null, ctx: MessageContext): Message {
-  if (template === "owner_digest") return digest(ctx);
+  if (Object.hasOwn(NON_BOOKING_MESSAGES, template)) return NON_BOOKING_MESSAGES[template as NonBookingTemplate](ctx);
   if (!Object.hasOwn(BOOKING_MESSAGES, template)) throw new Error(`modèle inconnu : ${template}`);
   if (!b) throw new Error(`${template} : réservation manquante`);
   return BOOKING_MESSAGES[template as BookingTemplate](b, ctx);
@@ -412,7 +455,11 @@ const telegramMarkup = markup("b", isWeb);
 /** L'objet tient sur une ligne, quoi qu'il contienne. */
 const oneLine = (text: string): string => text.replace(/\s+/g, " ").trim();
 
-export function renderEmail(template: string, b: Booking | null, ctx: MessageContext): { subject: string; text: string; html: string } {
+export function renderEmail(
+  template: string,
+  b: Booking | null,
+  ctx: MessageContext,
+): { subject: string; text: string; html: string; replyTo?: string } {
   const message = build(template, b, ctx);
   const blocks = visible(message, "email");
   const subject = oneLine(message.subject);
@@ -424,6 +471,7 @@ export function renderEmail(template: string, b: Booking | null, ctx: MessageCon
 <body style="margin:0;padding:24px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#111111">
 ${blocks.map((block) => `<p style="margin:0 0 16px">${joined(block, emailMarkup, "<br>")}</p>`).join("\n")}
 </body></html>`,
+    ...(message.replyTo && { replyTo: message.replyTo }),
   };
 }
 
@@ -436,7 +484,11 @@ const abridged = (block: Block, keep: number): Block =>
     ? { lines: [...block.lines.slice(0, keep), [`… et ${block.lines.length - keep} autres, à retrouver dans l'administration.`]] }
     : block;
 
+/** Le message d'un visiteur ne part jamais chez Telegram (spec de la rubrique de contact, critère 5). */
+const EMAIL_ONLY = "owner_contact";
+
 export function renderTelegram(template: string, b: Booking | null, ctx: MessageContext): { html: string; buttons?: Button[][] } {
+  if (template === EMAIL_ONLY) throw new Error(`${template} : jamais par Telegram`);
   const message = build(template, b, ctx);
   const blocks = visible(message, "telegram");
   const write = (keep: number): string =>

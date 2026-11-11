@@ -13,3 +13,6 @@ CREATE TABLE contact_messages (
 CREATE INDEX contact_messages_created_at ON contact_messages(created_at);
 
 ALTER TABLE notifications ADD COLUMN contact_id TEXT REFERENCES contact_messages(id);
+
+-- Les envois d'un message se cherchent par son identifiant : à son effacement (clé étrangère) et dans l'administration.
+CREATE INDEX notifications_contact_id ON notifications(contact_id);

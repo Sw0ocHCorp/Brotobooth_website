@@ -1,6 +1,7 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import { createContact } from "../../worker/contact";
 import { cancelBooking } from "../../worker/operations";
 import { makeDeps, turnstileVerifier } from "../../worker/deps";
 import type { Deps } from "../../worker/deps";
@@ -8,7 +9,15 @@ import { chatIds, type Env } from "../../worker/env";
 import { resendGateway } from "../../worker/email";
 import { processDue } from "../../worker/notifications";
 import { offer } from "../../worker/offer";
-import { claimNotification, enqueue, getState, patchBooking, setState, type NotificationSpec } from "../../worker/repository";
+import {
+  claimNotification,
+  enqueue,
+  getState,
+  patchBooking,
+  setState,
+  type ContactMessage,
+  type NotificationSpec,
+} from "../../worker/repository";
 import { handle } from "../../worker/router";
 import { telegramGateway } from "../../worker/telegram";
 import wrangler from "../../wrangler.jsonc?raw";
@@ -526,6 +535,116 @@ describe("processDue : le point du lundi", () => {
   });
 });
 
+describe("processDue : les messages de contact", () => {
+  /** Un message du formulaire, enregistré comme le fait `POST /api/contact` : son e-mail au propriétaire attend en file. */
+  async function received(over: Record<string, unknown> = {}): Promise<ContactMessage> {
+    const body = {
+      name: "Lou Bernard",
+      email: "lou@example.test",
+      phone: "06 98 76 54 32",
+      message: "Êtes-vous libres le 12 juin ?",
+      turnstile_token: "t",
+      ...over,
+    };
+    expect(await createContact(deps, body, null)).toEqual({ kind: "sent" });
+    return (await env.DB.prepare("SELECT * FROM contact_messages ORDER BY rowid DESC LIMIT 1").first<ContactMessage>())!;
+  }
+
+  /** L'effacement d'un message : ses envois d'abord, puis le message, comme l'exigent les clés étrangères de D1. */
+  const erase = (id: string) =>
+    env.DB.batch([
+      env.DB.prepare("DELETE FROM notifications WHERE contact_id = ?").bind(id),
+      env.DB.prepare("DELETE FROM contact_messages WHERE id = ?").bind(id),
+    ]);
+
+  it("envoie le message au propriétaire, « Répondre » écrivant au visiteur, et rien sur Telegram", async () => {
+    const c = await received();
+    expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
+    expect(deps.emails).toEqual([expect.objectContaining({ to: OWNER_EMAIL, replyTo: "lou@example.test", subject: "Message de Lou Bernard" })]);
+    expect(deps.emails[0].text).toContain("Êtes-vous libres le 12 juin ?");
+    expect(deps.emails[0].idempotencyKey).toMatch(new RegExp(`^contact:${c.id}:email:[0-9a-f]{16}$`));
+    expect(deps.telegrams).toEqual([]);
+    expect(await notificationRows()).toMatchObject([{ contact_id: c.id, sent_at: T0 }]);
+  });
+
+  it("garde l'e-mail en file quand Resend est en panne, et l'envoie au passage suivant", async () => {
+    let down = true;
+    deps.email.send = async (m) => {
+      if (down) throw new Error("panne");
+      deps.emails.push(m);
+    };
+    await received();
+    expect(await processDue(deps)).toEqual({ sent: 0, failed: 1 });
+    expect(await notificationRows()).toMatchObject([{ attempts: 1, last_error: "Error: panne", sent_at: null }]);
+    down = false;
+    expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
+    expect(deps.emails.map((m) => [m.to, m.replyTo])).toEqual([[OWNER_EMAIL, "lou@example.test"]]);
+  });
+
+  it("au troisième échec, prévient le propriétaire sur Telegram sans rien du message, une seule fois", async () => {
+    deps.email.send = async () => {
+      throw new Error("panne chez lou@example.test");
+    };
+    const c = await received();
+    await processDue(deps);
+    await processDue(deps);
+    expect(deps.telegrams).toEqual([]);
+    await processDue(deps);
+    expect(deps.telegrams.map((m) => m.chatId)).toEqual([CHAT_ID]);
+    const { html } = deps.telegrams[0];
+    expect(html).toContain("zone Messages");
+    for (const value of [c.id, "Lou", "Bernard", "lou@example.test", "06 98 76 54 32", "12 juin"]) expect(html).not.toContain(value);
+
+    await processDue(deps);
+    await processDue(deps);
+    expect(deps.telegrams).toHaveLength(1);
+    // L'alerte porte le message : l'effacer l'emporte aussi.
+    expect((await notificationRows()).filter((n) => n.template === "owner_contact_failed")).toEqual([
+      expect.objectContaining({
+        dedupe_key: `contact:${c.id}:email:alert`,
+        channel: "telegram",
+        recipient: "owner",
+        booking_id: null,
+        contact_id: c.id,
+        sent_at: T0,
+      }),
+    ]);
+    expect(logs()).not.toMatch(/lou|bernard/i);
+  });
+
+  it("n'alerte qu'une fois quand Telegram et Resend sont en panne : l'e-mail de secours de l'alerte n'en appelle pas d'autre", async () => {
+    deps.email.send = async () => {
+      throw new Error("panne");
+    };
+    deps.telegram.send = async () => {
+      throw new Error("panne");
+    };
+    const c = await received();
+    for (let i = 0; i < 6; i++) await processDue(deps);
+    expect((await notificationRows()).map((n) => [n.dedupe_key, n.channel, n.template, n.contact_id])).toEqual([
+      [`contact:${c.id}:email`, "email", "owner_contact", c.id],
+      [`contact:${c.id}:email:alert`, "telegram", "owner_contact_failed", c.id],
+      [`contact:${c.id}:email:alert:fallback`, "email", "owner_contact_failed", c.id],
+    ]);
+  });
+
+  it("a deleted message cancels its pending email", async () => {
+    const kept = await received();
+    const erased = await received({ name: "Sam Petit", email: "sam@example.test" });
+    const send = deps.email.send;
+    // Le second message est effacé pendant le passage, après que celui-ci a listé les deux envois.
+    deps.email.send = async (m) => {
+      await erase(erased.id);
+      await send(m);
+    };
+    expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
+    expect(deps.emails.map((m) => m.subject)).toEqual(["Message de Lou Bernard"]);
+    expect((await notificationRows()).map((n) => [n.contact_id, n.sent_at])).toEqual([[kept.id, T0]]);
+    expect(logged).not.toHaveBeenCalled();
+    expect(await processDue(deps)).toEqual({ sent: 0, failed: 0 });
+  });
+});
+
 describe("passerelle Resend", () => {
   const message = { to: "camille@example.test", subject: "Objet", text: "Texte", html: "<p>Texte</p>" };
   const RESEND_ENV = { ...env, RESEND_API_KEY: "re_cle_secrete", FROM_EMAIL: "reservations@example.test", OWNER_EMAIL } as Env;
@@ -573,6 +692,15 @@ describe("passerelle Resend", () => {
     const { calls, fetchFn } = recorder(() => Response.json({ id: "e1" }));
     await resendGateway(RESEND_ENV, fetchFn).send(message);
     expect(JSON.parse(calls[0].init.body as string).reply_to).toBe(OWNER_EMAIL);
+  });
+
+  it("fait répondre à l'adresse que porte le message, avant celle de l'offre", async () => {
+    Object.assign(offer.contact, { email: "contact@example.test" });
+    const { calls, fetchFn } = recorder(() => Response.json({ id: "e1" }));
+    await resendGateway(RESEND_ENV, fetchFn).send({ ...message, replyTo: "lou@example.test" });
+    const body = JSON.parse(calls[0].init.body as string);
+    expect(body.reply_to).toBe("lou@example.test");
+    expect(body).not.toHaveProperty("replyTo");
   });
 
   it("n'écrit aucune adresse de réponse quand aucune n'est connue", async () => {

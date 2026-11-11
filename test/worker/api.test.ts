@@ -35,23 +35,26 @@ beforeEach(async () => {
 });
 
 /**
- * Un envoi du formulaire. `ip: null` : requête sans l'en-tête de Cloudflare. L'envoi immédiat des messages se
- * fait après la réponse : le test l'attend, pour qu'aucun envoi ne déborde sur le test suivant.
+ * Un envoi d'un formulaire public à `path`. `ip: null` : requête sans l'en-tête de Cloudflare. L'envoi immédiat des
+ * messages se fait après la réponse : le test l'attend, pour qu'aucun envoi ne déborde sur le test suivant.
  */
-const send = async (raw: BodyInit | null, d: Deps = deps, ip: string | null = IP, headers: Record<string, string> = {}) => {
-  const background = createExecutionContext();
-  const response = await handle(
-    new Request("https://brotobooth.fr/api/requests", {
-      method: "POST",
-      body: raw,
-      headers: { "Content-Type": "application/json", ...(ip === null ? {} : { "CF-Connecting-IP": ip }), ...headers },
-    }),
-    d,
-    background,
-  );
-  await waitOnExecutionContext(background);
-  return response;
-};
+const sendTo =
+  (path: string) =>
+  async (raw: BodyInit | null, d: Deps = deps, ip: string | null = IP, headers: Record<string, string> = {}) => {
+    const background = createExecutionContext();
+    const response = await handle(
+      new Request(`https://brotobooth.fr${path}`, {
+        method: "POST",
+        body: raw,
+        headers: { "Content-Type": "application/json", ...(ip === null ? {} : { "CF-Connecting-IP": ip }), ...headers },
+      }),
+      d,
+      background,
+    );
+    await waitOnExecutionContext(background);
+    return response;
+  };
+const send = sendTo("/api/requests");
 const post = (b: unknown, d: Deps = deps, ip: string | null = IP) => send(JSON.stringify(b), d, ip);
 const get = (path: string, d: Deps = deps) => handle(new Request(`https://brotobooth.fr${path}`), d, ctx);
 
@@ -613,47 +616,43 @@ describe("POST /api/requests : type du corps", () => {
 });
 
 describe("POST /api/contact", () => {
-  /** Une `waitUntil` qui ne lance pas l'envoi : le modèle d'e-mail n'existe pas encore, on vérifie seulement qu'il est confié. */
-  const contactCtx = () => ({ waitUntil: vi.fn(), passThroughOnException: vi.fn() }) as unknown as ExecutionContext & { waitUntil: ReturnType<typeof vi.fn> };
-  const contact = (raw: BodyInit | null, c = contactCtx(), d: Deps = deps, headers: Record<string, string> = {}) =>
-    handle(new Request("https://brotobooth.fr/api/contact", { method: "POST", body: raw, headers: { "Content-Type": "application/json", "CF-Connecting-IP": IP, ...headers } }), d, c);
+  const contact = sendTo("/api/contact");
   const message = (over: Record<string, unknown> = {}) =>
     JSON.stringify({ name: "Camille Durand", email: "camille@example.test", message: "Bonjour", turnstile_token: "t", ...over });
 
-  it("answers 201, queues the e-mail and hands the delivery to waitUntil", async () => {
-    const c = contactCtx();
-    const r = await contact(message(), c);
+  it("answers 201 and sends the e-mail to the owner right after the response", async () => {
+    const r = await contact(message());
     expect(r.status).toBe(201);
     expect(await reply(r)).toEqual({ status: "sent" });
-    expect(c.waitUntil).toHaveBeenCalledTimes(1);
-    expect(await notificationRows()).toMatchObject([{ template: "owner_contact", recipient: "owner", sent_at: null }]);
+    expect(deps.emails.map((m) => [m.to, m.subject])).toEqual([[OWNER_EMAIL, "Message de Camille Durand"]]);
+    expect(await notificationRows()).toMatchObject([{ template: "owner_contact", recipient: "owner", sent_at: T0 }]);
   });
 
   it("answers 422 with the refused fields and does not queue anything", async () => {
-    const c = contactCtx();
-    const r = await contact(message({ email: "x", message: "" }), c);
+    const r = await contact(message({ email: "x", message: "" }));
     expect(r.status).toBe(422);
     expect(await reply(r)).toEqual({ error: "invalid", fields: ["email", "message"] });
-    expect(c.waitUntil).not.toHaveBeenCalled();
+    expect(await notificationRows()).toEqual([]);
+    expect(deps.emails).toEqual([]);
   });
 
   it("answers 403 for a robot and 429 beyond the limit", async () => {
-    expect((await contact(message(), contactCtx(), fakeDeps({ verifyTurnstile: async () => "fail" }))).status).toBe(403);
+    expect((await contact(message(), fakeDeps({ verifyTurnstile: async () => "fail" }))).status).toBe(403);
     const salted = fakeDeps({ env: { ...env, IP_HASH_SALT: "sel" } });
-    for (let i = 0; i < offer.maxPerIpPer24h; i++) await contact(message(), contactCtx(), salted);
-    const r = await contact(message(), contactCtx(), salted);
+    for (let i = 0; i < offer.maxPerIpPer24h; i++) await contact(message(), salted);
+    const r = await contact(message(), salted);
     expect(r.status).toBe(429);
     expect(await reply(r)).toEqual({ error: "too_many" });
   });
 
   it("answers 415 and writes nothing to a body not announced as JSON, accepts a charset", async () => {
     for (const headers of [{ "Content-Type": "text/plain" }, { "Content-Type": "" }]) {
-      const r = await contact(message(), contactCtx(), deps, headers);
+      const r = await contact(message(), deps, IP, headers);
       expect(r.status).toBe(415);
       expect(await reply(r)).toEqual({ error: "unsupported_media_type" });
     }
     expect(await notificationRows()).toEqual([]);
-    expect((await contact(message(), contactCtx(), deps, { "Content-Type": "application/json; charset=utf-8" })).status).toBe(201);
+    expect((await contact(message(), deps, IP, { "Content-Type": "application/json; charset=utf-8" })).status).toBe(201);
   });
 
   it("answers 400 invalid_json to a body that is not JSON, like /api/requests", async () => {

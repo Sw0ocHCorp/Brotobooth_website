@@ -5,8 +5,11 @@ import { callService } from "./http";
 import { simulatedGateway } from "./simulated-payment";
 import { telegramGateway } from "./telegram";
 
-/** `idempotencyKey` : la même clé, répétée, ne fait envoyer le message qu'une fois (Resend la retient 24 h). */
-export type EmailMessage = { to: string; subject: string; text: string; html: string; idempotencyKey?: string };
+/**
+ * `idempotencyKey` : la même clé, répétée, ne fait envoyer le message qu'une fois (Resend la retient 24 h). `replyTo` :
+ * l'adresse à laquelle « Répondre » écrit, quand ce n'est pas celle de Brotobooth (le visiteur d'un message de contact).
+ */
+export type EmailMessage = { to: string; subject: string; text: string; html: string; idempotencyKey?: string; replyTo?: string };
 
 export type EmailGateway = { send(m: EmailMessage): Promise<void> };
 

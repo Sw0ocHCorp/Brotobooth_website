@@ -4,10 +4,14 @@ import { processDue } from "./notifications";
 import { offer } from "./offer";
 import { closeSession, expireHold } from "./operations";
 import { logFailure, recordPayment } from "./payments";
-import { anonymizeOld, enqueue, getBooking, getState, listDueHolds, setState, type Booking } from "./repository";
+import { anonymizeOld, enqueue, getBooking, getState, listDueHolds, purgeContactMessages, setState, type Booking } from "./repository";
 
 /** Les demandes restées sans suite (refus, expirations, annulations avant acompte) sont anonymisées au bout de 12 mois (spec, section 9). */
 const RETENTION_MONTHS = 12;
+/** Un message de contact est supprimé 12 mois après sa réception, l'empreinte de son IP 24 h après (spec de la rubrique, §4). */
+const CONTACT_RETENTION_MONTHS = 12;
+const CONTACT_IP_HOURS = 24;
+const HOUR_MS = 3_600_000;
 const MONDAY = 1;
 const DIGEST_CHANNELS = ["telegram", "email"] as const;
 
@@ -82,6 +86,9 @@ export async function enqueueWeeklyDigest(deps: Deps): Promise<void> {
   );
 }
 
+/** L'instant `months` mois avant `nowIso`, à la même heure. */
+const monthsBefore = (nowIso: string, months: number): string => `${addMonths(nowIso.slice(0, 10), -months)}${nowIso.slice(10)}`;
+
 /** Efface les données personnelles des demandes restées sans suite de plus de 12 mois, au plus une fois par jour de Paris. */
 async function anonymizeExpiredRequests(deps: Deps): Promise<void> {
   const db = deps.env.DB;
@@ -90,9 +97,18 @@ async function anonymizeExpiredRequests(deps: Deps): Promise<void> {
   if ((await getState(db, LAST_ANONYMIZE_KEY)) === today) return;
 
   const nowIso = now.toISOString();
-  const cutoff = `${addMonths(nowIso.slice(0, 10), -RETENTION_MONTHS)}${nowIso.slice(10)}`;
-  await anonymizeOld(db, cutoff, nowIso);
+  await anonymizeOld(db, monthsBefore(nowIso, RETENTION_MONTHS), nowIso);
   await setState(db, LAST_ANONYMIZE_KEY, today);
+}
+
+/**
+ * Supprime les messages de contact de plus de 12 mois avec leurs envois, et efface les empreintes d'IP de plus de 24 h.
+ * À chaque passage, et non une fois par jour comme l'anonymisation : une empreinte ne survit pas jusqu'au lendemain.
+ */
+async function purgeExpiredContactMessages(deps: Deps): Promise<void> {
+  const now = deps.now();
+  const ipCutoff = new Date(now.getTime() - CONTACT_IP_HOURS * HOUR_MS).toISOString();
+  await purgeContactMessages(deps.env.DB, monthsBefore(now.toISOString(), CONTACT_RETENTION_MONTHS), ipCutoff);
 }
 
 /** L'envoi vient après la libération et le point du lundi : leurs messages partent dans le même passage. */
@@ -101,6 +117,7 @@ const STEPS: readonly (readonly [name: string, run: (deps: Deps) => Promise<unkn
   ["Point du lundi", enqueueWeeklyDigest],
   ["Envoi des messages", processDue],
   ["Anonymisation", anonymizeExpiredRequests],
+  ["Effacement des messages de contact", purgeExpiredContactMessages],
 ];
 
 /**
