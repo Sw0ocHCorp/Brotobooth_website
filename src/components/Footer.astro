@@ -1,10 +1,11 @@
 ---
+import ContactAnchor from "./ContactAnchor.astro";
 import { contactLinks, offer } from "../../worker/offer";
 
 /**
  * Le pied de page : les moyens de contact renseignés dans `config/offer.json`, un champ vide n'apparaissant pas, puis les
- * pages légales. Un réseau s'écrit court, comme dans la section « Contact » (« @compte »), et son nom dit aussi lequel
- * (« @compte sur Instagram »).
+ * pages légales. WhatsApp et Instagram sont des icônes, comme dans la section « Contact » ; leur nom accessible dit
+ * lequel (« @compte sur Instagram »). L'adresse e-mail n'y figure pas.
  */
 const contacts = contactLinks(offer.contact, ({ name, number }) => `${name} · ${number}`);
 const LEGAL = [
@@ -15,6 +16,6 @@ const LEGAL = [
 ---
 
 <footer class="foot">
-  {contacts.length > 0 && <address>{contacts.map(({ href, label, name }) => <a href={href} aria-label={name}>{label}</a>)}</address>}
+  {contacts.length > 0 && <address>{contacts.map((link) => <ContactAnchor link={link} />)}</address>}
   <nav aria-label="Informations légales">{LEGAL.map(({ href, label }) => <a href={href}>{label}</a>)}</nav>
 </footer>

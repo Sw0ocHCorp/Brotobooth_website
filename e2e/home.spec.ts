@@ -1,14 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { normalTier, pricesBody, socialLabel, socialName, telHref, type PricesBody } from "../worker/offer";
+import { expectIconLinks, hasNoHorizontalOverflow, smallTargets } from "./layout";
+import { normalTier, pricesBody, socialLabel, telHref, type PricesBody } from "../worker/offer";
 import { placesLine } from "../src/scripts/prices";
 import { discountText, euros, isBookable, launchBody, normalPrice, offer, plansOf, refillText } from "./seed";
 
 const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
 const CLEAR = "rgba(0, 0, 0, 0)";
-const SECTIONS = ["Ce que vivent vos invités", "Un combiné sur le côté ?", "Les formules", "Une date en tête ?", "Contact"];
+const SECTIONS = ["Ce que vivent vos invités", "Des moments qui subliment votre événement", "Les formules", "Une date en tête ?", "Contact"];
 
 const menu = (page: Page) => page.getByRole("navigation", { name: "Menu principal" });
 
@@ -216,18 +216,17 @@ test("le pied de page donne le contact renseigné et les pages légales", async 
     await expect(footer.getByRole("link", { name, exact: true })).toHaveAttribute("href", href);
   }
   // Un moyen de contact encore vide n'apparaît pas.
-  const { phones, email, social } = offer.contact;
+  const { phones, social } = offer.contact;
   await expect(footer.locator('a[href^="tel:"]')).toHaveCount(phones.length);
-  await expect(footer.locator('a[href^="mailto:"]')).toHaveCount(email ? 1 : 0);
+  // L'adresse e-mail reçoit les messages du formulaire, elle ne s'affiche pas.
+  await expect(footer.locator('a[href^="mailto:"]')).toHaveCount(0);
   for (const { name, number } of phones) {
     await expect(footer.getByRole("link", { name: `${name} · ${number}` })).toHaveAttribute("href", telHref(number));
   }
-  if (email) await expect(footer.getByRole("link", { name: email })).toHaveAttribute("href", `mailto:${email}`);
-  // Un réseau s'écrit court (« @compte » pour un compte Instagram), et son nom dit aussi lequel.
-  for (const url of social) {
-    const network = footer.getByRole("link", { name: socialName(url), exact: true });
-    await expect(network).toHaveAttribute("href", url);
-    await expect(network).toHaveText(socialLabel(url));
+  // WhatsApp et Instagram sont des icônes seules ; un autre réseau s'écrit court.
+  expect(await expectIconLinks(footer)).toBeGreaterThan(0);
+  for (const url of social.filter((link) => !link.includes("instagram.com"))) {
+    await expect(footer.getByRole("link", { name: socialLabel(url), exact: true })).toHaveAttribute("href", url);
   }
 });
 

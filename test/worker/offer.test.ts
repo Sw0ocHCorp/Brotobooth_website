@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildOffer, offer, type OfferConfig } from "../../worker/offer";
+import { buildOffer, contactLinks, offer, whatsappHref, type OfferConfig } from "../../worker/offer";
 
 /** `buildOffer` refuse un contact mal écrit dans `config/offer.json` et nettoie les prénoms et les numéros. */
 
 const withContact = (contact: Partial<OfferConfig["contact"]>): OfferConfig => ({
   ...offer,
   plans: offer.plans.map(({ name: _name, ...plan }) => plan),
-  contact: { phones: [], email: "", social: [], ...contact },
+  contact: { phones: [], email: "", whatsapp: "", social: [], ...contact },
 });
 
 describe("buildOffer, contact", () => {
@@ -25,5 +25,42 @@ describe("buildOffer, contact", () => {
       expect(() => buildOffer(withContact({ social: [link] }))).toThrow(/config\/offer\.json.*https:\/\//);
     }
     expect(buildOffer(withContact({ social: ["https://exemple.fr/a"] })).contact.social).toEqual(["https://exemple.fr/a"]);
+  });
+
+  it("trims the WhatsApp number and accepts only the international format, or none", () => {
+    expect(buildOffer(withContact({ whatsapp: "  +33 6 00 00 00 03 " })).contact.whatsapp).toBe("+33 6 00 00 00 03");
+    expect(buildOffer(withContact({ whatsapp: "  " })).contact.whatsapp).toBe("");
+    for (const number of ["06 00 00 00 03", "+33 6", "+abc def ghij"]) {
+      expect(() => buildOffer(withContact({ whatsapp: number })), number).toThrow(/config\/offer\.json.*WhatsApp/);
+    }
+  });
+});
+
+describe("whatsappHref", () => {
+  it("keeps the digits only after wa.me", () => {
+    expect(whatsappHref("+33 6 00 00 00 03")).toBe("https://wa.me/33600000003");
+  });
+});
+
+describe("contactLinks", () => {
+  const contact = {
+    phones: [{ name: "Ana", number: "06 00 00 00 01" }],
+    phone: "06 00 00 00 01",
+    email: "bonjour@example.test",
+    whatsapp: "+33 6 00 00 00 03",
+    social: ["https://www.instagram.com/photomaton_test/", "https://exemple.fr/page"],
+  };
+
+  it("never gives the e-mail address, and marks Instagram and WhatsApp with their icon", () => {
+    expect(contactLinks(contact, ({ name }) => `Appeler ${name}`)).toEqual([
+      { href: "tel:0600000001", label: "Appeler Ana" },
+      { href: "https://wa.me/33600000003", label: "WhatsApp", name: "Nous écrire sur WhatsApp", icon: "whatsapp" },
+      { href: "https://www.instagram.com/photomaton_test/", label: "@photomaton_test", name: "@photomaton_test sur Instagram", icon: "instagram" },
+      { href: "https://exemple.fr/page", label: "exemple.fr", name: "exemple.fr" },
+    ]);
+  });
+
+  it("gives no WhatsApp link without a number", () => {
+    expect(contactLinks({ ...contact, whatsapp: "" }, () => "").map(({ icon }) => icon)).toEqual([undefined, "instagram", undefined]);
   });
 });

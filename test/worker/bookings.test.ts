@@ -236,7 +236,7 @@ describe("contact phones", () => {
   const config = (phones: { name: string; number: string }[]): OfferConfig => ({
     ...offer,
     plans: offer.plans.map(({ name: _name, ...plan }) => plan),
-    contact: { phones, email: "", social: [] },
+    contact: { phones, email: "", whatsapp: "", social: [] },
   });
 
   it("contact.phone is the first number, or empty", () => {

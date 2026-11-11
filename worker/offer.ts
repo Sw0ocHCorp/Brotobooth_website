@@ -53,6 +53,8 @@ export interface Offer {
     /** Calculé par `buildOffer` : le numéro du premier fondateur, ou `""`. C'est celui que citent les phrases du site et les e-mails. */
     phone: string;
     email: string;
+    /** Le numéro WhatsApp au format international (« +33 6 00 00 00 00 ») ; vide, pas de WhatsApp. */
+    whatsapp: string;
     social: string[];
   };
   booths: Booth[];
@@ -68,6 +70,9 @@ export type OfferConfig = Omit<Offer, "plans" | "contact"> & {
 
 /** Le lien `tel:` d'un numéro écrit à la française : seuls les chiffres et le `+` restent. */
 export const telHref = (number: string): string => `tel:${number.replace(/[^\d+]/g, "")}`;
+
+/** Le lien WhatsApp d'un numéro international : `https://wa.me/` et ses seuls chiffres. */
+export const whatsappHref = (number: string): string => `https://wa.me/${number.replace(/\D/g, "")}`;
 
 /** Le domaine d'un lien, sans `www.`. */
 const domainOf = (url: URL): string => url.hostname.replace(/^www\./, "");
@@ -87,22 +92,34 @@ export function socialLabel(link: string): string {
 export const socialName = (link: string): string =>
   instagramAccount(new URL(link)) ? `${socialLabel(link)} sur Instagram` : socialLabel(link);
 
-/** Un moyen de nous joindre : sa cible, son texte, et pour un réseau son nom accessible (`aria-label`), qui peut en dire plus. */
+/** Les icônes que le site sait dessiner (`src/components/contact-icons.ts`). */
+export type ContactIcon = "instagram" | "whatsapp";
+
+/**
+ * Un moyen de nous joindre : sa cible, son texte, et pour un réseau son nom accessible (`aria-label`), qui peut en dire
+ * plus. Avec une `icon`, il s'affiche en icône seule, le nom accessible en tenant lieu de texte.
+ */
 export interface ContactLink {
   href: string;
   label: string;
   name?: string;
+  icon?: ContactIcon;
 }
 
 /**
- * Les moyens de nous joindre que `contact` renseigne, dans l'ordre : chaque fondateur (écrit par `phoneLabel`), l'adresse
- * e-mail, puis chaque réseau écrit court. Un moyen vide n'en donne aucun. La section « Contact » et le pied de page les
- * écrivent ainsi.
+ * Les moyens de nous joindre que `contact` renseigne, dans l'ordre : chaque fondateur (écrit par `phoneLabel`), WhatsApp,
+ * puis chaque réseau écrit court. Un moyen vide n'en donne aucun. L'adresse e-mail n'en fait pas partie : elle reçoit les
+ * messages du formulaire, sans s'afficher. La section « Contact » et le pied de page les écrivent ainsi.
  */
 export const contactLinks = (contact: Offer["contact"], phoneLabel: (phone: Phone) => string): ContactLink[] => [
   ...contact.phones.map((phone) => ({ href: telHref(phone.number), label: phoneLabel(phone) })),
-  ...(contact.email ? [{ href: `mailto:${contact.email}`, label: contact.email }] : []),
-  ...contact.social.map((url) => ({ href: url, label: socialLabel(url), name: socialName(url) })),
+  ...(contact.whatsapp ? [{ href: whatsappHref(contact.whatsapp), label: "WhatsApp", name: "Nous écrire sur WhatsApp", icon: "whatsapp" as const }] : []),
+  ...contact.social.map((url) => ({
+    href: url,
+    label: socialLabel(url),
+    name: socialName(url),
+    ...(instagramAccount(new URL(url)) && { icon: "instagram" as const }),
+  })),
 ];
 
 const isCents = (value: unknown): boolean => Number.isInteger(value) && (value as number) >= 0;
@@ -156,7 +173,11 @@ export function buildOffer(config: OfferConfig): Offer {
   for (const link of config.contact.social) {
     if (!link.startsWith("https://")) throw new Error(`config/offer.json : le lien « ${link} » de contact.social doit commencer par https://`);
   }
-  return { ...config, plans, contact: { ...config.contact, phones, phone: phones[0]?.number ?? "" } };
+  const whatsapp = config.contact.whatsapp.trim();
+  if (whatsapp && !/^\+(?:\D*\d){8}/.test(whatsapp)) {
+    throw new Error("config/offer.json : le numéro WhatsApp doit être au format international (« + », puis au moins 8 chiffres)");
+  }
+  return { ...config, plans, contact: { ...config.contact, phones, whatsapp, phone: phones[0]?.number ?? "" } };
 }
 
 export const offer: Offer = buildOffer(offerJson);

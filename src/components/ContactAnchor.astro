@@ -1,0 +1,29 @@
+---
+import type { ContactLink } from "../../worker/offer";
+import { CONTACT_ICON_PATHS } from "./contact-icons";
+
+/**
+ * Un moyen de nous joindre (`contactLinks`), écrit une seule fois pour la section « Contact » et le pied de page. Avec une
+ * icône, le lien s'affiche en icône seule : le SVG est caché aux lecteurs d'écran, blanc comme le texte (`currentColor`), et
+ * le nom accessible tient lieu de texte (`aria-label`) comme d'info-bulle (`title`). Sans icône, il garde son texte court.
+ * `class` s'applique au lien sans icône ; la cible d'au moins 44 px de l'icône est dans `site.css` (`.icon-link`).
+ */
+interface Props {
+  link: ContactLink;
+  class?: string;
+}
+
+const { link: { href, label, name, icon }, class: className } = Astro.props;
+---
+
+{
+  icon ? (
+    <a class="icon-link" href={href} aria-label={name} title={name}>
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+        <path d={CONTACT_ICON_PATHS[icon]} />
+      </svg>
+    </a>
+  ) : (
+    <a class={className} href={href} aria-label={name}>{label}</a>
+  )
+}

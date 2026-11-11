@@ -10,7 +10,7 @@ import { offer, telHref, type Offer } from "../../worker/offer";
  */
 
 type Contact = Offer["contact"];
-type Link = { href?: string; name?: string; text: string };
+type Link = { href?: string; name?: string; title?: string; icon?: boolean; text: string };
 
 const FULL: Contact = {
   phones: [
@@ -19,9 +19,11 @@ const FULL: Contact = {
   ],
   phone: "06 00 00 00 01",
   email: "bonjour@example.test",
+  whatsapp: "+33 6 00 00 00 03",
   social: ["https://www.instagram.com/photomaton_test/", "https://exemple.fr/page"],
 };
-const EMPTY: Contact = { phones: [], phone: "", email: "", social: [] };
+const EMPTY: Contact = { phones: [], phone: "", email: "", whatsapp: "", social: [] };
+const REAL_ICONS = ["https://wa.me/33629430210", "https://www.instagram.com/brotobooth/"];
 
 const real = offer.contact;
 afterEach(() => {
@@ -37,43 +39,82 @@ async function render(component: typeof Footer, contact: Contact): Promise<strin
 const zone = (html: string, tag: string, className = ""): string =>
   new RegExp(`<${tag}\\b[^>]*${className && `class="[^"]*\\b${className}\\b[^"]*"`}[^>]*>[\\s\\S]*?</${tag}>`).exec(html)?.[0] ?? "";
 
-/** Les liens de `html`, avec leur cible, leur nom accessible donné à part (`aria-label`) et leur texte. */
+/**
+ * Les liens de `html`, avec leur cible, leur nom accessible donné à part (`aria-label`), leur info-bulle, leur texte visible
+ * et, pour une icône (SVG caché aux lecteurs d'écran, à la couleur du texte), `icon: true` ; un lien sans icône n'a pas la clé.
+ */
 const links = (html: string): Link[] =>
-  [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attributes, text]) => ({
-    href: /\bhref="([^"]*)"/.exec(attributes)?.[1],
-    name: /\baria-label="([^"]*)"/.exec(attributes)?.[1],
-    text: text.trim(),
-  }));
+  [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attributes, content]) => {
+    const svg = /<svg\b[^>]*>[\s\S]*?<\/svg>/.exec(content)?.[0];
+    if (svg) {
+      expect(svg).toMatch(/aria-hidden="true"/);
+      expect(svg).toMatch(/fill="currentColor"/);
+    }
+    return {
+      href: /\bhref="([^"]*)"/.exec(attributes)?.[1],
+      name: /\baria-label="([^"]*)"/.exec(attributes)?.[1],
+      ...(svg && { title: /\btitle="([^"]*)"/.exec(attributes)?.[1], icon: true }),
+      text: content.replace(/<svg\b[\s\S]*?<\/svg>/g, "").trim(),
+    };
+  });
 
-const instagram = { href: "https://www.instagram.com/photomaton_test/", name: "@photomaton_test sur Instagram", text: "@photomaton_test" };
+const instagram = {
+  href: "https://www.instagram.com/photomaton_test/",
+  name: "@photomaton_test sur Instagram",
+  title: "@photomaton_test sur Instagram",
+  icon: true,
+  text: "",
+};
+const whatsapp = { href: "https://wa.me/33600000003", name: "Nous écrire sur WhatsApp", title: "Nous écrire sur WhatsApp", icon: true, text: "" };
 const website = { href: "https://exemple.fr/page", name: "exemple.fr", text: "exemple.fr" };
 const mail = { href: "mailto:bonjour@example.test", name: undefined, text: "bonjour@example.test" };
+const hasMail = (html: string): boolean => html.includes("mailto:");
 
 describe("the footer", () => {
-  it("gives each founder's number, the e-mail and each network, short", async () => {
+  it("gives each founder's number, then WhatsApp and Instagram as icons alone, and a network without an icon its short text", async () => {
     expect(links(zone(await render(Footer, FULL), "address"))).toEqual([
       { href: telHref("06 00 00 00 01"), name: undefined, text: "Ana · 06 00 00 00 01" },
       { href: telHref("+33 6 00 00 00 02"), name: undefined, text: "Ben · +33 6 00 00 00 02" },
-      mail,
+      whatsapp,
       instagram,
       website,
     ]);
+  });
+
+  it("never gives the e-mail address, even when one is filled in", async () => {
+    expect(hasMail(await render(Footer, FULL))).toBe(false);
   });
 
   it("gives no contact at all when none is filled in", async () => {
     expect(zone(await render(Footer, EMPTY), "address")).toBe("");
   });
+
+  it("with the real offer, gives WhatsApp and Instagram icons only", async () => {
+    offer.contact = real;
+    const found = links(zone(await (await AstroContainer.create()).renderToString(Footer), "address"));
+    expect(found.map(({ href, icon, text }) => [href, icon, text])).toEqual(REAL_ICONS.map((href) => [href, true, ""]));
+  });
 });
 
 describe("the contact section", () => {
-  it("calls each founder by name, then gives the e-mail and each network, short", async () => {
+  it("calls each founder by name, then gives WhatsApp and Instagram as icons alone, and a network without an icon its short text", async () => {
     expect(links(zone(await render(Contact, FULL), "ul", "means"))).toEqual([
       { href: telHref("06 00 00 00 01"), name: undefined, text: "Appeler Ana" },
       { href: telHref("+33 6 00 00 00 02"), name: undefined, text: "Appeler Ben" },
-      mail,
+      whatsapp,
       instagram,
       website,
     ]);
+  });
+
+  it("gives no e-mail link among the direct means", async () => {
+    expect(hasMail(zone(await render(Contact, FULL), "ul", "means"))).toBe(false);
+  });
+
+  it("with the real offer, gives WhatsApp and Instagram icons only", async () => {
+    offer.contact = real;
+    const found = links(zone(await (await AstroContainer.create()).renderToString(Contact), "ul", "means"));
+    expect(found.map(({ href, icon, text }) => [href, icon, text])).toEqual(REAL_ICONS.map((href) => [href, true, ""]));
   });
 
   it("gives no direct means when none is filled in", async () => {

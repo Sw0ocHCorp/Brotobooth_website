@@ -434,7 +434,7 @@ main { overflow-x: clip; }
 .contact-lead { text-align: center; }
 .contact-lead { color: var(--text-soft); }
 
-.means { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 1.4em; list-style: none; }
+.means { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; margin-top: 1.4em; list-style: none; }
 
 .contact-form,
 .sent,
@@ -465,6 +465,9 @@ html.intro .logo svg { opacity: 0; }
   transform-origin: 0 0;
   will-change: transform;
 }
+
+/* Une icône de contact (`ContactAnchor.astro`) : seule, blanche comme le texte, dans une cible de 44 px au moins. */
+.icon-link { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; color: var(--text); }
 
 /* ---------- pied de page ---------- */
 

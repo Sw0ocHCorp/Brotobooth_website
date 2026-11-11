@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { socialLabel, socialName, telHref } from "../worker/offer";
-import { hasNoHorizontalOverflow, smallTargets } from "./layout";
+import { expectIconLinks, hasNoHorizontalOverflow, smallTargets } from "./layout";
 import { TEST_SITE_KEY, eraseContacts, expectContact, fakeTurnstile, isTurnstile, offer, withSiteKey } from "./seed";
 
 /**
@@ -70,17 +70,17 @@ test("le menu mène à la section Contact, qui donne les moyens renseignés, et 
     "Une question sur la borne ou sur votre événement ? Écrivez-nous, nous vous répondons par e-mail.",
   );
 
-  const { phones, email, social } = offer.contact;
+  const { phones, social } = offer.contact;
   await expect(section(page).locator('a[href^="tel:"]:visible')).toHaveCount(phones.length);
   for (const { name, number } of phones) {
     await expect(section(page).getByRole("link", { name: `Appeler ${name}`, exact: true })).toHaveAttribute("href", telHref(number));
   }
-  await expect(section(page).locator('a[href^="mailto:"]:visible')).toHaveCount(email ? 1 : 0);
-  if (email) await expect(section(page).getByRole("link", { name: email, exact: true })).toHaveAttribute("href", `mailto:${email}`);
-  for (const url of social) {
-    const network = section(page).getByRole("link", { name: socialName(url), exact: true });
-    await expect(network).toHaveAttribute("href", url);
-    await expect(network).toHaveText(socialLabel(url));
+  // L'adresse e-mail reçoit les messages du formulaire : aucun lien e-mail parmi les moyens directs.
+  await expect(section(page).locator(".means").locator('a[href^="mailto:"]')).toHaveCount(0);
+  // WhatsApp et Instagram sont des icônes seules ; un autre réseau s'écrit court.
+  expect(await expectIconLinks(section(page).locator(".means"))).toBeGreaterThan(0);
+  for (const url of social.filter((link) => !link.includes("instagram.com"))) {
+    await expect(section(page).getByRole("link", { name: socialLabel(url), exact: true })).toHaveAttribute("href", url);
   }
   // Aucun moyen de joindre Brotobooth par Telegram.
   await expect(page.locator('a[href*="t.me"], a[href*="telegram"]')).toHaveCount(0);
@@ -339,4 +339,10 @@ test("la politique de confidentialité dit ce que devient un message", async ({ 
   const recipients = page.getByRole("region", { name: "Qui reçoit vos données" });
   await expect(recipients.getByRole("listitem").filter({ hasText: "Resend" })).toContainText("les messages que vous nous écrivez par le formulaire de contact");
   await expect(recipients.getByRole("listitem").filter({ hasText: "Telegram" })).toContainText("ne reçoit rien des messages que vous nous écrivez");
+  await expect(recipients.getByRole("listitem").filter({ hasText: "Gmail" })).toContainText(
+    "Gmail (Google) est la messagerie de Brotobooth : elle reçoit les messages du formulaire de contact.",
+  );
+  await expect(form).toContainText(
+    "Si vous nous écrivez sur WhatsApp ou sur Instagram, vos échanges passent par ces services et suivent leurs propres règles : le site n'en garde rien.",
+  );
 });

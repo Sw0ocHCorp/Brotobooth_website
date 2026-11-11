@@ -1,10 +1,11 @@
 ---
 import { contactLinks, offer } from "../../worker/offer";
+import ContactAnchor from "./ContactAnchor.astro";
 import ContactLine from "./ContactLine.astro";
 
 /**
  * « Contact » (`#contact`), la dernière section de l'accueil : les moyens directs renseignés dans `config/offer.json` (un
- * appel par fondateur, l'adresse e-mail, chaque réseau écrit court), chacun absent tant qu'il est vide, puis le formulaire
+ * appel par fondateur, WhatsApp et Instagram en icônes, tout autre réseau écrit court), chacun absent tant qu'il est vide, puis le formulaire
  * de `POST /api/contact`. Tous les textes sont ici ; `src/scripts/contact.ts` envoie le message, charge l'anti-robots au
  * premier champ touché et montre ce qui convient. Comme à la réservation, le message d'un champ refusé (`problem-<champ>`)
  * est sous lui, et le nom de chaque champ est celui du corps JSON. Le formulaire part caché et le script le montre une
@@ -41,11 +42,9 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
     {
       means.length > 0 && (
         <ul class="means">
-          {means.map(({ href, label, name }) => (
+          {means.map((link) => (
             <li>
-              <a class="btn ghost" href={href} aria-label={name}>
-                {label}
-              </a>
+              <ContactAnchor link={link} class="btn ghost" />
             </li>
           ))}
         </ul>

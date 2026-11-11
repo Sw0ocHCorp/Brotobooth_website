@@ -62,6 +62,8 @@ const prints = (page: Page) => page.getByRole("group", { name: "Nombre de tirage
 
 /** Une phrase qui invite à nous contacter n'est écrite que si l'offre dit comment. */
 const hasContact = Boolean(offer.contact.phone || offer.contact.email);
+/** Comment `ContactLine` invite à nous joindre : par téléphone s'il y en a un, sinon par e-mail. */
+const reachUs = offer.contact.phone ? "appelez-nous" : "écrivez-nous";
 
 /** Ce que le client a saisi est toujours là. */
 async function expectKept(page: Page, who: ReturnType<typeof client>) {
@@ -491,7 +493,7 @@ test("les dates trop proches sont inactives, et la page dit pourquoi", async ({ 
   // Des jours grisés sans un mot laisseraient croire que tout est pris, ou que le site est en panne.
   const why = page.getByText(new RegExp(`En ligne, une date se réserve au moins ${offer.minLeadDays}\\sjours à l'avance\\.`));
   await expect(why).toBeVisible();
-  await expect(why).toContainText(hasContact ? "Si c'est plus urgent, appelez-nous" : /avance\.\s*$/);
+  await expect(why).toContainText(hasContact ? `Si c'est plus urgent, ${reachUs}` : /avance\.\s*$/);
   await expectContact(why);
 
   // Le calendrier s'ouvre sur le mois de la première date possible, et ne remonte pas avant.
@@ -987,7 +989,7 @@ test.describe("sans JavaScript", () => {
     await page.goto("/reserver");
     const notice = page.getByText("Le calendrier ne s'affiche pas sur votre navigateur. Essayez-en un autre.");
     await expect(notice).toBeVisible();
-    await expect(notice).toContainText(hasContact ? "Pour réserver sans le calendrier, appelez-nous" : /autre\.\s*$/);
+    await expect(notice).toContainText(hasContact ? `Pour réserver sans le calendrier, ${reachUs}` : /autre\.\s*$/);
     await expect(notice).not.toContainText("JavaScript");
     await expectContact(notice);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Choisissez votre date");
