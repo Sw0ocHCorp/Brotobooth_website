@@ -12,6 +12,7 @@ Un visiteur qui a une question, sans vouloir réserver tout de suite, doit pouvo
 2. **RGPD respecté, sans exception** (exigence du propriétaire) : données minimales, information au moment de la collecte, durée de conservation limitée et appliquée automatiquement, aucun transfert inutile, droits exerçables (section 4).
 3. **Rien d'inventé.** Chaque numéro, adresse ou lien n'apparaît que s'il est renseigné dans `config/offer.json`.
 4. **Pas un outil de spam.** Le formulaire n'envoie jamais d'e-mail au visiteur ni à une adresse qu'il saisit.
+5. **Telegram reste l'outil du propriétaire.** Il sert uniquement au site et à la borne pour prévenir le propriétaire et lui permettre d'agir. Aucun visiteur ne peut le joindre par Telegram : ni lien, ni compte, ni numéro Telegram sur le site, et aucun message de visiteur n'y est transmis.
 
 ## 2. Ce que voit le visiteur
 
@@ -35,7 +36,7 @@ Un visiteur qui a une question, sans vouloir réserver tout de suite, doit pouvo
 ## 3. Ce que reçoit le propriétaire
 
 - **Un e-mail** (modèle `owner_contact`) : objet « Message de {nom} », le message en premier, puis nom, e-mail, téléphone et date de réception. « Répondre » écrit au visiteur (`reply_to` = son adresse). En bas : « Ce message est effacé du site au bout de 12 mois : supprimez cet e-mail à la même échéance. »
-- **Pas de Telegram** pour les messages. Si l'e-mail échoue trois fois, l'alerte de panne existante prévient le propriétaire avec, pour seul contenu : « Un message de contact n'a pas pu vous être envoyé par e-mail. Lisez-le dans l'administration, zone Messages. » Aucun nom, adresse ni texte du message ne part chez Telegram.
+- **Pas de Telegram** pour les messages (critère 5). Si l'e-mail échoue trois fois, le bot Telegram du site prévient le propriétaire, par l'alerte de panne qui existe déjà pour les réservations, avec pour seul contenu : « Un message de contact n'a pas pu vous être envoyé par e-mail. Lisez-le dans l'administration, zone Messages. » Aucun nom, adresse ni texte du message ne part chez Telegram.
 - **Aucun e-mail au visiteur**, ni accusé de réception ni copie (critère 4).
 - **Administration, zone « Messages »** : les messages des 12 derniers mois, du plus récent au plus ancien (date, nom, e-mail, téléphone, message, « Envoyé par e-mail » ou « En attente d'envoi »), chacun avec « Effacer », qui supprime le message et ses envois en attente après confirmation (« Effacer définitivement ce message ? Cela ne se défait pas. »). C'est ainsi que le propriétaire répond à une demande d'accès ou d'effacement.
 
