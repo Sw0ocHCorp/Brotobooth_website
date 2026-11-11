@@ -122,6 +122,7 @@ Tant qu'un contenu manque, `node scripts/check-launch.mjs` refuse la publication
 - renseigner chaque `[À compléter]` des pages légales (informations de l'entreprise, zone et frais de déplacement, médiateur, conservation des photos…) ;
 - faire valider les trois pages légales par un professionnel, puis retirer le commentaire de brouillon de `src/layouts/Legal.astro` ;
 - confirmer la présentation des fondateurs : la citation « Une borne construite de nos mains, que nous venons installer chez vous. » et la phrase « Nous avons construit cette borne nous-mêmes, du meuble en bois au logiciel. Nous l'installons chez vous, sur le lieu de votre événement. » ;
+- si la zone de déplacement change : modifier `zone.border` dans `config/offer.json`, puis lancer `npm run zone` (réseau nécessaire : il relit les contours officiels sur geo.api.gouv.fr, réécrit `src/generated/zone.json` et liste les communes retenues) et committer le fichier ; ni le build, ni le déploiement, ni les tests ne lancent ce script ;
 - retirer de `wrangler.jsonc` les réglages d'essai `PAYMENT_MODE` et `FAKE_GATEWAYS`, s'ils y figurent.
 
 ## 11. La publication

@@ -17,6 +17,7 @@
     "e2e": "playwright test",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p src/scripts && tsc --noEmit -p e2e",
     "demo": "node scripts/demo.mjs",
+    "zone": "node scripts/build-zone.mjs",
     "demo:reset": "rm -rf .wrangler/demo",
     "deploy": "node scripts/check-launch.mjs && npm test && npx playwright test --project=chromium-telephone --project=chromium-ordinateur && astro build && wrangler deploy"
   },
