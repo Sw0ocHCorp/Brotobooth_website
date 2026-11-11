@@ -223,3 +223,58 @@ export async function cleanup(request: APIRequestContext): Promise<void> {
     else if (["awaiting_deposit", "confirmed", "blocked"].includes(status)) await write(request, "post", `${ADMIN}/${id}/cancel`, {});
   }
 }
+
+/** Une zone donne le contact de l'offre (`ContactLine`) : un lien par moyen renseigné, aucun pour un moyen encore vide. */
+export async function expectContact(zone: Locator): Promise<void> {
+  const { phone, email } = offer.contact;
+  await expect(zone.locator('a[href^="tel:"]')).toHaveCount(phone ? 1 : 0);
+  await expect(zone.locator('a[href^="mailto:"]')).toHaveCount(email ? 1 : 0);
+  if (phone) await expect(zone.getByRole("link", { name: phone })).toBeVisible();
+  if (email) await expect(zone.getByRole("link", { name: email })).toBeVisible();
+}
+
+/** Efface les messages de contact que les essais ont envoyés : la limite de messages par connexion ne gêne aucun test. */
+export async function eraseContacts(request: APIRequestContext): Promise<void> {
+  const { messages } = (await (await request.get("/api/admin/contact")).json()) as { messages: { id: string }[] };
+  for (const { id } of messages) await request.delete(`/api/admin/contact/${id}`, { data: {}, headers: { Origin: ORIGIN } });
+}
+
+// ---------- l'anti-robots ----------
+
+/** La clé de test de Cloudflare : la page servie la reçoit à la place de la clé vide de la construction d'essai. */
+export const TEST_SITE_KEY = "1x00000000000000000000AA";
+export const isTurnstile = (url: URL) => url.hostname === "challenges.cloudflare.com";
+
+/**
+ * La page `path` servie avec `anchor` remplacé par `replacement`. L'ancre est cherchée d'abord : si la page a changé, le test
+ * échoue en le disant, au lieu d'attendre un élément qui n'arrivera jamais.
+ */
+export async function servePage(page: Page, path: string, anchor: string, replacement: string): Promise<void> {
+  const html = await (await page.request.get(path)).text();
+  expect(html.includes(anchor), `${path} ne contient plus « ${anchor} » : le test ne peut pas modifier la page`).toBe(true);
+  await page.route(
+    (url) => url.pathname === path,
+    async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body: (await response.text()).replace(anchor, replacement) });
+    },
+  );
+}
+
+/** La page `path` telle qu'une construction avec une clé anti-robots la servirait : la clé de test posée sur le widget. */
+export const withSiteKey = (page: Page, path: string) => servePage(page, path, "data-sitekey>", `data-sitekey="${TEST_SITE_KEY}">`);
+
+/**
+ * Un faux script Turnstile, pour ne dépendre ni du réseau ni de Cloudflare : le widget rend « widget-1 » et donne le
+ * jeton « jeton-de-test ». `failOnce` : la première lecture du jeton lève, comme un widget en panne.
+ */
+export const fakeTurnstile = ({ failOnce = false } = {}) => `
+  let failed = ${!failOnce};
+  window.turnstile = {
+    render: () => "widget-1",
+    getResponse: () => {
+      if (!failed) { failed = true; throw new Error("Turnstile en panne"); }
+      return "jeton-de-test";
+    },
+    reset: () => {},
+  };`;

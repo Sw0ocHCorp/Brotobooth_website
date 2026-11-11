@@ -1,16 +1,12 @@
 ---
-import { offer, telHref } from "../../worker/offer";
+import { contactLinks, offer } from "../../worker/offer";
 
 /**
- * Le pied de page : les moyens de contact renseignés dans `config/offer.json`, un champ vide n'apparaissant pas,
- * puis les pages légales.
+ * Le pied de page : les moyens de contact renseignés dans `config/offer.json`, un champ vide n'apparaissant pas, puis les
+ * pages légales. Un réseau s'écrit court, comme dans la section « Contact » (« @compte »), et son nom dit aussi lequel
+ * (« @compte sur Instagram »).
  */
-const { phones, email, social } = offer.contact;
-const contacts = [
-  ...phones.map(({ name, number }) => ({ href: telHref(number), label: `${name} · ${number}` })),
-  ...(email ? [{ href: `mailto:${email}`, label: email }] : []),
-  ...social.map((url) => ({ href: url, label: url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") })),
-];
+const contacts = contactLinks(offer.contact, ({ name, number }) => `${name} · ${number}`);
 const LEGAL = [
   { href: "/mentions-legales", label: "Mentions légales" },
   { href: "/cgv", label: "CGV" },
@@ -19,6 +15,6 @@ const LEGAL = [
 ---
 
 <footer class="foot">
-  {contacts.length > 0 && <address>{contacts.map(({ href, label }) => <a href={href}>{label}</a>)}</address>}
+  {contacts.length > 0 && <address>{contacts.map(({ href, label, name }) => <a href={href} aria-label={name}>{label}</a>)}</address>}
   <nav aria-label="Informations légales">{LEGAL.map(({ href, label }) => <a href={href}>{label}</a>)}</nav>
 </footer>

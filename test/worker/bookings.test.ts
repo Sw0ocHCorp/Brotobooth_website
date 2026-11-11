@@ -13,7 +13,7 @@ import {
   type BookingAction,
   type BookingStatus,
 } from "../../worker/bookings";
-import { buildOffer, currentTier, isBookable, normalTier, offer, planById, plansOf, priceOf, pricesBody, telHref, type OfferConfig, type Tier } from "../../worker/offer";
+import { buildOffer, currentTier, isBookable, normalTier, offer, planById, plansOf, priceOf, pricesBody, socialLabel, socialName, telHref, type OfferConfig, type Tier } from "../../worker/offer";
 
 describe("transitions de statut", () => {
   const transitions: [BookingStatus, BookingAction, BookingStatus | null][] = [
@@ -256,5 +256,24 @@ describe("contact phones", () => {
 
   it("telHref keeps digits and the plus sign", () => {
     expect(telHref("+33 6 12-34")).toBe("tel:+3361234");
+  });
+});
+
+describe("social links", () => {
+  it.each(["https://www.instagram.com/brotobooth/", "https://instagram.com/brotobooth", "https://www.instagram.com/brotobooth?igsh=abc"])(
+    "socialLabel writes an Instagram profile %s as its account",
+    (url) => expect(socialLabel(url)).toBe("@brotobooth"),
+  );
+
+  it.each([
+    ["https://exemple.fr/page", "exemple.fr"],
+    ["https://www.facebook.com/brotobooth", "facebook.com"],
+    // Une publication, et non un compte : le domaine, comme pour tout autre lien.
+    ["https://www.instagram.com/p/C0deX/", "instagram.com"],
+  ])("socialLabel writes any other link %s as its domain", (url, label) => expect(socialLabel(url)).toBe(label));
+
+  it("socialName also names the network of an Instagram account", () => {
+    expect(socialName("https://www.instagram.com/brotobooth/")).toBe("@brotobooth sur Instagram");
+    expect(socialName("https://exemple.fr/page")).toBe("exemple.fr");
   });
 });

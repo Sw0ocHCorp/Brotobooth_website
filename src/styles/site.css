@@ -101,11 +101,24 @@ html.js:has(#hero) .bar:not(.veiled) { background: none; -webkit-backdrop-filter
   opacity: .9;
 }
 
-/* Les plus petits téléphones (320 à 370 px) : un peu plus serrée, la barre tient toujours sur une ligne. */
-@media (max-width: 370px) {
+/* Sur un téléphone, les quatre liens du menu tiennent à côté du logo, sur une ligne : la barre est fixe, ce qui en
+   dépasserait serait coupé sans faire défiler la page. Plus l'écran est étroit, plus elle se resserre. */
+@media (max-width: 420px) {
   .bar { gap: 8px; }
-  .bar nav { gap: 10px; font-size: 14px; }
-  .logo svg { width: 84px; }
+  .bar nav { gap: 8px; font-size: 14px; }
+  .logo svg { width: 76px; }
+}
+
+@media (max-width: 370px) {
+  .bar nav { gap: 6px; }
+  .logo svg { width: 64px; }
+}
+
+/* Les plus petits téléphones (320 à 340 px). */
+@media (max-width: 340px) {
+  .bar { padding: 0 12px; }
+  .bar nav { font-size: 13px; }
+  .logo svg { width: 56px; }
 }
 
 /* ---------- l'ouverture ---------- */
@@ -347,6 +360,94 @@ main { overflow-x: clip; }
 
 .missing p { max-width: 32em; }
 
+/* ---------- les formulaires ---------- */
+/* Ceux de la réservation et du contact : un libellé au-dessus de chaque champ, son message dessous, en blanc avec le
+   citron de l'avertissement en marge ; un envoi qui n'a pas abouti s'explique dans un encadré citron, près du bouton. */
+
+.btn:disabled { opacity: .35; cursor: default; }
+
+.fld { margin-bottom: 8px; }
+.fld label { display: block; font-size: 14px; color: var(--text-soft); }
+
+.fld input,
+.fld select,
+.fld textarea {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+}
+
+.fld textarea { resize: vertical; }
+.fld [aria-invalid="true"] { border-color: var(--warn); }
+
+#turnstile:not(:empty) { margin: 6px 0 10px; }
+
+.problem {
+  margin-top: 4px;
+  padding-left: 10px;
+  border-left: 3px solid var(--warn);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.problem:focus { outline: none; }
+
+.notice {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--warn-line);
+  border-radius: 14px;
+  background: var(--warn-soft);
+  font-size: 14px;
+}
+
+.notice:focus { outline: none; }
+.notice .btn { margin-top: 8px; }
+
+/* Les liens au milieu d'une phrase (le contact qui accompagne un message, l'information sur les données) : 44 px de haut
+   pour le doigt, soulignés pour se voir. */
+.contact a,
+.contact-section p a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- contact ---------- */
+/* La dernière section, centrée comme l'appel qui la précède : le titre, les moyens directs en boutons à contour, puis le
+   formulaire, dont l'envoi est le seul bouton plein ; le remerciement prend sa place une fois le message parti. Son haut
+   l'écarte de cet appel : leurs deux boutons roses ne tiennent pas ensemble dans un écran de téléphone ou d'ordinateur
+   courant (812 et 800 px de haut, ceux des essais). */
+.contact-section { padding-top: clamp(80px, 10vw, 130px); background: var(--bg-b); }
+.contact-in { max-width: 640px; margin: auto; }
+.contact-in > h2,
+.contact-lead { text-align: center; }
+.contact-lead { color: var(--text-soft); }
+
+.means { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 1.4em; list-style: none; }
+
+.contact-form,
+.sent,
+.contact-in > .no-js { margin-top: 48px; }
+
+.contact-form .btn { margin-top: 8px; }
+.privacy { margin-top: 10px; font-size: 14px; color: var(--text-soft); }
+.contact-in > .no-js { text-align: center; color: var(--text-soft); }
+
+.sent { padding: 18px 20px; border-radius: 14px; background: var(--row); font-weight: 600; text-align: center; }
+.sent:focus { outline: none; }
+
 /* ---------- l'ouverture du logo ---------- */
 /* scripts/logo-intro.ts, le temps de l'animation (html.intro) : le contenu qu'elle révèle (.reveal) et le logo plat de
    la barre, qu'elle dessine en vol, sont cachés. La surcouche couvre l'écran et prend les touchers ; le logo y est
@@ -382,3 +483,16 @@ html.intro .logo svg { opacity: 0; }
 .foot address,
 .foot nav { display: flex; flex-wrap: wrap; gap: 8px 22px; font-style: normal; }
 .foot a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+
+/* ---------- sans JavaScript ---------- */
+/* Ce qui ne marcherait pas disparaît (.needs-js), et la page dit comment faire sans (.no-js) ; avec JavaScript, l'inverse.
+   Un navigateur qui ignore ces requêtes voit les deux jusqu'à ce que le script de la page retire .no-js. Pas de
+   <noscript> : un navigateur aux scripts coupés par un outil (celui des tests, par exemple) peut ne pas l'afficher.
+   `:root` l'emporte sur l'affichage que chaque bloc se donne, quelle que soit la feuille qui le donne. */
+@media (scripting: none) {
+  :root .needs-js { display: none; }
+}
+
+@media (scripting: enabled) {
+  :root .no-js { display: none; }
+}

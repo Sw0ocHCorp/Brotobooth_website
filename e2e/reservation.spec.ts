@@ -6,6 +6,7 @@ import { hasNoHorizontalOverflow, smallTargets } from "./layout";
 import {
   FIRST_PLAN,
   SECOND_PLAN,
+  TEST_SITE_KEY,
   addDays,
   boothButton,
   choosePlan,
@@ -13,8 +14,11 @@ import {
   client,
   discountText,
   euros,
+  expectContact,
+  fakeTurnstile,
   fillDetails,
   isBookable,
+  isTurnstile,
   isoDate,
   launchBody,
   refillText,
@@ -25,7 +29,9 @@ import {
   plansOf,
   reachDetails,
   seed,
+  servePage,
   showDay,
+  withSiteKey,
 } from "./seed";
 
 /** `/reserver` : la date, la formule et les coordonnées, dans la carte posée sur la vidéo de la borne (spec, sections 4 et 7). */
@@ -41,9 +47,6 @@ const FILM = "/media/borne-boucle.mp4";
 /** La version nette des grands écrans (1080p) ; FILM reste celle des téléphones, sous 3 Mo. */
 const FILM_LARGE = "/media/borne-boucle-1080.mp4";
 const LARGE_SCREEN = "(min-width: 1024px)";
-/** La clé de test de Cloudflare : la page servie la reçoit à la place de la clé vide de la construction d'essai. */
-const TEST_SITE_KEY = "1x00000000000000000000AA";
-const isTurnstile = (url: URL) => url.hostname === "challenges.cloudflare.com";
 
 const DAY = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 /** « samedi 12 décembre 2026 ». */
@@ -56,49 +59,6 @@ const confirmed = (page: Page) => page.getByRole("heading", { name: "Merci, votr
 const goOn = (page: Page) => page.getByRole("button", { name: "Continuer" });
 const booths = (page: Page) => page.getByRole("group", { name: "Votre borne" });
 const prints = (page: Page) => page.getByRole("group", { name: "Nombre de tirages" });
-
-/** Une zone donne le contact de l'offre : un lien par moyen renseigné, aucun pour un moyen encore vide. */
-async function expectContact(zone: Locator) {
-  const { phone, email } = offer.contact;
-  await expect(zone.locator('a[href^="tel:"]')).toHaveCount(phone ? 1 : 0);
-  await expect(zone.locator('a[href^="mailto:"]')).toHaveCount(email ? 1 : 0);
-  if (phone) await expect(zone.getByRole("link", { name: phone })).toBeVisible();
-  if (email) await expect(zone.getByRole("link", { name: email })).toBeVisible();
-}
-
-/**
- * `/reserver` servie avec `anchor` remplacé par `replacement`. L'ancre est cherchée d'abord : si la page a changé, le test
- * échoue en le disant, au lieu d'attendre un élément qui n'arrivera jamais.
- */
-async function serveReserver(page: Page, anchor: string, replacement: string) {
-  const html = await (await page.request.get("/reserver")).text();
-  expect(html.includes(anchor), `/reserver ne contient plus « ${anchor} » : le test ne peut pas modifier la page`).toBe(true);
-  await page.route(
-    (url) => url.pathname === "/reserver",
-    async (route) => {
-      const response = await route.fetch();
-      await route.fulfill({ response, body: (await response.text()).replace(anchor, replacement) });
-    },
-  );
-}
-
-/** `/reserver` telle qu'une construction avec une clé anti-robots la servirait : la clé de test posée sur le widget. */
-const withSiteKey = (page: Page) => serveReserver(page, "data-sitekey>", `data-sitekey="${TEST_SITE_KEY}">`);
-
-/**
- * Un faux script Turnstile, pour ne dépendre ni du réseau ni de Cloudflare : le widget rend « widget-1 » et donne le
- * jeton « jeton-de-test ». `failOnce` : la première lecture du jeton lève, comme un widget en panne.
- */
-const fakeTurnstile = ({ failOnce = false } = {}) => `
-  let failed = ${!failOnce};
-  window.turnstile = {
-    render: () => "widget-1",
-    getResponse: () => {
-      if (!failed) { failed = true; throw new Error("Turnstile en panne"); }
-      return "jeton-de-test";
-    },
-    reset: () => {},
-  };`;
 
 /** Une phrase qui invite à nous contacter n'est écrite que si l'offre dit comment. */
 const hasContact = Boolean(offer.contact.phone || offer.contact.email);
@@ -213,7 +173,7 @@ test("la borne vient avant les tirages : une borne à venir se voit sans se choi
 test("choisir une autre borne efface le nombre de tirages choisi", async ({ page }) => {
   // Une seconde borne réservable, posée dans la page servie : l'offre du site n'en a peut-être qu'une.
   const other = '<button type="button" class="choice" data-booth="borne-d-essai" aria-pressed="false"><b>Borne d\'essai</b></button>';
-  await serveReserver(page, "Votre borne</p>", `Votre borne</p>${other}`);
+  await servePage(page, "/reserver", "Votre borne</p>", `Votre borne</p>${other}`);
   await page.goto("/reserver");
   await pickFreeDate(page);
   await goOn(page).click();
@@ -233,7 +193,7 @@ test("choisir une autre borne efface le nombre de tirages choisi", async ({ page
 
 // Firefox garde d'une visite à l'autre l'état `disabled` qu'un script a changé : la page ne s'y fie pas, le script le rétablit.
 test("« Continuer » de la formule reste désactivé sans formule, même si la page servie ne le désactive pas", async ({ page }) => {
-  await serveReserver(page, 'id="go-plan" disabled>', 'id="go-plan">');
+  await servePage(page, "/reserver", 'id="go-plan" disabled>', 'id="go-plan">');
   await page.goto("/reserver");
   await pickFreeDate(page);
   await goOn(page).click();
@@ -729,7 +689,7 @@ test("le bouton Précédent du navigateur revient à l'étape d'avant, sans rien
 });
 
 test("si le script anti-robots ne se charge pas, un refus le redemande et l'envoi aboutit", async ({ page }) => {
-  await withSiteKey(page);
+  await withSiteKey(page, "/reserver");
   let scripts = 0;
   await page.route(isTurnstile, (route) =>
     ++scripts === 1 ? route.abort("internetdisconnected") : route.fulfill({ contentType: "text/javascript", body: fakeTurnstile() }),
@@ -761,7 +721,7 @@ test("si le script anti-robots ne se charge pas, un refus le redemande et l'envo
 });
 
 test("une panne pendant l'envoi laisse le formulaire utilisable", async ({ page }) => {
-  await withSiteKey(page);
+  await withSiteKey(page, "/reserver");
   await page.route(isTurnstile, (route) => route.fulfill({ contentType: "text/javascript", body: fakeTurnstile({ failOnce: true }) }));
   let posts = 0;
   await page.route(REQUESTS, (route) => {

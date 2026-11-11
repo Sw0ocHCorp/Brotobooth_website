@@ -3,11 +3,11 @@ import Logo from "../../logo-blanc.svg";
 
 /**
  * La barre du site, fixée en haut : le logo, qui ramène à l'accueil, puis le menu. Sur les pages de la vitrine (`home`),
- * le menu mène à la borne, aux formules et à la réservation ; sur la réservation (`reserve`), il se réduit à « Accueil »
- * et la barre reste claire au-dessus de la vidéo, jusqu'à ce que la carte défile sous elle. Ailleurs, elle est voilée
- * pour rester lisible au-dessus des sections ; sur l'accueil avec JavaScript, elle part claire au-dessus de l'ouverture
- * (`#hero`, le CSS le sait dès le premier affichage par `html.js`), et son script la voile (`veiled`) quand elle la
- * quitte. Le menu (`.reveal`) apparaît avec le contenu à la fin de l'animation du logo.
+ * le menu mène à la borne, aux formules, au contact et à la réservation ; sur la réservation (`reserve`), il se réduit à
+ * « Accueil » et la barre reste claire au-dessus de la vidéo, jusqu'à ce que la carte défile sous elle. Ailleurs, elle
+ * est voilée pour rester lisible au-dessus des sections ; sur l'accueil avec JavaScript, elle part claire au-dessus de
+ * l'ouverture (`#hero`, le CSS le sait dès le premier affichage par `html.js`), et son script la voile (`veiled`) quand
+ * elle la quitte. Le menu (`.reveal`) apparaît avec le contenu à la fin de l'animation du logo.
  */
 interface Props {
   variant: "home" | "reserve";
@@ -18,6 +18,7 @@ const MENUS = {
   home: [
     { href: "/#borne", label: "La borne" },
     { href: "/#formules", label: "Formules" },
+    { href: "/#contact", label: "Contact" },
     { href: "/reserver", label: "Réserver" },
   ],
   reserve: [{ href: "/", label: "Accueil" }],

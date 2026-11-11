@@ -69,6 +69,42 @@ export type OfferConfig = Omit<Offer, "plans" | "contact"> & {
 /** Le lien `tel:` d'un numéro écrit à la française : seuls les chiffres et le `+` restent. */
 export const telHref = (number: string): string => `tel:${number.replace(/[^\d+]/g, "")}`;
 
+/** Le domaine d'un lien, sans `www.`. */
+const domainOf = (url: URL): string => url.hostname.replace(/^www\./, "");
+
+/** Le compte d'un lien vers un profil Instagram (`instagram.com/compte`, avec ou sans `www.`, `/` final ou paramètres) ; sinon `undefined`. */
+const instagramAccount = (url: URL): string | undefined =>
+  domainOf(url) === "instagram.com" ? /^\/([\w.]+)\/?$/.exec(url.pathname)?.[1] : undefined;
+
+/** Un lien de `contact.social` écrit court : « @compte » pour un compte Instagram, sinon son domaine (« exemple.fr »). */
+export function socialLabel(link: string): string {
+  const url = new URL(link);
+  const account = instagramAccount(url);
+  return account ? `@${account}` : domainOf(url);
+}
+
+/** Le nom accessible d'un lien de `contact.social` : son libellé court, avec le réseau pour un compte Instagram (« @compte sur Instagram »). */
+export const socialName = (link: string): string =>
+  instagramAccount(new URL(link)) ? `${socialLabel(link)} sur Instagram` : socialLabel(link);
+
+/** Un moyen de nous joindre : sa cible, son texte, et pour un réseau son nom accessible (`aria-label`), qui peut en dire plus. */
+export interface ContactLink {
+  href: string;
+  label: string;
+  name?: string;
+}
+
+/**
+ * Les moyens de nous joindre que `contact` renseigne, dans l'ordre : chaque fondateur (écrit par `phoneLabel`), l'adresse
+ * e-mail, puis chaque réseau écrit court. Un moyen vide n'en donne aucun. La section « Contact » et le pied de page les
+ * écrivent ainsi.
+ */
+export const contactLinks = (contact: Offer["contact"], phoneLabel: (phone: Phone) => string): ContactLink[] => [
+  ...contact.phones.map((phone) => ({ href: telHref(phone.number), label: phoneLabel(phone) })),
+  ...(contact.email ? [{ href: `mailto:${contact.email}`, label: contact.email }] : []),
+  ...contact.social.map((url) => ({ href: url, label: socialLabel(url), name: socialName(url) })),
+];
+
 const isCents = (value: unknown): boolean => Number.isInteger(value) && (value as number) >= 0;
 
 /** Le libellé de la recharge, le même pour le client et le propriétaire : site, e-mails, agenda et administration. */

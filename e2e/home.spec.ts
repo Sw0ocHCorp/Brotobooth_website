@@ -1,14 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { normalTier, pricesBody, telHref, type PricesBody } from "../worker/offer";
+import { normalTier, pricesBody, socialLabel, socialName, telHref, type PricesBody } from "../worker/offer";
 import { placesLine } from "../src/scripts/prices";
 import { discountText, euros, isBookable, launchBody, normalPrice, offer, plansOf, refillText } from "./seed";
 
 const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
 const CLEAR = "rgba(0, 0, 0, 0)";
-const SECTIONS = ["Ce que vivent vos invités", "Un combiné sur le côté ?", "Les formules", "Une date en tête ?"];
+const SECTIONS = ["Ce que vivent vos invités", "Un combiné sur le côté ?", "Les formules", "Une date en tête ?", "Contact"];
 
 const menu = (page: Page) => page.getByRole("navigation", { name: "Menu principal" });
 
@@ -45,12 +45,13 @@ test.describe("sans JavaScript", () => {
   });
 });
 
-test("le menu mène aux trois destinations", async ({ page }) => {
+test("le menu mène aux quatre destinations", async ({ page }) => {
   await page.goto("/");
-  await expect(menu(page).getByRole("link")).toHaveText(["La borne", "Formules", "Réserver"]);
+  await expect(menu(page).getByRole("link")).toHaveText(["La borne", "Formules", "Contact", "Réserver"]);
   await expect(page.getByRole("link", { name: "Réserver" })).toHaveAttribute("href", "/reserver");
   await expect(menu(page).getByRole("link", { name: "La borne" })).toHaveAttribute("href", "/#borne");
   await expect(menu(page).getByRole("link", { name: "Formules" })).toHaveAttribute("href", "/#formules");
+  await expect(menu(page).getByRole("link", { name: "Contact" })).toHaveAttribute("href", "/#contact");
   await expect(page.getByRole("banner").getByRole("link", { name: "Brotobooth, accueil" })).toHaveAttribute("href", "/");
 
   // La section atteinte par le menu commence sous la barre, qui reste à l'écran.
@@ -136,10 +137,10 @@ test("l'accueil parle à celui qui réserve", async ({ page }) => {
 
 test("au plus un bouton rose par écran", async ({ page }) => {
   await page.goto("/");
-  // Les deux boutons roses de la page, l'ouverture et la dernière section : blanc sur rose ne passe le contraste
-  // qu'en grand texte, donc 19 px au moins et en gras.
-  const rose = page.getByRole("link", { name: "Choisir une date" });
-  await expect(rose).toHaveCount(2);
+  // Les trois boutons roses de la page, ceux de l'ouverture et de l'avant-dernière section, puis l'envoi d'un message :
+  // blanc sur rose ne passe le contraste qu'en grand texte, donc 19 px au moins et en gras.
+  const rose = page.getByRole("link", { name: "Choisir une date" }).or(page.getByRole("button", { name: "Envoyer le message" }));
+  await expect(rose).toHaveCount(3);
   for (const button of await rose.all()) {
     const style = await button.evaluate((element) => {
       const { backgroundColor, fontSize, fontWeight } = getComputedStyle(element);
@@ -154,6 +155,12 @@ test("au plus un bouton rose par écran", async ({ page }) => {
   for (let top = 0; top < height; top += step) {
     await page.evaluate((y) => scrollTo(0, y), top);
     expect(await roseButtonsInView(page), `fenêtre à ${top} px`).toBeLessThanOrEqual(1);
+  }
+  // Et quelle que soit la position de la page : d'un bouton rose au suivant, il y a plus d'un écran.
+  const boxes = (await Promise.all((await rose.all()).map((button) => button.boundingBox()))).sort((a, b) => a!.y - b!.y);
+  const screen = page.viewportSize()!.height;
+  for (let i = 1; i < boxes.length; i++) {
+    expect(boxes[i]!.y - (boxes[i - 1]!.y + boxes[i - 1]!.height), `entre les boutons roses ${i} et ${i + 1}`).toBeGreaterThan(screen);
   }
 });
 
@@ -171,9 +178,27 @@ test("aucune couleur de marque dans le texte", async ({ page }) => {
 
 test("aucun débordement horizontal, sur téléphone comme sur ordinateur, et cibles de 44 px", async ({ page }) => {
   await page.goto("/");
-  await expect(menu(page).getByRole("link")).toHaveCount(3);
+  await expect(menu(page).getByRole("link")).toHaveCount(4);
   expect(await hasNoHorizontalOverflow(page)).toBe(true);
   expect(await smallTargets(page.locator("body"))).toEqual([]);
+});
+
+// La barre est fixe : ce qui en dépasse ne fait pas défiler la page, il est coupé. Les quatre liens du menu tiennent à côté
+// du logo, du plus petit téléphone (320 px) aux plus courants.
+test("le menu tient entier dans la barre, sur les téléphones étroits", async ({ page }) => {
+  for (const width of [320, 360, 375, 414]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    const links = menu(page).getByRole("link");
+    await expect(links).toHaveCount(4);
+    const logo = (await page.getByRole("banner").getByRole("link", { name: "Brotobooth, accueil" }).boundingBox())!;
+    for (const link of await links.all()) {
+      const box = (await link.boundingBox())!;
+      expect(box.x, `${await link.textContent()} à ${width} px`).toBeGreaterThanOrEqual(logo.x + logo.width);
+      expect(box.x + box.width, `${await link.textContent()} à ${width} px`).toBeLessThanOrEqual(width);
+      expect(box.width, `${await link.textContent()} à ${width} px`).toBeGreaterThanOrEqual(44);
+    }
+  }
 });
 
 test("l'accueil et la page introuvable passent le contrôle d'accessibilité automatique", async ({ page }) => {
@@ -197,14 +222,19 @@ test("le pied de page donne le contact renseigné et les pages légales", async 
     await expect(footer.getByRole("link", { name: `${name} · ${number}` })).toHaveAttribute("href", telHref(number));
   }
   if (email) await expect(footer.getByRole("link", { name: email })).toHaveAttribute("href", `mailto:${email}`);
-  for (const url of social) await expect(footer.locator(`a[href="${url}"]`)).toBeVisible();
+  // Un réseau s'écrit court (« @compte » pour un compte Instagram), et son nom dit aussi lequel.
+  for (const url of social) {
+    const network = footer.getByRole("link", { name: socialName(url), exact: true });
+    await expect(network).toHaveAttribute("href", url);
+    await expect(network).toHaveText(socialLabel(url));
+  }
 });
 
 test("une page 404 ramène à l'accueil", async ({ page }) => {
   const response = await page.goto("/cette-page-n-existe-pas");
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Cette page n'existe pas");
-  await expect(menu(page).getByRole("link")).toHaveText(["La borne", "Formules", "Réserver"]);
+  await expect(menu(page).getByRole("link")).toHaveText(["La borne", "Formules", "Contact", "Réserver"]);
   await page.getByRole("main").getByRole("link", { name: "Retour à l'accueil" }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Réservez votre photobooth");

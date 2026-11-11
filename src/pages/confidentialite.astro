@@ -4,14 +4,16 @@ import Legal from "../layouts/Legal.astro";
 import { offer } from "../../worker/offer";
 
 const { email } = offer.contact;
+/** Les messages qui peuvent partir d'une même connexion en 24 h : la même limite que les demandes de réservation. */
+const perConnection = offer.maxPerIpPer24h;
 ---
 
 <Legal
   title="Politique de confidentialité"
-  description="Les données que nous recueillons quand vous réservez, pourquoi, combien de temps nous les gardons, et qui les reçoit."
+  description="Les données que nous recueillons quand vous réservez ou nous écrivez, pourquoi, combien de temps nous les gardons, et qui les reçoit."
 >
   <h1>Politique de confidentialité</h1>
-  <p class="meta">Ce que nous faisons de vos données quand vous réservez une date, et vos droits.</p>
+  <p class="meta">Ce que nous faisons de vos données quand vous réservez une date ou nous envoyez un message, et vos droits.</p>
 
   <section aria-labelledby="responsable">
     <h2 id="responsable">Qui est responsable de vos données</h2>
@@ -82,23 +84,55 @@ const { email } = offer.contact;
       </li>
       <li>
         <strong>Resend</strong> envoie nos e-mails : le récapitulatif de votre demande, le lien de paiement de l'acompte et les rappels. Il
-        reçoit votre adresse e-mail et le contenu des messages, et les traite dans l'Union européenne.
+        reçoit votre adresse e-mail et le contenu des messages, et les traite dans l'Union européenne. Il nous transmet aussi, par e-mail,
+        les messages que vous nous écrivez par le formulaire de contact.
       </li>
       <li>
         <strong>Telegram</strong> est la messagerie que nous utilisons pour être prévenus d'une nouvelle demande et des rappels avant votre
         événement. Il reçoit votre nom, le lieu de votre événement et votre numéro de téléphone, avec les détails de votre
-        réservation (date, type d'événement, formule, horaires), mais jamais votre adresse e-mail. Telegram ne vous écrit jamais et vous n'avez
-        aucun compte à y ouvrir.
+        réservation (date, type d'événement, formule, horaires), mais jamais votre adresse e-mail. Il ne reçoit rien des messages que vous nous
+        écrivez par le formulaire de contact. Telegram ne vous écrit jamais et vous n'avez aucun compte à y ouvrir.
       </li>
     </ul>
     <p>Certains de ces prestataires peuvent traiter des données hors de l'Union européenne. Les garanties qui encadrent ces transferts : <Fact />.</p>
   </section>
 
+  <section aria-labelledby="contact">
+    <h2 id="contact">Le formulaire de contact</h2>
+    <p>
+      Quand vous nous écrivez par le formulaire de l'accueil, nous recueillons votre nom, votre adresse e-mail, votre numéro de téléphone si
+      vous le donnez, et votre message. S'y ajoute une version brouillée de votre adresse IP, dont on ne peut pas retrouver l'adresse
+      d'origine&nbsp;: elle sert seulement à limiter à {perConnection} messages en 24&nbsp;h ceux qui partent d'une même connexion.
+    </p>
+    <ul>
+      <li>
+        <strong>Pourquoi</strong>&nbsp;: pour vous répondre, et pour rien d'autre. Ni prospection, ni lettre d'information, ni publicité&nbsp;;
+        nous ne cédons votre message à personne.
+      </li>
+      <li>
+        <strong>Sur quelle base</strong>&nbsp;: notre intérêt légitime à répondre à ceux qui nous écrivent et, quand votre message porte sur
+        une réservation, les démarches qui précèdent le contrat, faites à votre demande (RGPD, article 6.1.f et 6.1.b). Vous n'avez rien
+        à accepter&nbsp;: il n'y a pas de case à cocher.
+      </li>
+      <li>
+        <strong>Combien de temps</strong>&nbsp;: votre message et vos coordonnées sont supprimés automatiquement 12&nbsp;mois après leur
+        réception. La version brouillée de votre adresse IP est effacée au bout de 24&nbsp;h, quand elle ne sert plus à la limite.
+      </li>
+      <li>
+        <strong>Qui les reçoit</strong>&nbsp;: Brotobooth seul. Cloudflare héberge le site et la base de données qui garde votre message,
+        dans l'Union européenne, et fournit la vérification anti-robots&nbsp;; Resend nous transmet votre message par e-mail, depuis
+        l'Union européenne. Telegram n'en reçoit rien.
+      </li>
+    </ul>
+    <p>Pour lire votre message, le corriger ou le faire effacer plus tôt, écrivez-nous&nbsp;: vos droits sont détaillés plus bas.</p>
+  </section>
+
   <section aria-labelledby="robots">
     <h2 id="robots">Vérification anti-robots</h2>
     <p>
-      Avant d'envoyer votre demande, le site fait vérifier par Turnstile, un service de Cloudflare, qu'elle vient bien d'une personne. Turnstile
-      examine des informations techniques de votre navigateur, sans vous demander de résoudre une énigme, et ne sert qu'à cela.
+      Avant d'envoyer votre demande ou votre message, le site fait vérifier par Turnstile, un service de Cloudflare, que l'envoi vient bien
+      d'une personne. Turnstile examine des informations techniques de votre navigateur, sans vous demander de résoudre une énigme, et ne sert
+      qu'à cela.
     </p>
   </section>
 

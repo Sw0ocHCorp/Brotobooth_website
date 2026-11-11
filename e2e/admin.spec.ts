@@ -2,13 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
 import { currentTier, normalTier, priceOf, pricesBody, tierById, type PricesBody } from "../worker/offer";
-import { addDays, cleanup, depositFor, euros, FIRST_PLAN, freeDate, launchBody, normalPrice, offer, ORIGIN, seed, type Kind } from "./seed";
-
-/** Efface les messages de contact que les essais ont envoyés. */
-async function eraseContacts(request: APIRequestContext): Promise<void> {
-  const { messages } = (await (await request.get("/api/admin/contact")).json()) as { messages: { id: string }[] };
-  for (const { id } of messages) await request.delete(`/api/admin/contact/${id}`, { data: {}, headers: { Origin: ORIGIN } });
-}
+import { addDays, cleanup, depositFor, eraseContacts, euros, FIRST_PLAN, freeDate, launchBody, normalPrice, offer, ORIGIN, seed, type Kind } from "./seed";
 
 test.afterEach(async ({ request }) => {
   await cleanup(request);

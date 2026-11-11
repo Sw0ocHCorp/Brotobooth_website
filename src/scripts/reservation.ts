@@ -2,6 +2,7 @@ import { bookingWindow } from "../../worker/bookings";
 import { formatEuros } from "../../worker/html";
 import { normalTier, offer, priceOf, type PricesBody } from "../../worker/offer";
 import { dayState, lastDayOf, monthCells, monthOf, shiftMonth, type Availability, type DayState } from "./calendar-grid";
+import { antiBot, fieldProblems, postJson, showProblem, type Reply } from "./form";
 import { applyPrices, fetchPrices } from "./prices";
 
 /**
@@ -14,22 +15,9 @@ import { applyPrices, fetchPrices } from "./prices";
  */
 
 type Step = 1 | 2 | 3 | 4;
-type Reply = { status: number; data: { status?: string; error?: string; reason?: string; fields?: string[]; price_cents?: number } };
+/** Le corps des réponses de `POST /api/requests`. */
+type Answer = { status: string; error: string; reason: string; fields: string[]; price_cents: number };
 
-/** Le widget anti-robots de Cloudflare, chargé à la demande (`render=explicit`). */
-type Turnstile = {
-  render(container: HTMLElement, options: Record<string, unknown>): string | undefined;
-  getResponse(widget: string): string | undefined;
-  reset(widget: string): void;
-};
-
-declare global {
-  interface Window {
-    turnstile?: Turnstile;
-  }
-}
-
-const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 /** Les champs de la troisième étape, sous le nom que leur donne l'API. */
 const FIELDS = ["event_type", "event_hours", "venue", "name", "phone", "email", "terms"];
 
@@ -74,9 +62,8 @@ let prices: PricesBody | null = null;
 /** Le prix qu'un refus `price_changed` a annoncé pour une formule : celui que le client accepte en envoyant de nouveau. */
 let announced: { plan: string; cents: number } | null = null;
 let sending = false;
-let widget: string | null = null;
-/** Le script du widget anti-robots tant qu'il charge ou qu'il est chargé ; `null` avant, ou après un échec de chargement. */
-let turnstileScript: HTMLScriptElement | null = null;
+/** Le widget anti-robots, chargé à la première arrivée sur les coordonnées. */
+const turnstile = antiBot($("turnstile"));
 
 // ---------- le calendrier ----------
 
@@ -192,7 +179,7 @@ function show(step: Step, focus: HTMLElement = $(`step-${step}-title`)): void {
   [...crumbs.children].forEach((crumb, index) =>
     index + 1 === step ? crumb.setAttribute("aria-current", "step") : crumb.removeAttribute("aria-current"),
   );
-  if (step === 3) startTurnstile();
+  if (step === 3) turnstile.start();
   scrollTo(0, 0);
   focus.focus({ preventScroll: true });
 }
@@ -262,25 +249,8 @@ function priceChanged(sent: { plan: string; price_cents: number }, now: number):
 
 // ---------- les erreurs à côté de leur champ ----------
 
-const control = (name: string): HTMLInputElement | HTMLSelectElement | null =>
-  form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
-
-/** Montre le message de `name` (un champ, la date ou la formule) et lie le champ à son message ; `null` s'il n'en a pas. */
-function flag(name: string): HTMLElement | null {
-  const problem = document.getElementById(`problem-${name}`);
-  if (!problem) return null;
-  problem.hidden = false;
-  control(name)?.setAttribute("aria-invalid", "true");
-  control(name)?.setAttribute("aria-describedby", problem.id);
-  return problem;
-}
-
-function unflag(name: string): void {
-  const problem = document.getElementById(`problem-${name}`);
-  if (problem) problem.hidden = true;
-  control(name)?.removeAttribute("aria-invalid");
-  control(name)?.removeAttribute("aria-describedby");
-}
+/** Chaque champ et son message ; `flag` signale aussi la date ou la formule, dont le message est à leur étape. */
+const { control, flag, unflag } = fieldProblems(form);
 
 /**
  * Les champs refusés, chacun signalé à côté de lui. Une date refusée ramène au calendrier, une formule refusée à son
@@ -299,46 +269,9 @@ function showProblems(fields: string[]): void {
 }
 
 /** Un envoi qui n'a pas abouti pour une raison qui ne tient pas à un champ : le message, et le contact qui l'accompagne. */
-function sendProblem(kind: "failed" | "bot" | "too_many" | "too_many_ip"): void {
-  const box = $("send-problem");
-  for (const text of box.querySelectorAll<HTMLElement>("[data-problem]")) text.hidden = text.dataset.problem !== kind;
-  box.hidden = false;
-  box.focus();
-}
+const sendProblem = (kind: "failed" | "bot" | "too_many" | "too_many_ip"): void => showProblem($("send-problem"), kind);
 
 // ---------- l'envoi ----------
-
-/**
- * Le widget anti-robots, chargé une fois, à la première arrivée sur les coordonnées. Sans clé (essais), rien n'est
- * chargé. Un script injoignable est oublié : un refus anti-robots le redemande (`answer`), sans recharger la page.
- */
-function startTurnstile(): void {
-  const box = $("turnstile");
-  const sitekey = box.dataset.sitekey;
-  if (!sitekey || turnstileScript !== null) return;
-  const script = (turnstileScript = document.createElement("script"));
-  script.src = TURNSTILE_SCRIPT;
-  script.addEventListener("load", () => {
-    widget = window.turnstile?.render(box, { sitekey, theme: "dark", language: "fr", size: "flexible" }) ?? null;
-  });
-  script.addEventListener("error", () => {
-    script.remove();
-    turnstileScript = null;
-  });
-  document.head.append(script);
-}
-
-/** Le jeton du widget, vide sans widget : le Worker tranche, et une panne du service ne coûte jamais une demande. */
-const turnstileToken = (): string => (widget === null ? "" : (window.turnstile?.getResponse(widget) ?? ""));
-
-async function post(body: object): Promise<Reply> {
-  try {
-    const response = await fetch("/api/requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    return { status: response.status, data: await response.json().catch(() => ({})) };
-  } catch {
-    return { status: 0, data: {} };
-  }
-}
 
 function done(outcome: string): void {
   for (const date of document.querySelectorAll("[data-chosen]")) date.textContent = longDate(chosenDate!);
@@ -346,12 +279,9 @@ function done(outcome: string): void {
   go(4);
 }
 
-function answer({ status, data }: Reply, sent: { plan: string; price_cents: number }): void {
-  // Un jeton ne sert qu'une fois : le prochain envoi en demande un nouveau. Sans widget (son script n'a pas pu se
-  // charger), un refus anti-robots redemande le script, pour que « réessayez » puisse aboutir.
+function answer({ status, data }: Reply<Answer>, sent: { plan: string; price_cents: number }): void {
   const bot = status === 403 && data.error === "bot";
-  if (widget !== null) window.turnstile?.reset(widget);
-  else if (bot) startTurnstile();
+  turnstile.renew(bot);
   if (status === 201) return done("created");
   if (status === 200 && data.status === "already_requested") return done("already_requested");
   // Un prix changé passe avant la date prise : le serveur vérifie le prix d'abord, et répond toujours avec le nouveau.
@@ -370,7 +300,7 @@ function request(plan: string) {
     plan,
     price_cents: seenPrice(plan),
     terms: ($("f-terms") as HTMLInputElement).checked,
-    turnstile_token: turnstileToken(),
+    turnstile_token: turnstile.token(),
   };
 }
 
@@ -386,7 +316,7 @@ async function submit(): Promise<void> {
   sendButton.disabled = true;
   try {
     const sent = request(chosenPlan);
-    answer(await post(sent), sent);
+    answer(await postJson<Answer>("/api/requests", sent), sent);
   } catch (error) {
     // Une panne de la page elle-même (le widget qui lève, par exemple) : le client le sait et peut renvoyer ; l'erreur
     // reste dans la console.

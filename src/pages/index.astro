@@ -1,4 +1,5 @@
 ---
+import Contact from "../components/Contact.astro";
 import FinalCta from "../components/FinalCta.astro";
 import Footer from "../components/Footer.astro";
 import Founders from "../components/Founders.astro";
@@ -11,9 +12,10 @@ import Base from "../layouts/Base.astro";
 import "../styles/site.css";
 
 /**
- * L'accueil, dans l'ordre de la maquette validée (`docs/superpowers/specs/2026-11-07-maquette-site.html`) : tout le
- * contenu est dans le HTML, et la page se lit entière sans JavaScript ni animation. Avec JavaScript, ses trois
- * mouvements : l'ouverture du logo (une fois par visite), le mur de tirages et l'arrivée des images des sections.
+ * L'accueil, dans l'ordre de la maquette validée (`docs/superpowers/specs/2026-11-07-maquette-site.html`), puis la
+ * section « Contact » : tout le contenu est dans le HTML, et la page se lit entière sans JavaScript ni animation. Avec
+ * JavaScript, ses trois mouvements : l'ouverture du logo (une fois par visite), le mur de tirages et l'arrivée des images
+ * des sections ; et le formulaire de contact peut partir.
  * Les données structurées d'entreprise locale ne portent que des faits qui existent : le nom, l'adresse du site et une
  * vraie photo. Ni adresse ni téléphone tant que `config/offer.json` et les mentions légales n'en donnent pas.
  */
@@ -40,11 +42,13 @@ const business = {
     <Plans />
     <Founders />
     <FinalCta />
+    <Contact />
   </main>
   <Footer />
 </Base>
 
 <script>
+  import "../scripts/contact";
   import { startIntro } from "../scripts/logo-intro";
   import { applyPrices, fetchPrices } from "../scripts/prices";
   import { initToss } from "../scripts/toss";

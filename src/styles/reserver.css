@@ -2,7 +2,7 @@
    La réservation (/reserver) : la vidéo de la borne en plein écran,
    sous un voile, et la carte du parcours en verre dépoli (.glass de
    tokens.css). Mise en page de la maquette validée (#res), sur les
-   boutons et la barre de site.css.
+   boutons, les champs et la barre de site.css.
 
    Le rose est le bouton de l'étape (« Continuer », « Envoyer ma
    demande »), un seul à la fois. L'orange est le choix fait (le jour,
@@ -96,8 +96,6 @@
 
 .res-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .res-foot span { font-weight: 600; }
-
-.btn:disabled { opacity: .35; cursor: default; }
 
 /* « ← Retour » : un lien d'étape, sans fond. */
 .link {
@@ -206,27 +204,9 @@
 /* ---------- les coordonnées ---------- */
 
 .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 8px; }
-.fld { margin-bottom: 8px; }
-.fld label { display: block; font-size: 14px; color: var(--text-soft); }
 /* Côte à côte, deux champs partagent leurs lignes (libellé, champ, message) : un libellé sur deux lignes ne décale pas l'autre champ. */
 .two .fld { display: grid; grid-row: span 3; grid-template-rows: subgrid; }
 .two .fld label { align-self: end; }
-
-.fld input,
-.fld select {
-  display: block;
-  width: 100%;
-  min-height: 44px;
-  margin-top: 3px;
-  padding: 10px 12px;
-  border: 1px solid var(--glass-border-soft);
-  border-radius: 10px;
-  background: var(--field);
-  color: var(--text);
-  font: inherit;
-}
-
-.fld [aria-invalid="true"] { border-color: var(--warn); }
 
 /* La case des CGV : 44 px à toucher, une case de 22 px dessinée au milieu, cochée d'un anneau orange. */
 .check { display: flex; align-items: center; gap: 4px; margin: 4px 0 8px; font-size: 14px; color: var(--text-soft); cursor: pointer; }
@@ -272,58 +252,14 @@
   text-underline-offset: 3px;
 }
 
-#turnstile:not(:empty) { margin: 6px 0 10px; }
-
 /* ---------- les messages ---------- */
-/* En blanc, comme tout texte, avec le citron de l'avertissement en marge. */
-
-.problem {
-  margin-top: 4px;
-  padding-left: 10px;
-  border-left: 3px solid var(--warn);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.problem:focus { outline: none; }
 
 /* Le prix changé, juste au-dessus du bouton d'envoi, sans le toucher. */
 #problem-price { margin-bottom: 12px; }
 
-.notice {
-  margin: 10px 0;
-  padding: 12px 14px;
-  border: 1px solid var(--warn-line);
-  border-radius: 14px;
-  background: var(--warn-soft);
-  font-size: 14px;
-}
-
-.notice:focus { outline: none; }
-.notice .btn { margin-top: 8px; }
-
-/* Les liens du contact, au milieu d'une phrase : 44 px de haut pour le doigt, soulignés pour se voir. */
-.contact a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 /* ---------- sans JavaScript ---------- */
-/* En dernier, pour l'emporter sur l'affichage de chaque bloc. Sans JavaScript, ce qui ne marcherait pas disparaît, et
-   la carte donne le contact (.no-js) ; avec, l'inverse. Un navigateur qui ignore ces requêtes voit les deux jusqu'à ce
-   que le script de la page retire .no-js. Pas de <noscript> : un navigateur aux scripts coupés par un outil (celui des
-   tests, par exemple) peut ne pas l'afficher. Sans script, un navigateur donne ses commandes à la vidéo, que le voile
-   rendrait inutilisables : l'image fixe la remplace. */
+/* La carte donne le contact à la place du calendrier (.no-js et .needs-js, site.css). Sans script, un navigateur donne
+   ses commandes à la vidéo, que le voile rendrait inutilisables : l'image fixe la remplace. */
 @media (scripting: none) {
-  .needs-js { display: none; }
   .res { background: url("/media/borne-boucle-poster.webp") center / cover no-repeat; }
-}
-
-@media (scripting: enabled) {
-  .no-js { display: none; }
 }

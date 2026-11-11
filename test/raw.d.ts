@@ -8,3 +8,9 @@ declare module "*?raw" {
 declare module "node:util" {
   export function parseEnv(content: string): Record<string, string>;
 }
+
+// Un composant Astro, rendu par les essais de `test/components` : tsc ne lit pas les fichiers `.astro`, Vite les compile.
+declare module "*.astro" {
+  const component: import("astro/runtime/server/index.js").AstroComponentFactory;
+  export default component;
+}
