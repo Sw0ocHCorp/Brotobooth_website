@@ -2,7 +2,7 @@ import { bookingWindow } from "../../worker/bookings";
 import { formatEuros } from "../../worker/html";
 import { normalTier, offer, priceOf, type PricesBody } from "../../worker/offer";
 import { dayState, lastDayOf, monthCells, monthOf, shiftMonth, type Availability, type DayState } from "./calendar-grid";
-import { antiBot, fieldProblems, postJson, showProblem, type Reply } from "./form";
+import { antiBot, fieldProblems, postJson, showProblem, submitter, type Reply } from "./form";
 import { applyPrices, fetchPrices } from "./prices";
 
 /**
@@ -61,7 +61,6 @@ let chosenPlan: string | null = null;
 let prices: PricesBody | null = null;
 /** Le prix qu'un refus `price_changed` a annoncé pour une formule : celui que le client accepte en envoyant de nouveau. */
 let announced: { plan: string; cents: number } | null = null;
-let sending = false;
 /** Le widget anti-robots, chargé à la première arrivée sur les coordonnées. */
 const turnstile = antiBot($("turnstile"));
 
@@ -304,28 +303,18 @@ function request(plan: string) {
   };
 }
 
-async function submit(): Promise<void> {
-  if (sending || chosenDate === null || chosenPlan === null) return;
-  $("send-problem").hidden = true;
-  $("problem-price").hidden = true;
-  for (const name of FIELDS) unflag(name);
-  const missing = FIELDS.filter((name) => !control(name)!.checkValidity());
-  if (missing.length > 0) return showProblems(missing);
+/** Un envoi à la fois, les champs vérifiés d'abord, le bouton bloqué le temps de la réponse (`submitter`). */
+const sendRequest = submitter({ box: $("send-problem"), button: sendButton, fields: FIELDS, problems: { control, unflag }, showProblems });
 
-  sending = true;
-  sendButton.disabled = true;
-  try {
-    const sent = request(chosenPlan);
+/** La demande, une fois la date et la formule choisies ; le prix changé annoncé par le dernier envoi s'efface. */
+async function submit(): Promise<void> {
+  const plan = chosenPlan;
+  if (chosenDate === null || plan === null) return;
+  $("problem-price").hidden = true;
+  await sendRequest(async () => {
+    const sent = request(plan);
     answer(await postJson<Answer>("/api/requests", sent), sent);
-  } catch (error) {
-    // Une panne de la page elle-même (le widget qui lève, par exemple) : le client le sait et peut renvoyer ; l'erreur
-    // reste dans la console.
-    sendProblem("failed");
-    throw error;
-  } finally {
-    sending = false;
-    sendButton.disabled = false;
-  }
+  });
 }
 
 // ---------- la vidéo ----------

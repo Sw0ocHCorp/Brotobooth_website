@@ -10,7 +10,6 @@ import { TEST_SITE_KEY, eraseContacts, expectContact, fakeTurnstile, isTurnstile
  * et une adresse est vérifié par `test/components/contact-links.test.ts`, sur une offre d'essai.
  */
 
-const ROSE = "rgb(242, 85, 155)";
 const CONTACT = "**/api/contact";
 const SENT = "Merci, votre message est bien parti. Nous vous répondons par e-mail.";
 const FAILED = "Votre message n'est pas parti. Vérifiez votre connexion, puis réessayez.";
@@ -95,7 +94,7 @@ test("la section parle au visiteur : aucun vocabulaire interne, aucun délai de 
   expect(text).not.toMatch(/palier|bloqu|valid|statut|propriétaire|empreinte|telegram|délai|en attente|sous \d+\s*h|dans les \d+/i);
 });
 
-test("le formulaire : quatre champs, le téléphone seul facultatif, aucune case, un seul bouton plein", async ({ page }) => {
+test("le formulaire : quatre champs, le téléphone seul facultatif, aucune case", async ({ page }) => {
   await page.goto("/#contact");
   const form = section(page).locator("form");
   await expect(form.locator("input:visible, textarea:visible, select:visible")).toHaveCount(4);
@@ -105,12 +104,6 @@ test("le formulaire : quatre champs, le téléphone seul facultatif, aucune case
   for (const label of ["Votre nom", "Votre e-mail", "Votre message"]) await expect(field(page, label)).toHaveAttribute("required", "");
   await expect(field(page, "Votre téléphone (facultatif)")).not.toHaveAttribute("required");
   await expect(form.locator('input[type="checkbox"]')).toHaveCount(0);
-
-  // Le rose est l'action : « Envoyer le message » est le seul bouton plein de la section.
-  const filled = await section(page)
-    .locator("a, button")
-    .evaluateAll((elements, rose) => elements.filter((element) => getComputedStyle(element).backgroundColor === rose).map((element) => element.textContent?.trim()), ROSE);
-  expect(filled).toEqual(["Envoyer le message"]);
 });
 
 test("l'information sur les données est sous le formulaire, avec son lien vers la politique", async ({ page }) => {
@@ -145,6 +138,13 @@ test("l'anti-robots ne se charge qu'au premier champ touché", async ({ page }) 
   await section(page).scrollIntoViewIfNeeded();
   await page.waitForLoadState("networkidle");
   expect(scripts).toEqual([]);
+  // Ni le lien vers la politique ni le bouton, qui sont dans le formulaire : le visiteur n'a pas commencé à écrire. Le
+  // script serait ajouté à la page dès le focus, sans attendre.
+  const turnstileTags = () => page.locator('script[src^="https://challenges.cloudflare.com/"]').count();
+  await section(page).getByRole("link", { name: "politique de confidentialité" }).focus();
+  await send(page).focus();
+  expect(await turnstileTags()).toBe(0);
+  expect(scripts).toEqual([]);
 
   await field(page, "Votre nom").focus();
   await expect.poll(() => scripts.length).toBe(1);
@@ -155,6 +155,28 @@ test("l'anti-robots ne se charge qu'au premier champ touché", async ({ page }) 
   await expect(page.getByText(SENT)).toBeVisible();
   expect(scripts).toHaveLength(1);
   expect(tokens).toEqual(["jeton-de-test"]);
+});
+
+test("si le script de la page ne se charge pas, le formulaire reste caché, et rien ne part dans une adresse", async ({ page }) => {
+  // JavaScript tourne, mais le script de l'accueil n'arrive pas (réseau, ancienne version après une mise en ligne, bloqueur).
+  await page.route(/\/_astro\/.*\.js$/, (route) => route.abort());
+  await page.goto("/#contact");
+  await expect(section(page).getByRole("heading", { level: 2, name: "Contact" })).toBeVisible();
+  await expect(field(page, "Votre nom")).toBeHidden();
+  await expect(send(page)).toBeHidden();
+
+  // Même envoyé par le navigateur lui-même, le formulaire part en POST : ni nom, ni e-mail, ni message dans l'adresse.
+  const native = page.waitForRequest((request) => request.resourceType() === "document" && request.frame() === page.mainFrame());
+  await page.evaluate(() => {
+    const form = document.getElementById("contact-form") as HTMLFormElement;
+    for (const [name, value] of [["name", "Lou Martin"], ["email", "lou.martin@example.test"], ["message", "Bonjour"]]) {
+      (form.elements.namedItem(name) as HTMLInputElement).value = value;
+    }
+    setTimeout(() => form.requestSubmit());
+  });
+  const request = await native;
+  expect(request.method()).toBe("POST");
+  expect(new URL(request.url()).search).toBe("");
 });
 
 test("un message envoyé : le remerciement remplace le formulaire, et le message est enregistré", async ({ page, request }) => {

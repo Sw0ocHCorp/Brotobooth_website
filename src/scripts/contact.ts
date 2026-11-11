@@ -1,4 +1,4 @@
-import { antiBot, fieldProblems, postJson, showProblem, type Reply } from "./form";
+import { antiBot, fieldProblems, postJson, showProblem, submitter, type Reply } from "./form";
 
 /**
  * Le formulaire de contact de l'accueil (`#contact`) : l'envoi du message et ce qui suit. Les textes sont dans la page
@@ -20,7 +20,6 @@ const sendButton = $("send") as HTMLButtonElement;
 const sent = $("sent");
 const turnstile = antiBot($("turnstile"));
 const { control, flag, unflag } = fieldProblems(form);
-let sending = false;
 
 /** Un envoi qui n'a pas abouti pour une raison qui ne tient pas à un champ : le message, et le contact qui l'accompagne. */
 const sendProblem = (kind: "failed" | "bot" | "too_many"): void => showProblem($("send-problem"), kind);
@@ -47,28 +46,11 @@ function answer({ status, data }: Reply<Answer>): void {
   sendProblem(status === 429 ? "too_many" : bot ? "bot" : "failed");
 }
 
-async function submit(): Promise<void> {
-  if (sending) return;
-  $("send-problem").hidden = true;
-  for (const name of FIELDS) unflag(name);
-  const missing = FIELDS.filter((name) => !control(name)!.checkValidity());
-  if (missing.length > 0) return showProblems(missing);
+/** Un envoi à la fois, les champs vérifiés d'abord, le bouton bloqué le temps de la réponse (`submitter`). */
+const send = submitter({ box: $("send-problem"), button: sendButton, fields: FIELDS, problems: { control, unflag }, showProblems });
 
-  sending = true;
-  sendButton.disabled = true;
-  try {
-    const body = { ...Object.fromEntries(FIELDS.map((name) => [name, control(name)!.value])), turnstile_token: turnstile.token() };
-    answer(await postJson<Answer>("/api/contact", body));
-  } catch (error) {
-    // Une panne de la page elle-même (le widget qui lève, par exemple) : le visiteur le sait et peut renvoyer ; l'erreur
-    // reste dans la console.
-    sendProblem("failed");
-    throw error;
-  } finally {
-    sending = false;
-    sendButton.disabled = false;
-  }
-}
+/** Le corps de `POST /api/contact`, sous les noms de l'API. */
+const message = () => ({ ...Object.fromEntries(FIELDS.map((name) => [name, control(name)!.value])), turnstile_token: turnstile.token() });
 
 /** Le premier champ touché charge l'anti-robots ; un lien ou le bouton, non : le visiteur n'a pas commencé à écrire. */
 function firstField(event: FocusEvent): void {
@@ -82,5 +64,7 @@ form.addEventListener("focusin", firstField);
 form.addEventListener("input", (event) => unflag((event.target as HTMLInputElement).name));
 form.addEventListener("submit", (event) => {
   event.preventDefault();
-  void submit();
+  void send(async () => answer(await postJson<Answer>("/api/contact", message())));
 });
+// Le formulaire n'apparaît qu'une fois prêt à partir par ce script : sans lui, le navigateur l'enverrait lui-même.
+form.hidden = false;

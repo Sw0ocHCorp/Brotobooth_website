@@ -137,10 +137,10 @@ test("l'accueil parle à celui qui réserve", async ({ page }) => {
 
 test("au plus un bouton rose par écran", async ({ page }) => {
   await page.goto("/");
-  // Les trois boutons roses de la page, ceux de l'ouverture et de l'avant-dernière section, puis l'envoi d'un message :
-  // blanc sur rose ne passe le contraste qu'en grand texte, donc 19 px au moins et en gras.
-  const rose = page.getByRole("link", { name: "Choisir une date" }).or(page.getByRole("button", { name: "Envoyer le message" }));
-  await expect(rose).toHaveCount(3);
+  // Les deux boutons roses de la page, l'ouverture et l'avant-dernière section : blanc sur rose ne passe le contraste
+  // qu'en grand texte, donc 19 px au moins et en gras.
+  const rose = page.getByRole("link", { name: "Choisir une date" });
+  await expect(rose).toHaveCount(2);
   for (const button of await rose.all()) {
     const style = await button.evaluate((element) => {
       const { backgroundColor, fontSize, fontWeight } = getComputedStyle(element);
@@ -156,12 +156,13 @@ test("au plus un bouton rose par écran", async ({ page }) => {
     await page.evaluate((y) => scrollTo(0, y), top);
     expect(await roseButtonsInView(page), `fenêtre à ${top} px`).toBeLessThanOrEqual(1);
   }
-  // Et quelle que soit la position de la page : d'un bouton rose au suivant, il y a plus d'un écran.
-  const boxes = (await Promise.all((await rose.all()).map((button) => button.boundingBox()))).sort((a, b) => a!.y - b!.y);
-  const screen = page.viewportSize()!.height;
-  for (let i = 1; i < boxes.length; i++) {
-    expect(boxes[i]!.y - (boxes[i - 1]!.y + boxes[i - 1]!.height), `entre les boutons roses ${i} et ${i + 1}`).toBeGreaterThan(screen);
-  }
+  // Le contact est une action secondaire, à côté de la réservation : aucun bouton plein dans sa section, quelle que soit
+  // la hauteur de l'écran.
+  const filled = await page
+    .locator("#contact")
+    .locator("a, button")
+    .evaluateAll((elements, rose) => elements.filter((element) => getComputedStyle(element).backgroundColor === rose).map((element) => element.textContent?.trim()), ROSE);
+  expect(filled).toEqual([]);
 });
 
 test("aucune couleur de marque dans le texte", async ({ page }) => {

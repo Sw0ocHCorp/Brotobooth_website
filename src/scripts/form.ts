@@ -50,6 +50,48 @@ export function showProblem(box: HTMLElement, kind: string): void {
   box.focus();
 }
 
+/**
+ * L'envoi d'un formulaire public. À chaque appel : rien si un envoi est déjà en cours ; le message d'envoi (`box`) et ceux
+ * des champs (`fields`) effacés ; les champs que le navigateur juge invalides signalés (`showProblems`) sans rien
+ * envoyer ; sinon `send`, le bouton bloqué le temps qu'il réponde, puis rendu. Une panne de la page elle-même (le widget
+ * qui lève, par exemple) montre le message `failed` de `box` : le visiteur le sait et peut renvoyer ; l'erreur reste dans
+ * la console.
+ */
+export function submitter({
+  box,
+  button,
+  fields,
+  problems,
+  showProblems,
+}: {
+  box: HTMLElement;
+  button: HTMLButtonElement;
+  fields: string[];
+  problems: Pick<ReturnType<typeof fieldProblems>, "control" | "unflag">;
+  showProblems: (names: string[]) => void;
+}): (send: () => Promise<void>) => Promise<void> {
+  let sending = false;
+  return async (send) => {
+    if (sending) return;
+    box.hidden = true;
+    for (const name of fields) problems.unflag(name);
+    const invalid = fields.filter((name) => !problems.control(name)!.checkValidity());
+    if (invalid.length > 0) return showProblems(invalid);
+
+    sending = true;
+    button.disabled = true;
+    try {
+      await send();
+    } catch (error) {
+      showProblem(box, "failed");
+      throw error;
+    } finally {
+      sending = false;
+      button.disabled = false;
+    }
+  };
+}
+
 // ---------- l'anti-robots ----------
 
 /** Le widget anti-robots de Cloudflare, chargé à la demande (`render=explicit`). */

@@ -425,11 +425,10 @@ main { overflow-x: clip; }
 }
 
 /* ---------- contact ---------- */
-/* La dernière section, centrée comme l'appel qui la précède : le titre, les moyens directs en boutons à contour, puis le
-   formulaire, dont l'envoi est le seul bouton plein ; le remerciement prend sa place une fois le message parti. Son haut
-   l'écarte de cet appel : leurs deux boutons roses ne tiennent pas ensemble dans un écran de téléphone ou d'ordinateur
-   courant (812 et 800 px de haut, ceux des essais). */
-.contact-section { padding-top: clamp(80px, 10vw, 130px); background: var(--bg-b); }
+/* La dernière section, centrée comme l'appel qui la précède : le titre, les moyens directs, puis le formulaire ; le
+   remerciement prend sa place une fois le message parti. Le contact est une action secondaire à côté de la réservation :
+   tous ses boutons sont à contour, le rose reste à « Choisir une date ». */
+.contact-section { background: var(--bg-b); }
 .contact-in { max-width: 640px; margin: auto; }
 .contact-in > h2,
 .contact-lead { text-align: center; }
@@ -439,7 +438,7 @@ main { overflow-x: clip; }
 
 .contact-form,
 .sent,
-.contact-in > .no-js { margin-top: 48px; }
+.contact-in > .no-js { margin-top: clamp(32px, 4vw, 48px); }
 
 .contact-form .btn { margin-top: 8px; }
 .privacy { margin-top: 10px; font-size: 14px; color: var(--text-soft); }
