@@ -557,11 +557,40 @@ describe("processDue : les messages de contact", () => {
   it("envoie le message au propriétaire, « Répondre » écrivant au visiteur, et rien sur Telegram", async () => {
     const c = await received();
     expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
-    expect(deps.emails).toEqual([expect.objectContaining({ to: OWNER_EMAIL, replyTo: "lou@example.test", subject: "Message de Lou Bernard" })]);
+    expect(deps.emails).toEqual([expect.objectContaining({ to: offer.contact.email, replyTo: "lou@example.test", subject: "Message de Lou Bernard" })]);
     expect(deps.emails[0].text).toContain("Êtes-vous libres le 12 juin ?");
     expect(deps.emails[0].idempotencyKey).toMatch(new RegExp(`^contact:${c.id}:email:[0-9a-f]{16}$`));
     expect(deps.telegrams).toEqual([]);
     expect(await notificationRows()).toMatchObject([{ contact_id: c.id, sent_at: T0 }]);
+  });
+
+  describe("le destinataire", () => {
+    const real = offer.contact;
+    afterEach(() => {
+      offer.contact = real;
+    });
+
+    it("est l'adresse de contact de l'offre, et elle seule", async () => {
+      offer.contact = { ...real, email: "contact@example.test" };
+      await received();
+      expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
+      expect(deps.emails.map((m) => m.to)).toEqual(["contact@example.test"]);
+    });
+
+    it("retombe sur OWNER_EMAIL quand l'offre n'a pas d'adresse de contact", async () => {
+      offer.contact = { ...real, email: "" };
+      await received();
+      await processDue(deps);
+      expect(deps.emails.map((m) => m.to)).toEqual([OWNER_EMAIL]);
+    });
+
+    it("laisse les autres messages au propriétaire sur OWNER_EMAIL", async () => {
+      offer.contact = { ...real, email: "contact@example.test" };
+      const b = await seeded();
+      await enqueue(env.DB, [mail("owner_new_request", b.id)]);
+      await processDue(deps);
+      expect(deps.emails.map((m) => m.to)).toEqual([OWNER_EMAIL]);
+    });
   });
 
   it("garde l'e-mail en file quand Resend est en panne, et l'envoie au passage suivant", async () => {
@@ -575,7 +604,7 @@ describe("processDue : les messages de contact", () => {
     expect(await notificationRows()).toMatchObject([{ attempts: 1, last_error: "Error: panne", sent_at: null }]);
     down = false;
     expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
-    expect(deps.emails.map((m) => [m.to, m.replyTo])).toEqual([[OWNER_EMAIL, "lou@example.test"]]);
+    expect(deps.emails.map((m) => [m.to, m.replyTo])).toEqual([[offer.contact.email, "lou@example.test"]]);
   });
 
   it("au troisième échec, prévient le propriétaire sur Telegram sans rien du message, une seule fois", async () => {

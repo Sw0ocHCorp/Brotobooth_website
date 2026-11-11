@@ -22,7 +22,7 @@ const completeOffer: Offer = buildOffer({
   reminderHourParis: 9,
   termsVersion: "2026-11-07",
   eventTypes: ["Mariage"],
-  contact: { phones: [{ name: "Camille", number: "06 12 34 56 78" }], email: "contact@example.test", social: [] },
+  contact: { phones: [{ name: "Camille", number: "06 12 34 56 78" }], email: "contact@example.test", whatsapp: "", social: [] },
   booths: [{ id: "borne", name: "La borne", includes: ["Un fond au choix"] }],
   plans: [
     { id: "borne-100", booth: "borne", prints: 100 },
@@ -32,7 +32,7 @@ const completeOffer: Offer = buildOffer({
     { id: "normal", name: "Prix normal", refillCents: 10_000, prices: { "borne-100": 90_000, "borne-300": 120_000 } },
   ],
 });
-const draftOffer: Offer = { ...completeOffer, draft: true, contact: { phones: [], phone: "", email: "", social: [] } };
+const draftOffer: Offer = { ...completeOffer, draft: true, contact: { phones: [], phone: "", email: "", whatsapp: "", social: [] } };
 
 const complete = {
   offer: completeOffer,
@@ -61,7 +61,7 @@ describe("findLaunchBlockers", () => {
     expect(blockers).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/provisoire/),
-        expect.stringMatching(/téléphone/),
+        expect.stringMatching(/numéro de contact/),
         expect.stringMatching(/e-mail/),
         expect.stringMatching(/cgv/),
         expect.stringMatching(/D1/),
@@ -98,10 +98,18 @@ describe("findLaunchBlockers", () => {
     expect(findLaunchBlockers({ ...complete, vars: { PAYMENT_MODE: "simulated", FAKE_GATEWAYS: "1" } })).toHaveLength(2);
   });
 
+  it("accepte WhatsApp comme seul numéro de contact, et le dit quand il n'y en a aucun", () => {
+    const contact = { ...completeOffer.contact, phones: [], phone: "", whatsapp: "+33 6 00 00 00 03" };
+    expect(findLaunchBlockers({ ...complete, offer: { ...completeOffer, contact } })).toEqual([]);
+    expect(findLaunchBlockers({ ...complete, offer: { ...completeOffer, contact: { ...contact, whatsapp: "" } } })).toEqual([
+      "Aucun numéro de contact (appel ou WhatsApp) dans config/offer.json.",
+    ]);
+  });
+
   it("refuse un téléphone ou une adresse e-mail faits d'espaces", () => {
-    const contact = { phones: [], phone: "  ", email: "\t", social: [] };
+    const contact = { phones: [], phone: "  ", email: "\t", whatsapp: " ", social: [] };
     const blockers = findLaunchBlockers({ ...complete, offer: { ...completeOffer, contact } });
-    expect(blockers).toEqual([expect.stringMatching(/téléphone/), expect.stringMatching(/e-mail/)]);
+    expect(blockers).toEqual([expect.stringMatching(/numéro de contact/), expect.stringMatching(/e-mail/)]);
   });
 
   it("refuse une clé publique Turnstile absente ou vide : toutes les demandes seraient prises pour des robots", () => {

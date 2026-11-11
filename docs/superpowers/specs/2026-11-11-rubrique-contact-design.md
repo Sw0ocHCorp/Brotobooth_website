@@ -20,8 +20,9 @@ Un visiteur qui a une question, sans vouloir réserver tout de suite, doit pouvo
 - **Titre et accroche** : « Contact », puis « Une question sur la borne ou sur votre événement ? Écrivez-nous, nous vous répondons par e-mail. »
 - **Les moyens directs**, chacun seulement s'il est renseigné :
   - un lien « Appeler {prénom} » (`tel:`) par numéro de `contact.phones` ;
-  - l'adresse `contact.email` (`mailto:`) ;
-  - chaque lien de `contact.social`, court : « @compte » pour un compte `instagram.com/compte` (le lien ouvre le profil, dans l'application Instagram sur téléphone), sinon le domaine. Son nom accessible dit aussi le réseau : « @compte sur Instagram ». Le pied de page écrit les liens de la même façon.
+  - une icône WhatsApp (`contact.whatsapp`, lien `https://wa.me/…`), nom accessible « Nous écrire sur WhatsApp » ;
+  - chaque lien de `contact.social` : une icône Instagram pour un compte `instagram.com/compte` (le lien ouvre le profil, dans l'application Instagram sur téléphone), nom accessible « @compte sur Instagram » ; un autre réseau garde son texte court (le domaine).
+  - Une icône s'affiche seule (SVG inline blanc, caché aux lecteurs d'écran, cible de 44 px au moins), son nom accessible en `aria-label` et en info-bulle. **Aucun lien e-mail** : l'adresse `contact.email` ne s'affiche ni dans la rubrique ni dans le pied de page, qui écrivent les moyens de la même façon.
 - **Le formulaire** : « Votre nom » (obligatoire, 120 caractères au plus), « Votre e-mail » (obligatoire), « Votre téléphone (facultatif) », « Votre message » (obligatoire, 2 000 caractères au plus), puis le bouton « Envoyer le message ». Aucun autre champ, aucune case pré-cochée, aucun abonnement.
 - **L'information sous le formulaire** (premier niveau, art. 13 RGPD) : « Brotobooth utilise votre nom, votre e-mail, votre téléphone et votre message uniquement pour vous répondre, et les efface au bout de 12 mois. Vos droits et le détail : politique de confidentialité. » (lien vers `/confidentialite#contact`).
 - **L'anti-robots** : le même widget Turnstile que la réservation, chargé seulement quand le visiteur commence à remplir le formulaire (premier focus d'un champ), jamais au chargement de l'accueil.
@@ -35,7 +36,7 @@ Un visiteur qui a une question, sans vouloir réserver tout de suite, doit pouvo
 
 ## 3. Ce que reçoit le propriétaire
 
-- **Un e-mail** (modèle `owner_contact`) : objet « Message de {nom} », le message en premier, puis nom, e-mail, téléphone et date de réception. « Répondre » écrit au visiteur (`reply_to` = son adresse). En bas : « Ce message est effacé du site au bout de 12 mois : supprimez cet e-mail à la même échéance. »
+- **Un e-mail** (modèle `owner_contact`), envoyé à l'adresse de contact de l'offre (`contact.email`), à `OWNER_EMAIL` si elle est vide ; les autres messages au propriétaire restent sur `OWNER_EMAIL` : objet « Message de {nom} », le message en premier, puis nom, e-mail, téléphone et date de réception. « Répondre » écrit au visiteur (`reply_to` = son adresse). En bas : « Ce message est effacé du site au bout de 12 mois : supprimez cet e-mail à la même échéance. »
 - **Pas de Telegram** pour les messages (critère 5). Si l'e-mail échoue trois fois, le bot Telegram du site prévient le propriétaire, par l'alerte de panne qui existe déjà pour les réservations, avec pour seul contenu : « Un message de contact n'a pas pu vous être envoyé par e-mail. Lisez-le dans l'administration, zone Messages. » Aucun nom, adresse ni texte du message ne part chez Telegram.
 - **Aucun e-mail au visiteur**, ni accusé de réception ni copie (critère 4).
 - **Administration, zone « Messages »** : les messages des 12 derniers mois, du plus récent au plus ancien (date, nom, e-mail, téléphone, message, « Envoyé par e-mail » ou « En attente d'envoi »), chacun avec « Effacer », qui supprime le message et ses envois en attente après confirmation (« Effacer définitivement ce message ? Cela ne se défait pas. »). C'est ainsi que le propriétaire répond à une demande d'accès ou d'effacement.
@@ -62,14 +63,16 @@ Un visiteur qui a une question, sans vouloir réserver tout de suite, doit pouvo
 ```json
 "contact": {
   "phones": [{ "name": "Prénom", "number": "06 00 00 00 00" }],
-  "email": "",
+  "email": "adresse@exemple.fr",
+  "whatsapp": "+33 6 00 00 00 00",
   "social": ["https://www.instagram.com/compte"]
 }
 ```
 
 - Le **premier** numéro est celui que citent les phrases du site et des e-mails (`ContactLine`, « Appelez-nous au … ») ; la section Contact et le pied de page montrent tous les numéros avec leur prénom.
-- `buildOffer` refuse un numéro sans prénom ou un prénom sans numéro (erreur explicite `config/offer.json`).
-- `scripts/check-launch.mjs` bloque la publication sans aucun numéro, comme aujourd'hui sans téléphone.
+- `contact.email` reçoit les messages du formulaire (sans s'afficher sur le site). `contact.whatsapp` est le numéro WhatsApp au format international (« + », au moins 8 chiffres) ; vide, il n'y a pas d'icône WhatsApp.
+- `buildOffer` refuse un numéro sans prénom ou un prénom sans numéro, et un numéro WhatsApp qui n'est pas au format international (erreur explicite `config/offer.json`).
+- `scripts/check-launch.mjs` bloque la publication sans aucun numéro de contact, ni d'appel (`contact.phones`) ni WhatsApp.
 - Les valeurs restent vides tant que le propriétaire ne les a pas fournies (offre provisoire).
 
 ## 6. Données et serveur

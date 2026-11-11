@@ -624,7 +624,7 @@ describe("POST /api/contact", () => {
     const r = await contact(message());
     expect(r.status).toBe(201);
     expect(await reply(r)).toEqual({ status: "sent" });
-    expect(deps.emails.map((m) => [m.to, m.subject])).toEqual([[OWNER_EMAIL, "Message de Camille Durand"]]);
+    expect(deps.emails.map((m) => [m.to, m.subject])).toEqual([[offer.contact.email, "Message de Camille Durand"]]);
     expect(await notificationRows()).toMatchObject([{ template: "owner_contact", recipient: "owner", sent_at: T0 }]);
   });
 

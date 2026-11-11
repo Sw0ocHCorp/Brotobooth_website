@@ -2,6 +2,7 @@ import { parisToday, reminderAt, type BookingStatus } from "./bookings";
 import type { Deps } from "./deps";
 import { chatIds } from "./env";
 import { sha256Hex } from "./http";
+import { offer } from "./offer";
 import {
   cancelNotification,
   claimNotification,
@@ -185,6 +186,10 @@ const errorSummary = (error: unknown): string =>
 /** Les 16 premiers caractères hexadécimaux de l'empreinte : de quoi distinguer deux contenus, sans citer le message. */
 const FINGERPRINT_LENGTH = 16;
 
+/** L'adresse du propriétaire : le message du formulaire de contact va à l'adresse de contact de l'offre quand elle existe, tout le reste à `OWNER_EMAIL`. */
+const ownerAddress = (deps: Deps, n: NotificationRow): string | undefined =>
+  (n.template === "owner_contact" && offer.contact.email) || deps.env.OWNER_EMAIL;
+
 /**
  * La clé de dédoublonnage accompagne l'e-mail : Resend n'enverra pas deux fois un message que sa reprise répète. Resend
  * refuse aussi une clé réutilisée avec un autre contenu : la clé porte donc l'empreinte de ce qui est envoyé (objet, texte
@@ -192,7 +197,7 @@ const FINGERPRINT_LENGTH = 16;
  */
 async function sendEmail(deps: Deps, n: NotificationRow, booking: Booking | null, context: MessageContext): Promise<void> {
   const message = renderEmail(n.template, booking, context);
-  const to = n.recipient === "owner" ? deps.env.OWNER_EMAIL : booking?.client_email;
+  const to = n.recipient === "owner" ? ownerAddress(deps, n) : booking?.client_email;
   if (!to) throw new Error("adresse du destinataire manquante");
   const fingerprint = (await sha256Hex(JSON.stringify([message.subject, message.text, message.html]))).slice(0, FINGERPRINT_LENGTH);
   await deps.email.send({ to, ...message, idempotencyKey: `${n.dedupe_key}:${fingerprint}` });

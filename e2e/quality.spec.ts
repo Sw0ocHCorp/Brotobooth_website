@@ -112,8 +112,8 @@ test.describe("pages légales", () => {
   test("la confidentialité dit ce que reçoit Telegram, et jamais l'adresse e-mail", async ({ page }) => {
     await page.goto("/confidentialite");
     const recipients = page.getByRole("region", { name: "Qui reçoit vos données" });
-    await expect(recipients.getByRole("listitem")).toHaveCount(4);
-    for (const name of ["Cloudflare", "Stripe", "Resend", "Telegram"]) {
+    await expect(recipients.getByRole("listitem")).toHaveCount(5);
+    for (const name of ["Cloudflare", "Stripe", "Resend", "Telegram", "Gmail"]) {
       await expect(recipients.getByRole("listitem").filter({ hasText: name })).toHaveCount(1);
     }
     const telegram = recipients.getByRole("listitem").filter({ hasText: "Telegram" });

@@ -39,7 +39,7 @@ export function findLaunchBlockers({ offer, legalPages, databaseId, vars, siteKe
   if (offer.draft) {
     blockers.push("Les contenus de config/offer.json sont encore provisoires : une fois formules, prix et contacts renseignés, retirez la ligne « draft ».");
   }
-  if (isBlank(offer.contact.phone)) blockers.push("Le numéro de téléphone de contact manque dans config/offer.json.");
+  if (isBlank(offer.contact.phone) && isBlank(offer.contact.whatsapp)) blockers.push("Aucun numéro de contact (appel ou WhatsApp) dans config/offer.json.");
   if (isBlank(offer.contact.email)) blockers.push("L'adresse e-mail de contact manque dans config/offer.json.");
   for (const tier of offer.tiers) {
     for (const plan of offer.plans) {
