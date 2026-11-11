@@ -2,10 +2,12 @@
 import Shot from "./Shot.astro";
 
 /**
- * « Un combiné sur le côté ? » : les messages audio-vidéo des invités, puis ce que la borne propose en plus. Seulement ce
- * qu'elle sait faire aujourd'hui : qui réserve pour dans deux semaines doit pouvoir compter sur chaque ligne.
+ * « Des moments qui subliment votre événement » : ce que la borne réserve aux invités au-delà des photos, le combiné et ses
+ * messages audio-vidéo d'abord, puis le cadre et les filtres. Seulement ce qu'elle sait faire aujourd'hui : qui réserve pour
+ * dans deux semaines doit pouvoir compter sur chaque ligne.
  */
-const EXTRAS = [
+const MOMENTS = [
+  { title: "Un combiné sur le côté", text: "Vos invités décrochent et se laissent des messages audio-vidéo, à écouter directement à la borne" },
   { title: "Un cadre à votre image", text: "Préparez-le avant le jour J, il apparaît sur les tirages" },
   { title: "Filtres et dessin", text: "Vos invités personnalisent leur photo à l'écran" },
 ];
@@ -14,11 +16,11 @@ const EXTRAS = [
 <section class="block handset">
   <div class="handset-in">
     <div>
-      <h2>Un combiné sur le côté&nbsp;?</h2>
-      <p>Vos invités décrochent et se laissent des messages audio-vidéo, à écouter directement à la borne.</p>
+      <h2>Des moments qui subliment votre événement</h2>
+      <p>Au-delà des photos, la borne réserve d'autres surprises à vos invités. Chacune crée un moment à part, qui sublime votre événement.</p>
       <ul class="extras">
         {
-          EXTRAS.map(({ title, text }) => (
+          MOMENTS.map(({ title, text }) => (
             <li>
               <b>{title}</b>
               <span>{text}</span>
