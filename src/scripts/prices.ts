@@ -20,16 +20,30 @@ export async function fetchPrices(fresh = false): Promise<PricesBody | null> {
 export const placesLine = (remaining: number): string =>
   remaining === 1 ? "Plus qu'une place à ce prix" : `Plus que ${remaining} places à ce prix`;
 
-/** `<b>150 €</b><s><span class="sr-only">, au lieu de </span>250 €</s>` : le lecteur d'écran entend « 150 €, au lieu de 250 € ». */
-function showDiscount(amount: Element, priceCents: number, normalCents: number): void {
+/** Un élément `tag` dont le lecteur d'écran entend d'abord `spoken`, que l'écran tait, puis `shown`. */
+function said(tag: "s" | "span", spoken: string, shown: string): HTMLElement {
+  const element = document.createElement(tag);
+  const hidden = document.createElement("span");
+  hidden.className = "sr-only";
+  hidden.textContent = spoken;
+  element.append(hidden, shown);
+  return element;
+}
+
+/**
+ * `<b>150 €</b><s>, au lieu de 250 €</s>`, et avec `saving` la pastille `<span class="saving">, soit −100 €</span>` : le
+ * lecteur d'écran entend « 150 €, au lieu de 250 €, soit −100 € », l'écran montre la pastille, le prix barré puis le prix.
+ */
+function showDiscount(amount: Element, priceCents: number, normalCents: number, saving: boolean): void {
   const price = document.createElement("b");
   price.textContent = formatEuros(priceCents);
-  const struck = document.createElement("s");
-  const spoken = document.createElement("span");
-  spoken.className = "sr-only";
-  spoken.textContent = ", au lieu de ";
-  struck.append(spoken, formatEuros(normalCents));
-  amount.replaceChildren(price, struck);
+  const parts = [price, said("s", ", au lieu de ", formatEuros(normalCents))];
+  if (saving) {
+    const pill = said("span", ", soit ", `\u2212${formatEuros(normalCents - priceCents)}`);
+    pill.className = "saving";
+    parts.push(pill);
+  }
+  amount.replaceChildren(...parts);
 }
 
 /** Les prix normaux, sans offre : ce que la page écrit d'avance, et ce qu'elle remontre sans réponse de `/api/prices`. */
@@ -48,9 +62,12 @@ export function applyPrices(root: ParentNode, fetched: PricesBody | null): void 
   }
   for (const [id, { priceCents, normalCents }] of Object.entries(body.plans)) {
     for (const amount of root.querySelectorAll(`[data-plan="${CSS.escape(id)}"] [data-amount]`)) {
-      if (launch && priceCents !== normalCents) showDiscount(amount, priceCents, normalCents);
+      if (launch && priceCents !== normalCents) showDiscount(amount, priceCents, normalCents, true);
       else amount.textContent = formatEuros(priceCents);
     }
   }
-  for (const refill of root.querySelectorAll("[data-refill]")) refill.textContent = formatEuros(body.refillCents);
+  for (const refill of root.querySelectorAll("[data-refill]")) {
+    if (launch && body.refillCents !== body.normalRefillCents) showDiscount(refill, body.refillCents, body.normalRefillCents, false);
+    else refill.textContent = formatEuros(body.refillCents);
+  }
 }

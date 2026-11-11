@@ -18,6 +18,14 @@ export function launchBody(remaining: number): PricesBody {
   return pricesBody(offer, currentTier(offer, { [first.id]: (first.places ?? 0) - remaining }));
 }
 
+/** Ce qu'un montant de l'offre donne à lire : « 150 €, au lieu de 250 €, soit −100 € » (l'économie passe avant à l'écran). */
+export const discountText = (priceCents: number, normalCents: number): string =>
+  `${euros(priceCents)}, au lieu de ${euros(normalCents)}, soit −${euros(normalCents - priceCents)}`;
+
+/** Le tarif de la recharge que `body` affiche : barré au prix normal pendant l'offre s'il diffère, sinon seul. */
+export const refillText = ({ launch, refillCents, normalRefillCents }: PricesBody): string =>
+  launch && refillCents !== normalRefillCents ? `${euros(refillCents)}, au lieu de ${euros(normalRefillCents)}` : euros(refillCents);
+
 /** L'acompte que l'offre prévoit pour ce prix, quel que soit son pourcentage. */
 export const depositFor = (priceCents: number): number => depositCents(priceCents, offer.depositPercent);
 

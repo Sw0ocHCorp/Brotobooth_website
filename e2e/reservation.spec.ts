@@ -11,11 +11,13 @@ import {
   choosePlan,
   cleanup,
   client,
+  discountText,
   euros,
   fillDetails,
   isBookable,
   isoDate,
   launchBody,
+  refillText,
   normalPrice,
   offer,
   pickFreeDate,
@@ -307,10 +309,10 @@ test("une formule que le serveur refuse ramène aux tirages, avec le message jus
 // ---------- le prix du moment (spec de l'offre de lancement, sections 7 et 8) ----------
 // Aucun test ne suppose le palier en cours : la base d'essai se remplit pendant la série. Ils lisent `/api/prices` ou le remplacent.
 
-/** Le montant qu'un bouton de formule affiche pour `body` : « 150 €, au lieu de 250 € » pendant l'offre, sinon le prix seul. */
+/** Le montant qu'un bouton de formule affiche pour `body` : « 150 €, au lieu de 250 €, soit −100 € » pendant l'offre, sinon le prix seul. */
 function amountFor({ launch, plans }: PricesBody, plan: Plan): string {
   const { priceCents, normalCents } = plans[plan.id];
-  return launch && priceCents !== normalCents ? `${euros(priceCents)}, au lieu de ${euros(normalCents)}` : euros(priceCents);
+  return launch && priceCents !== normalCents ? discountText(priceCents, normalCents) : euros(priceCents);
 }
 
 const amount = (page: Page, plan: Plan) => planButton(page, plan).locator("[data-amount]");
@@ -348,9 +350,12 @@ test.describe("l'offre de lancement", () => {
     await expect(launch).toBeVisible();
     await expect(launch).toContainText("Offre de lancement");
     await expect(launch).toContainText(placesLine(7));
-    const refill = prints(page).getByText("Recharge de 100 tirages, le jour J");
+    const refill = prints(page).getByText("Recharge de 100 tirages");
+    await expect(refill).not.toContainText("le jour J");
     await expect(refill).toBeVisible();
     await expect(refill).toContainText(euros(body.refillCents));
+    await expect(prints(page).locator("[data-refill]")).toHaveText(refillText(body));
+    await expect(launch.locator("strong")).toHaveCSS("background-color", "rgb(255, 255, 255)");
     const own = plansOf(offer, FIRST_PLAN.booth);
     const [top, first, last, bottom] = await Promise.all([
       launch.boundingBox(),
@@ -361,7 +366,7 @@ test.describe("l'offre de lancement", () => {
     expect(top!.y + top!.height).toBeLessThanOrEqual(first!.y);
     expect(bottom!.y).toBeGreaterThanOrEqual(last!.y + last!.height);
 
-    // Chaque bouton : le prix du moment, puis le prix normal barré, atténué, qui passe avant lui à l'écran et se lit comme lui.
+    // Chaque bouton : l'économie en pastille, le prix normal barré, atténué, puis le prix du moment ; tout se lit après lui.
     const soft = await page.locator(".choices-label").first().evaluate((label) => getComputedStyle(label).color);
     for (const plan of own) {
       await expect(planButton(page, plan)).toContainText(`${plan.prints} tirages`);
@@ -371,7 +376,11 @@ test.describe("l'offre de lancement", () => {
       await expect(struck).toHaveCSS("color", soft);
       await expect(price).not.toHaveCSS("color", soft);
       await expect(struck).toHaveCSS("font-size", await price.evaluate((element) => getComputedStyle(element).fontSize));
-      const [priceBox, struckBox] = await Promise.all([price.boundingBox(), struck.boundingBox()]);
+      const saving = amount(page, plan).locator(".saving");
+      await expect(saving).toBeVisible();
+      await expect(saving).toHaveCSS("background-color", "rgb(255, 255, 255)");
+      const [savingBox, priceBox, struckBox] = await Promise.all([saving.boundingBox(), price.boundingBox(), struck.boundingBox()]);
+      expect(savingBox!.x + savingBox!.width).toBeLessThanOrEqual(struckBox!.x);
       expect(struckBox!.x + struckBox!.width).toBeLessThanOrEqual(priceBox!.x);
     }
   });
@@ -392,6 +401,7 @@ test.describe("l'offre de lancement", () => {
     await expect(prints(page)).toBeVisible();
     await expect(prints(page).locator("[data-launch]")).toBeHidden();
     await expect(prints(page).locator("s")).toHaveCount(0);
+    await expect(prints(page).locator(".saving")).toHaveCount(0);
     for (const plan of plansOf(offer, FIRST_PLAN.booth)) await expect(amount(page, plan)).toHaveText(euros(normalPrice(plan)));
     await expect(prints(page).locator("[data-refill]")).toHaveText(euros(normalTier(offer).refillCents));
   });

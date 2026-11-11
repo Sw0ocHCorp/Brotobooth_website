@@ -273,6 +273,7 @@ main { overflow-x: clip; }
 
 .prints li {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
   gap: 16px;
@@ -280,15 +281,25 @@ main { overflow-x: clip; }
   border-bottom: 1px solid var(--glass-border-soft);
 }
 
-.prints li > span:not(.price) { font-weight: 600; }
+.prints li > span:not(.price) { font-weight: 600; white-space: nowrap; }
 .price { font: 800 clamp(20px, 2vw, 26px) / 1.1 var(--font-title); white-space: nowrap; }
-/* Le prix barré passe avant le prix du palier, mais se lit après lui (« 150 €, au lieu de 250 € »). */
-[data-amount] { display: inline-flex; align-items: baseline; gap: .5em; }
-[data-amount] b { font-weight: inherit; }
+/*
+ * L'économie en pastille puis le prix barré passent avant le prix du palier, mais se lisent après lui
+ * (« 150 €, au lieu de 250 €, soit −100 € ») ; la recharge a son prix barré, sans pastille.
+ */
+/* Sur un écran trop étroit pour la ligne entière, le prix passe sous la formule, toujours à droite. */
+[data-amount], [data-refill] { display: inline-flex; flex-shrink: 0; align-items: baseline; gap: 8px; margin-left: auto; }
+[data-amount] b, [data-refill] b { font-weight: inherit; }
 [data-amount] s { order: -1; color: var(--text-soft); font-family: inherit; font-size: .6em; font-weight: 600; }
-.launch, .refill { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; }
+[data-refill] s { order: -1; font-weight: 400; }
+/* L'offre de lancement et chaque économie en pastille blanche : le blanc de la marque, sans prendre le rose de l'action. */
+.launch strong,
+[data-amount] .saving { padding: .2em .7em; border-radius: 999px; background: var(--text); color: var(--bg-a); white-space: nowrap; }
+.launch strong { font-weight: 600; }
+[data-amount] .saving { order: -2; align-self: center; font: 600 13px / 1.2 var(--font-text); }
+.launch, .refill { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 16px; }
+.launch { justify-content: flex-start; gap: 6px 10px; }
 .launch[hidden] { display: none; }
-.launch strong { font-weight: 800; }
 .launch span, .refill { color: var(--text-soft); }
 .refill b { color: inherit; font-weight: 700; white-space: nowrap; }
 .sr-only {

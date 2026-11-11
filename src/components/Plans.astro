@@ -1,6 +1,6 @@
 ---
 import { formatEuros } from "../../worker/html";
-import { CLIENT_REFILL_LABEL, isBookable, normalTier, offer, plansOf, priceOf } from "../../worker/offer";
+import { REFILL_LABEL, isBookable, normalTier, offer, plansOf, priceOf } from "../../worker/offer";
 
 /**
  * « Les formules » (`#formules`), telles que `config/offer.json` les décrit : une carte par borne, avec ce qu'elle comprend
@@ -45,7 +45,7 @@ import { CLIENT_REFILL_LABEL, isBookable, normalTier, offer, plansOf, priceOf } 
                 ))}
               </ul>
               <p class="refill">
-                {CLIENT_REFILL_LABEL} <b data-refill>{formatEuros(normalTier(offer).refillCents)}</b>
+                {REFILL_LABEL} <b data-refill>{formatEuros(normalTier(offer).refillCents)}</b>
               </p>
               <a class="btn ghost" href={`/reserver?borne=${encodeURIComponent(booth.id)}`}>
                 Choisir le {booth.name}

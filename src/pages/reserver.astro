@@ -1,6 +1,6 @@
 ---
 import { formatEuros } from "../../worker/html";
-import { CLIENT_REFILL_LABEL, finalDepositPercent, hasContact, isBookable, normalTier, offer, priceOf } from "../../worker/offer";
+import { REFILL_LABEL, finalDepositPercent, hasContact, isBookable, normalTier, offer, priceOf } from "../../worker/offer";
 import ContactLine from "../components/ContactLine.astro";
 import TopBar from "../components/TopBar.astro";
 import Base from "../layouts/Base.astro";
@@ -159,7 +159,7 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
               ))
             }
             <p class="refill">
-              {CLIENT_REFILL_LABEL} <b data-refill>{formatEuros(normalTier(offer).refillCents)}</b>
+              {REFILL_LABEL} <b data-refill>{formatEuros(normalTier(offer).refillCents)}</b>
             </p>
           </div>
           <p class="problem" id="problem-plan" role="alert" tabindex="-1" hidden>Cette formule n'est plus proposée. Choisissez-en une autre.</p>

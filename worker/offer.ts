@@ -53,8 +53,8 @@ export type OfferConfig = Omit<Offer, "plans"> & { plans: Omit<Plan, "name">[] }
 
 const isCents = (value: unknown): boolean => Number.isInteger(value) && (value as number) >= 0;
 
-/** Le libellé client de la recharge, commandée le jour J ; le propriétaire lit « Recharge de 100 tirages ». */
-export const CLIENT_REFILL_LABEL = "Recharge de 100 tirages, le jour J";
+/** Le libellé de la recharge, le même pour le client et le propriétaire : site, e-mails, agenda et administration. */
+export const REFILL_LABEL = "Recharge de 100 tirages";
 
 /** Refuse des paliers mal formés, pour qu'une faute dans `config/offer.json` casse les tests au lieu du site. */
 function checkTiers({ plans, tiers }: OfferConfig): void {
@@ -138,12 +138,13 @@ export const priceOf = (tier: Tier, planId: string): number => tier.prices[planI
 
 export const tierById = (id: string): Tier | undefined => offer.tiers.find((tier) => tier.id === id);
 
-/** Le corps de `GET /api/prices` : le palier en cours, et pour chaque formule son prix et son prix normal. */
+/** Le corps de `GET /api/prices` : le palier en cours, et pour chaque formule comme pour la recharge, son prix et son prix normal. */
 export interface PricesBody {
   tier: string;
   launch: boolean;
   remaining: number | null;
   refillCents: number;
+  normalRefillCents: number;
   plans: Record<string, { priceCents: number; normalCents: number }>;
 }
 
@@ -154,6 +155,7 @@ export function pricesBody(from: Offer, current: CurrentTier): PricesBody {
     launch: current.launch,
     remaining: current.remaining,
     refillCents: current.tier.refillCents,
+    normalRefillCents: normal.refillCents,
     plans: Object.fromEntries(
       from.plans.map((plan) => [plan.id, { priceCents: priceOf(current.tier, plan.id), normalCents: priceOf(normal, plan.id) }]),
     ),

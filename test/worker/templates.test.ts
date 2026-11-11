@@ -512,8 +512,8 @@ describe("modèles inconnus", () => {
 
 describe("la recharge de 100 tirages et le palier", () => {
   const REFILL = 3_750;
-  const LABEL = "Recharge de 100 tirages, le jour J";
-  const OWNER_LABEL = "Recharge de 100 tirages";
+  const LABEL = "Recharge de 100 tirages";
+  const OWNER_LABEL = LABEL;
   const known = offer.tiers[0];
   const tiered = (over: Partial<Booking> = {}) => booking({ price_tier: known.id, refill_cents: REFILL, ...over });
 

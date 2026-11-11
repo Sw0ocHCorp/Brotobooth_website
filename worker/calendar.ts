@@ -2,7 +2,7 @@ import { ACTIVE_STATUSES, addDays, parisToday, type BookingStatus } from "./book
 import type { Deps } from "./deps";
 import { DEFAULT_HEADERS, json, secretMatches } from "./http";
 import { formatEuros } from "./html";
-import { offer } from "./offer";
+import { REFILL_LABEL, offer } from "./offer";
 import { listUpcoming, type Booking } from "./repository";
 import { balance, planName, tierName } from "./templates";
 
@@ -68,7 +68,7 @@ function details(b: Booking): string[] {
     ["Horaires", b.event_hours],
     ["Formule", planName(b)],
     ["Palier", tierName(b)],
-    ["Recharge de 100 tirages", b.refill_cents === null ? null : formatEuros(b.refill_cents)],
+    [REFILL_LABEL, b.refill_cents === null ? null : formatEuros(b.refill_cents)],
     ["Téléphone", b.client_phone],
     // Sans prix, le solde n'est pas nul : il est inconnu.
     ["Solde restant", b.price_cents === null ? null : balance(b)],

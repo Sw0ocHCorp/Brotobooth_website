@@ -93,7 +93,7 @@ describe("GET /acompte/<jeton> : récapitulatif", () => {
   it("annonce le tarif de la recharge juste après la formule, et rien sans tarif", async () => {
     const b = (await insert(newBooking({ status: "awaiting_deposit", event_date: "2026-12-26", refill_cents: 3_750, price_tier: offer.tiers[0].id }))).booking;
     const html = await (await open(b.token)).text();
-    expect(html).toMatch(/<dt>Formule<\/dt><dd>[^<]+<\/dd><dt>Recharge de 100 tirages, le jour J<\/dt><dd>37,50 €<\/dd>/);
+    expect(html).toMatch(/<dt>Formule<\/dt><dd>[^<]+<\/dd><dt>Recharge de 100 tirages<\/dt><dd>37,50 €<\/dd>/);
     expect(html).not.toMatch(/palier/i);
     expect(await (await open(v.token)).text()).not.toContain("Recharge");
   });

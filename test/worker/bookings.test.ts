@@ -208,7 +208,7 @@ describe("offre", () => {
     });
     it("pricesBody gives tier and normal prices", () => {
       expect(pricesBody(trial, currentTier(trial, {}))).toEqual({
-        tier: "t1", launch: true, remaining: 3, refillCents: 500,
+        tier: "t1", launch: true, remaining: 3, refillCents: 500, normalRefillCents: 1_000,
         plans: { a: { priceCents: 100_00, normalCents: 200_00 }, b: { priceCents: 200_00, normalCents: 300_00 } },
       });
     });

@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
 import { normalTier, pricesBody, type PricesBody } from "../worker/offer";
 import { placesLine } from "../src/scripts/prices";
-import { euros, isBookable, launchBody, normalPrice, offer, plansOf } from "./seed";
+import { discountText, euros, isBookable, launchBody, normalPrice, offer, plansOf, refillText } from "./seed";
 
 const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
@@ -226,16 +226,27 @@ test.describe("l'offre de lancement", () => {
     await expect(card.locator("[data-launch]")).toBeVisible();
     await expect(card).toContainText("Offre de lancement");
     await expect(card).toContainText(placesLine(7));
+    // « Offre de lancement » en pastille blanche.
+    await expect(card.locator("[data-launch] strong")).toHaveCSS("background-color", "rgb(255, 255, 255)");
     for (const plan of plansOf(offer, offer.booths.find((booth) => isBookable(offer, booth.id))!.id)) {
       const row = card.getByRole("listitem").filter({ hasText: new RegExp(`^\\s*${plan.prints} tirages`) });
       const { priceCents, normalCents } = body.plans[plan.id];
-      await expect(row).toContainText(`${euros(priceCents)}, au lieu de ${euros(normalCents)}`);
+      await expect(row).toContainText(discountText(priceCents, normalCents));
+      // À l'écran : la pastille d'économie, le prix normal barré, puis le prix du moment.
+      const [saving, struck, price] = [row.locator(".saving"), row.locator("s"), row.locator("b")];
+      await expect(saving).toBeVisible();
+      await expect(saving).toContainText(`−${euros(normalCents - priceCents)}`);
+      await expect(saving).toHaveCSS("background-color", "rgb(255, 255, 255)");
+      const [savingBox, struckBox, priceBox] = await Promise.all([saving.boundingBox(), struck.boundingBox(), price.boundingBox()]);
+      expect(savingBox!.x + savingBox!.width).toBeLessThanOrEqual(struckBox!.x);
+      expect(struckBox!.x + struckBox!.width).toBeLessThanOrEqual(priceBox!.x);
       await expect(row.locator("s")).toBeVisible();
       await expect(row.locator("s")).toHaveText(new RegExp(euros(normalCents)));
       await expect(row.locator("b")).toHaveCSS("font-weight", "800");
     }
-    await expect(card).toContainText(`Recharge de 100 tirages, le jour J`);
-    await expect(card.locator("[data-refill]")).toHaveText(euros(body.refillCents));
+    await expect(card).toContainText("Recharge de 100 tirages");
+    await expect(card).not.toContainText("le jour J");
+    await expect(card.locator("[data-refill]")).toHaveText(refillText(body));
   });
 
   test("une seule place restante se dit au singulier", async ({ page }) => {
@@ -251,6 +262,7 @@ test.describe("l'offre de lancement", () => {
     await expect(page.locator("#formules [data-amount]").first()).toHaveCSS("font-weight", "800");
     await expect(page.locator("#formules [data-launch]")).toBeHidden();
     await expect(page.locator("#formules s")).toHaveCount(0);
+    await expect(page.locator("#formules .saving")).toHaveCount(0);
     await expect(bookableCard(page).locator("[data-refill]")).toHaveText(euros(normalTier(offer).refillCents));
   });
 
@@ -264,6 +276,7 @@ test.describe("l'offre de lancement", () => {
       await expect(page.locator("#formules [data-amount]").first()).toBeVisible();
       await expect(page.locator("#formules [data-launch]")).toBeHidden();
       await expect(page.locator("#formules s")).toHaveCount(0);
+      await expect(page.locator("#formules .saving")).toHaveCount(0);
     });
   }
 });

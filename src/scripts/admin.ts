@@ -1,6 +1,6 @@
 import { formatEuros } from "../../worker/html";
 import { depositCents } from "../../worker/bookings";
-import { normalTier, offer, planById, priceOf, tierById, type PricesBody } from "../../worker/offer";
+import { REFILL_LABEL, normalTier, offer, planById, priceOf, tierById, type PricesBody } from "../../worker/offer";
 import { fetchPrices } from "./prices";
 
 /**
@@ -598,7 +598,7 @@ function renderSheet(b: Booking, history: HistoryEntry[]): void {
           b.client_email && h("a", { class: "btn ghost", href: `mailto:${encodeURIComponent(b.client_email)}` }, `Écrire à ${b.client_email}`),
         ),
       left && h("p", { class: "notice" }, left.late ? "Délai dépassé : la date va être libérée." : `Il reste ${left.text} ${purpose}.`),
-      definitions([["Formule", planName(b.plan)], ["Palier", tierName(b.price_tier)], ["Recharge de 100 tirages", b.refill_cents === null ? null : euros(b.refill_cents)], ["Type d'événement", b.event_type], ["Lieu", b.venue], ["Horaires", b.event_hours]]),
+      definitions([["Formule", planName(b.plan)], ["Palier", tierName(b.price_tier)], [REFILL_LABEL, b.refill_cents === null ? null : euros(b.refill_cents)], ["Type d'événement", b.event_type], ["Lieu", b.venue], ["Horaires", b.event_hours]]),
       b.message && h("div", {}, h("h3", {}, "Message du client"), h("p", { class: "quote" }, b.message)),
       b.price_cents !== null && definitions([["Prix", euros(b.price_cents)], ["Acompte", euros(b.deposit_cents)], ["Solde restant", euros(balance)]]),
       b.deposit_paid_at && h("p", {}, `Acompte payé le ${formatMoment(b.deposit_paid_at)}.`),

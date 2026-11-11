@@ -103,19 +103,19 @@ Une fonction pure calcule le palier en cours à partir de l'offre et des places 
 - Un script léger lit `/api/prices`. Pendant un palier limité, la carte affiche :
   - « Offre de lancement » et « Plus que 7 places à ce prix » (« Plus qu'une place à ce prix » pour la dernière) ;
   - pour chaque formule : « 200 tirages », le prix normal barré, puis le prix du palier. Un lecteur d'écran entend « 150 €, au lieu de 250 € » ;
-  - « Recharge de 100 tirages, le jour J » et son tarif.
+  - « Recharge de 100 tirages » et son tarif.
 - Hors offre, la carte garde le prix normal et le tarif normal de la recharge, sans rien de barré.
 - La section des formules est loin sous la ligne de flottaison : la mise à jour ne fait pas bouger ce que le client regarde.
 
 ### Réservation
 
-- La page lit `/api/prices` en même temps que les dates. À l'étape 2, les boutons des tirages montrent le prix du palier, le prix normal barré pendant l'offre, et « Plus que 7 places à ce prix » au-dessus d'eux ; « Recharge de 100 tirages, le jour J » et son tarif suivent les boutons.
+- La page lit `/api/prices` en même temps que les dates. À l'étape 2, les boutons des tirages montrent le prix du palier, le prix normal barré pendant l'offre, et « Plus que 7 places à ce prix » au-dessus d'eux ; « Recharge de 100 tirages » et son tarif suivent les boutons.
 - L'envoi transmet le prix affiché pour la formule choisie.
 - Sur `price_changed`, la page relit `/api/prices`, met à jour les prix de l'étape 2 et affiche, à l'étape 3, près du bouton d'envoi : « Le prix de cette formule vient de changer : 200 € au lieu de 150 €. Si ce prix vous convient, envoyez à nouveau votre demande. » La formule reste choisie, les champs gardent leur contenu, le jeton anti-robots est renouvelé comme après les autres refus.
 
 ### E-mails, page d'acompte, agenda
 
-- Le récapitulatif du client (accusé de réception, lien de paiement, confirmation, rappels, `/acompte`) ajoute « Recharge de 100 tirages, le jour J : 75 € » quand `refill_cents` est renseigné.
+- Le récapitulatif du client (accusé de réception, lien de paiement, confirmation, rappels, `/acompte`) ajoute « Recharge de 100 tirages : 75 € » quand `refill_cents` est renseigné.
 - Les messages du propriétaire (e-mail, Telegram) et l'événement d'agenda ajoutent le palier et le tarif de la recharge, pour l'avoir sous la main le jour J.
 
 ### Administration
