@@ -1,6 +1,6 @@
 import { readRange } from "./api";
 import { isValidDate } from "./bookings";
-import { LAST_RUN_KEY } from "./cron";
+import { CONTACT_RETENTION_MONTHS, LAST_RUN_KEY, monthsBefore } from "./cron";
 import type { Deps } from "./deps";
 import { findRoute, fromOtherOrigin, json, readJson, requireJson, type Handler, type Route } from "./http";
 import { sendSoon } from "./notifications";
@@ -20,9 +20,11 @@ import {
   type OpResult,
 } from "./operations";
 import {
+  deleteContactMessage,
   getBooking,
   getHistory,
   getState,
+  listContactMessages,
   listFailedNotifications,
   listRange,
   listTodo,
@@ -42,6 +44,8 @@ import {
  * | `POST /bookings` | `{ kind: "manual" \| "blocked", ... }`, 201 `{ booking }` ; une prestation prend une place du palier en cours ; `plan` est facultatif (sans lui, le prix est libre) et `tier`, le palier que le formulaire a montré, n'est qu'une garde : s'il diffère du palier en cours, 409 `tier_changed` |
  * | `POST /bookings/:id/<action>` | `validate`, `refuse`, `cancel`, `resend-link`, `balance-paid` : `{ booking }` |
  * | `PATCH /bookings/:id` | `{ price_cents?, deposit_cents?, notes? }` : `{ booking }` |
+ * | `GET  /contact` | `{ messages }` des 12 derniers mois, du plus récent au plus ancien, sans empreinte d'IP, chacun avec `sent_at` (l'e-mail au propriétaire, `null` s'il attend) |
+ * | `DELETE /contact/:id` | 204 : le message et ses envois sont effacés ; 404 s'il n'existe pas. Le corps `{}` est exigé comme pour toute écriture |
  *
  * Erreurs : 400 corps illisible ou période invalide, 403, 404, 405, 409 (`stale`, `date_taken`, `tier_changed`), 413, 415,
  * 422 `{ error: "invalid", fields }`, 503 `payment_unavailable`.
@@ -251,7 +255,17 @@ const doAction =
     return reply(result);
   };
 
+const CONTACT = "/api/admin/contact";
+
+const listMessages: Handler = async (_req, deps) =>
+  json({ messages: await listContactMessages(deps.env.DB, monthsBefore(deps.now().toISOString(), CONTACT_RETENTION_MONTHS)) });
+
+const eraseMessage: Handler = async (_req, deps, _ctx, [id]) =>
+  (await deleteContactMessage(deps.env.DB, id)) ? new Response(null, { status: 204 }) : json({ error: "not_found" }, 404);
+
 const ROUTES: Route[] = [
+  { method: "GET", path: CONTACT, handler: listMessages },
+  { method: "DELETE", path: `${CONTACT}/:id`, handler: eraseMessage },
   { method: "GET", path: "/api/admin/overview", handler: overview },
   { method: "GET", path: BOOKINGS, handler: listBookings },
   { method: "POST", path: BOOKINGS, handler: addBooking },

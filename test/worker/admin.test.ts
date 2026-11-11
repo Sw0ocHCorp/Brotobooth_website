@@ -1,6 +1,7 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createContact } from "../../worker/contact";
 import { makeDeps, type Deps } from "../../worker/deps";
 import { processDue } from "../../worker/notifications";
 import { currentTier, offer } from "../../worker/offer";
@@ -10,6 +11,8 @@ import {
   enqueue,
   getBooking,
   getHistory,
+  getContactMessage,
+  insertContactMessage,
   listRange,
   markFailed,
   patchBooking,
@@ -81,6 +84,7 @@ type Reply = {
   fields?: string[];
   booking?: Booking;
   bookings?: Booking[];
+  messages?: Record<string, unknown>[];
   todo?: Booking[];
   health?: { lastCronRun: string | null; failedNotifications: number };
   history?: { at: string; actor: string; event: string; detail?: string | null }[];
@@ -1010,5 +1014,77 @@ describe("panne imprévue", () => {
     } finally {
       log.mockRestore();
     }
+  });
+});
+
+describe("messages de contact", () => {
+  const CONTACT = "/api/admin/contact";
+
+  /** Un message du formulaire public, enregistré avec son e-mail en file. */
+  async function received(name = "Lou Bernard"): Promise<string> {
+    const body = { name, email: "lou@example.test", phone: "06 98 76 54 32", message: "Êtes-vous libres\nle 12 juin ?", turnstile_token: "t" };
+    expect(await createContact(deps, body, "203.0.113.7")).toEqual({ kind: "sent" });
+    return (await env.DB.prepare("SELECT id FROM contact_messages WHERE name = ?").bind(name).first<string>("id"))!;
+  }
+  const messages = async () => (await reply(await api("GET", CONTACT))).messages!;
+  const remove = (id: string, origin: string | null = BASE) => api("DELETE", `${CONTACT}/${id}`, {}, deps, origin);
+
+  it("liste les messages sans l'empreinte de l'IP, « en attente » tant que l'e-mail n'est pas parti", async () => {
+    const id = await received();
+    expect(await env.DB.prepare("SELECT ip_hash FROM contact_messages").first("ip_hash")).not.toBeNull();
+    expect(await messages()).toEqual([
+      { id, name: "Lou Bernard", email: "lou@example.test", phone: "06 98 76 54 32", message: "Êtes-vous libres\nle 12 juin ?", created_at: T0, sent_at: null },
+    ]);
+  });
+
+  it("pose sent_at une fois l'e-mail au propriétaire envoyé, pas à cause de l'alerte de panne", async () => {
+    const id = await received();
+    await processDue(deps);
+    expect((await messages())[0].sent_at).toBe(T0);
+    // Une autre notification du même message ne se prend pas pour son e-mail.
+    await env.DB.prepare("UPDATE notifications SET sent_at = NULL WHERE contact_id = ?").bind(id).run();
+    await env.DB.prepare(
+      "INSERT INTO notifications (contact_id, dedupe_key, channel, recipient, template, due_at, sent_at) VALUES (?, 'x', 'telegram', 'owner', 'owner_contact_failed', ?, ?)",
+    ).bind(id, T0, T0).run();
+    expect((await messages())[0].sent_at).toBeNull();
+  });
+
+  it("rend les plus récents d'abord et laisse de côté ceux de plus de 12 mois", async () => {
+    await insertContactMessage(env.DB, { id: "old", name: "Ancien", email: "a@example.test", phone: null, message: "m", ip_hash: null, created_at: "2025-11-06T10:00:00.000Z" }, []);
+    await insertContactMessage(env.DB, { id: "mid", name: "Milieu", email: "b@example.test", phone: null, message: "m", ip_hash: null, created_at: "2026-03-01T10:00:00.000Z" }, []);
+    await received("Récent");
+    expect((await messages()).map((m) => m.name)).toEqual(["Récent", "Milieu"]);
+  });
+
+  it("DELETE supprime le message et ses envois, puis la liste ne le rend plus", async () => {
+    const id = await received();
+    const other = await received("Sam Petit");
+    const r = await remove(id);
+    expect(r.status).toBe(204);
+    expect(await r.text()).toBe("");
+    expect(await getContactMessage(env.DB, id)).toBeNull();
+    expect((await notificationRows()).map((n) => n.contact_id)).toEqual([other]);
+    expect((await messages()).map((m) => m.name)).toEqual(["Sam Petit"]);
+  });
+
+  it("DELETE d'un message inconnu répond 404", async () => {
+    const r = await remove("inconnu");
+    expect(r.status).toBe(404);
+    expect(await reply(r)).toEqual({ error: "not_found" });
+  });
+
+  it("DELETE refuse une autre origine ou l'absence d'Origin, et le message reste", async () => {
+    const id = await received();
+    expect((await remove(id, null)).status).toBe(403);
+    expect((await remove(id, "https://ailleurs.test")).status).toBe(403);
+    expect(await getContactMessage(env.DB, id)).not.toBeNull();
+  });
+
+  it("refuse les deux routes sans authentification Access", async () => {
+    const id = await received();
+    const d = fakeDeps({ isOwner: () => false });
+    expect((await api("GET", CONTACT, undefined, d)).status).toBe(403);
+    expect((await api("DELETE", `${CONTACT}/${id}`, {}, d)).status).toBe(403);
+    expect(await getContactMessage(env.DB, id)).not.toBeNull();
   });
 });

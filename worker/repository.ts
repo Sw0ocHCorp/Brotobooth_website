@@ -554,6 +554,30 @@ const contactErasure = (db: D1Database, where: Sql): D1PreparedStatement[] => [
   db.prepare(`DELETE FROM contact_messages WHERE ${where.sql}`).bind(...where.params),
 ];
 
+/** Les messages reçus depuis `sinceIso`, du plus récent au plus ancien, sans l'empreinte de l'IP. `sent_at` : l'heure d'envoi de l'e-mail au propriétaire (et non de son alerte de panne), `null` tant qu'il attend. */
+export const listContactMessages = async (
+  db: D1Database,
+  sinceIso: string,
+): Promise<(Omit<ContactMessage, "ip_hash"> & { sent_at: string | null })[]> =>
+  (
+    await db
+      .prepare(
+        `SELECT m.id, m.name, m.email, m.phone, m.message, m.created_at,
+           (SELECT n.sent_at FROM notifications n
+             WHERE n.contact_id = m.id AND n.template = 'owner_contact' AND n.channel = 'email') AS sent_at
+         FROM contact_messages m WHERE m.created_at >= ? ORDER BY m.created_at DESC, m.rowid DESC`,
+      )
+      .bind(sinceIso)
+      .all<Omit<ContactMessage, "ip_hash"> & { sent_at: string | null }>()
+  ).results;
+
+/** Efface le message `id` et ses envois ; `false` si aucun message n'a cet identifiant. */
+export async function deleteContactMessage(db: D1Database, id: string): Promise<boolean> {
+  const erasure = contactErasure(db, { sql: "id = ?", params: [id] });
+  const results = await db.batch(erasure);
+  return results[erasure.length - 1].meta.changes > 0;
+}
+
 /**
  * La conservation des messages de contact, en un seul lot : supprime ceux reçus avant `messagesBeforeIso` avec leurs
  * envois, puis efface l'empreinte de l'IP de ceux reçus avant `ipBeforeIso`. Rend le nombre de messages supprimés et

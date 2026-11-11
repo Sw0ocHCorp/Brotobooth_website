@@ -12,7 +12,8 @@ export type CreateContactResult =
   | { kind: "bot" }
   | { kind: "too_many" };
 
-const DAY_MS = 24 * 3_600_000;
+/** La fenêtre de la limite par connexion ; l'empreinte de l'IP est effacée au bout de la même durée (`worker/cron.ts`). */
+export const DAY_MS = 24 * 3_600_000;
 
 /** Le message n'est jamais vide : `PARSERS.message` accepte le vide, pour le champ facultatif d'une demande. */
 const nonEmpty = (value: string | null | undefined): string | null => (value ? value : null);

@@ -43,6 +43,7 @@ type Problem = { error?: string; fields?: string[] };
 type Reply<T = unknown> = { status: number; data: T & Problem };
 
 const BOOKINGS = "/api/admin/bookings";
+const CONTACT = "/api/admin/contact";
 
 const STATUS_LABEL: Record<Status, string> = {
   pending_review: "À valider",
@@ -116,6 +117,7 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props = {}, ...
 
 const DAY_FORMAT = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 const MONTH_FORMAT = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" });
+const RECEIVED_FORMAT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 const MOMENT_FORMAT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 /** `en-CA` écrit le jour `AAAA-MM-JJ`. */
 const PARIS_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" });
@@ -194,7 +196,7 @@ const tierName = (id: string | null): string | null => (id === null ? null : (ti
 
 // ---------- l'API ----------
 
-async function call<T = unknown>(method: "GET" | "POST" | "PATCH", path: string, body: object = {}): Promise<Reply<T>> {
+async function call<T = unknown>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body: object = {}): Promise<Reply<T>> {
   try {
     const init: RequestInit =
       method === "GET" ? { method } : { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
@@ -221,6 +223,7 @@ let clock: () => Date;
 let month = "";
 
 const todoZone = $("#todo");
+const messagesZone = $("#messages");
 const healthZone = $("#health");
 const calendarZone = $("#calendar");
 const legend = $("#legend");
@@ -276,6 +279,53 @@ function todoRow(booking: Booking, now: Date): HTMLElement {
       left && h("span", { class: `pill ${tone}` }, left.late ? "Délai dépassé" : `Il reste ${left.text}`),
     ),
   );
+}
+
+// ---------- messages ----------
+
+type ContactMessage = { id: string; name: string; email: string; phone: string | null; message: string; created_at: string; sent_at: string | null };
+
+function messageRow(m: ContactMessage): HTMLElement {
+  return h(
+    "li",
+    { class: "message" },
+    h("header", {}, h("strong", {}, m.name), h("time", { datetime: m.created_at }, RECEIVED_FORMAT.format(new Date(m.created_at)))),
+    h(
+      "p",
+      { class: "contact" },
+      h("a", { href: `mailto:${m.email}` }, m.email),
+      m.phone && h("a", { href: `tel:${m.phone.replace(/[^\d+]/g, "")}` }, m.phone),
+    ),
+    h("p", { class: "body" }, m.message),
+    h(
+      "footer",
+      {},
+      m.sent_at ? h("span", { class: "pill ok" }, "Envoyé par e-mail") : h("span", { class: "pill warn" }, "En attente d'envoi"),
+      h("button", { type: "button", class: "btn ghost danger", "aria-label": `Effacer le message de ${m.name}`, onclick: () => void eraseMessage(m.id) }, "Effacer"),
+    ),
+  );
+}
+
+function renderMessages(messages: ContactMessage[]): void {
+  messagesZone.replaceChildren(
+    messages.length > 0
+      ? h("ul", { class: "rows" }, ...messages.map(messageRow))
+      : h("p", { class: "sub", role: "status" }, "Aucun message de contact depuis 12 mois."),
+  );
+}
+
+async function loadMessages(): Promise<void> {
+  const reply = await call<{ messages: ContactMessage[] }>("GET", CONTACT);
+  if (reply.status === 200) renderMessages(reply.data.messages);
+  else problem("Impossible de charger les messages. Rechargez la page.");
+}
+
+async function eraseMessage(id: string): Promise<void> {
+  if (!(await confirmed(ERASE))) return;
+  const reply = await call("DELETE", `${CONTACT}/${id}`);
+  // 404 : le message n'existe plus (effacé ailleurs, ou échu) ; la liste se remet à jour dans les deux cas.
+  if (reply.status !== 204 && reply.status !== 404) problem(explain(reply));
+  await loadMessages();
 }
 
 // ---------- santé ----------
@@ -386,7 +436,7 @@ async function loadOverview(): Promise<void> {
 
 async function refreshBoard(): Promise<void> {
   problem(null);
-  await Promise.all([loadOverview(), loadMonth(), loadTier(true)]);
+  await Promise.all([loadOverview(), loadMessages(), loadMonth(), loadTier(true)]);
 }
 
 // ---------- le palier en cours ----------
@@ -439,6 +489,11 @@ const CANCEL: Confirmation = {
   text: "La réservation est annulée et la date libérée. Le client est prévenu s'il a une adresse e-mail. Un remboursement éventuel se fait depuis Stripe.",
   ok: "Annuler la réservation",
   keep: "Garder la réservation",
+};
+const ERASE: Confirmation = {
+  title: "Effacer définitivement ce message ?",
+  text: "Cela ne se défait pas.",
+  ok: "Effacer le message",
 };
 const UNBLOCK: Confirmation = {
   title: "Retirer ce blocage ?",

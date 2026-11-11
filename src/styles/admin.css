@@ -60,12 +60,13 @@ body { min-height: 100dvh; }
 @media (min-width: 64rem) {
   .admin {
     grid-template-columns: minmax(0, 26rem) minmax(0, 1fr);
-    grid-template-rows: auto auto 1fr;
-    grid-template-areas: "top top" "todo calendar" "health calendar";
+    grid-template-rows: auto auto auto 1fr;
+    grid-template-areas: "top top" "todo calendar" "messages calendar" "health calendar";
     align-items: start;
   }
   .top { grid-area: top; }
   #zone-todo { grid-area: todo; }
+  #zone-messages { grid-area: messages; }
   #zone-calendar { grid-area: calendar; }
   #zone-health { grid-area: health; }
 }
@@ -162,6 +163,25 @@ body { min-height: 100dvh; }
 .row .who { font-weight: 600; overflow-wrap: anywhere; }
 .row .meta { grid-column: 1; color: var(--text-soft); font-size: .85rem; overflow-wrap: anywhere; }
 .row .pill { grid-column: 2; grid-row: 1 / span 2; }
+
+/* ---------- messages ---------- */
+
+.message {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 16px;
+  background: var(--row);
+}
+.message header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; }
+.message strong { overflow-wrap: anywhere; }
+.message time,
+.message .contact { color: var(--text-soft); font-size: .85rem; overflow-wrap: anywhere; }
+.message .contact { display: flex; flex-wrap: wrap; gap: 0 14px; }
+.message .contact a { display: inline-flex; align-items: center; min-height: 44px; color: inherit; }
+.message .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.message footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
 
 /* ---------- calendrier ---------- */
 

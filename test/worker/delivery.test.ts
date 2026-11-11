@@ -11,6 +11,7 @@ import { processDue } from "../../worker/notifications";
 import { offer } from "../../worker/offer";
 import {
   claimNotification,
+  deleteContactMessage,
   enqueue,
   getState,
   patchBooking,
@@ -551,11 +552,7 @@ describe("processDue : les messages de contact", () => {
   }
 
   /** L'effacement d'un message : ses envois d'abord, puis le message, comme l'exigent les clés étrangères de D1. */
-  const erase = (id: string) =>
-    env.DB.batch([
-      env.DB.prepare("DELETE FROM notifications WHERE contact_id = ?").bind(id),
-      env.DB.prepare("DELETE FROM contact_messages WHERE id = ?").bind(id),
-    ]);
+  const erase = (id: string) => deleteContactMessage(env.DB, id);
 
   it("envoie le message au propriétaire, « Répondre » écrivant au visiteur, et rien sur Telegram", async () => {
     const c = await received();

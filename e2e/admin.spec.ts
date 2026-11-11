@@ -1,10 +1,19 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
 import { currentTier, normalTier, priceOf, pricesBody, tierById, type PricesBody } from "../worker/offer";
 import { addDays, cleanup, depositFor, euros, FIRST_PLAN, freeDate, launchBody, normalPrice, offer, ORIGIN, seed, type Kind } from "./seed";
 
-test.afterEach(({ request }) => cleanup(request));
+/** Efface les messages de contact que les essais ont envoyés. */
+async function eraseContacts(request: APIRequestContext): Promise<void> {
+  const { messages } = (await (await request.get("/api/admin/contact")).json()) as { messages: { id: string }[] };
+  for (const { id } of messages) await request.delete(`/api/admin/contact/${id}`, { data: {}, headers: { Origin: ORIGIN } });
+}
+
+test.afterEach(async ({ request }) => {
+  await cleanup(request);
+  await eraseContacts(request);
+});
 
 const sheetOf = (page: Page, title: string) => page.getByRole("dialog", { name: title });
 
@@ -373,7 +382,9 @@ test("les cibles tactiles font 44 px au moins", async ({ page, request }) => {
   const pending = await seed(request, "pending");
   const awaiting = await seed(request, "awaiting");
   const confirmed = await seed(request, "confirmed");
+  await sendContact(request, "Lou Bernard");
   await page.goto("/admin");
+  await expect(page.getByRole("button", { name: "Effacer le message de Lou Bernard" })).toBeVisible();
   expect(await smallTargets(page.locator("main"))).toEqual([]);
 
   await page.getByRole("button", { name: "Ajouter une réservation" }).click();
@@ -395,11 +406,12 @@ test("aucun débordement horizontal à 375 px", async ({ page, request }) => {
   expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
   const long = "Camille-Anne-Sophie-de-la-Tour-d'Auvergne-Lefebvre-Montmorency-Beaumont-Delacroix";
+  await sendContact(request, long);
   const booking = await seed(request, "awaiting", { name: long, venue: "Domaine-de-la-Grande-Fontaine-des-Trois-Chênes-et-du-Moulin" });
   await page.goto("/admin");
   expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
-  await page.getByRole("button", { name: new RegExp(long) }).click();
+  await page.locator("#todo").getByRole("button", { name: new RegExp(long) }).click();
   const sheet = sheetOf(page, long);
   await expect(sheet).toBeVisible();
   expect(await hasNoHorizontalOverflow(page)).toBe(true);
@@ -423,6 +435,50 @@ test("aucune violation d'accessibilité détectée par axe", async ({ page, requ
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
 
+
+// ---------- les messages de contact ----------
+
+/** Un message envoyé par l'API publique, comme le fait le formulaire de l'accueil ; l'e-mail au propriétaire part aussitôt (passerelles factices). */
+async function sendContact(request: APIRequestContext, name: string): Promise<void> {
+  const response = await request.post("/api/contact", {
+    headers: { Origin: ORIGIN },
+    data: { name, email: "lou@example.test", phone: "06 12 34 56 78", message: "Êtes-vous libres ?\nMerci d'avance.", turnstile_token: "t" },
+  });
+  expect(response.status()).toBe(201);
+}
+
+test("lire un message de contact, puis l'effacer après confirmation", async ({ page, request }) => {
+  const name = `Lou ${Date.now()}`;
+  await sendContact(request, name);
+  await page.goto("/admin");
+
+  const zone = page.getByRole("region", { name: "Messages" });
+  const message = zone.getByRole("listitem").filter({ hasText: name });
+  await expect(message).toBeVisible();
+  await expect(message.getByRole("link", { name: "lou@example.test" })).toHaveAttribute("href", "mailto:lou@example.test");
+  await expect(message.getByRole("link", { name: "06 12 34 56 78" })).toHaveAttribute("href", /^tel:/);
+  await expect(message.locator(".body")).toHaveText("Êtes-vous libres ?\nMerci d'avance.");
+  expect(await message.locator(".body").evaluate((element) => getComputedStyle(element).whiteSpace)).toBe("pre-wrap");
+  await expect(message.getByText(/^(Envoyé par e-mail|En attente d'envoi)$/)).toBeVisible();
+
+  // « Annuler » garde le message.
+  await message.getByRole("button", { name: "Effacer" }).click();
+  const confirmation = page.getByRole("alertdialog");
+  await expect(confirmation).toContainText("Effacer définitivement ce message ?");
+  await expect(confirmation).toContainText("Cela ne se défait pas.");
+  await confirmation.getByRole("button", { name: "Annuler" }).click();
+  await expect(message).toBeVisible();
+
+  await expect(page.locator(".btn.primary:visible")).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+  await message.getByRole("button", { name: "Effacer" }).click();
+  await confirmation.getByRole("button", { name: "Effacer le message" }).click();
+  await expect(message).toHaveCount(0);
+  await page.reload();
+  await expect(zone.getByRole("heading", { name: "Messages" })).toBeVisible();
+  await expect(zone.getByText(name)).toHaveCount(0);
+});
 
 // ---------- l'offre de lancement : le palier en cours et le prix proposé ----------
 

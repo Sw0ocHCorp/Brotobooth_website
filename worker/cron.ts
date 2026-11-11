@@ -1,4 +1,5 @@
 import { addMonths, nextStatus, parisHour, parisToday, parisWeekday } from "./bookings";
+import { DAY_MS } from "./contact";
 import type { Deps } from "./deps";
 import { processDue } from "./notifications";
 import { offer } from "./offer";
@@ -8,10 +9,8 @@ import { anonymizeOld, enqueue, getBooking, getState, listDueHolds, purgeContact
 
 /** Les demandes restées sans suite (refus, expirations, annulations avant acompte) sont anonymisées au bout de 12 mois (spec, section 9). */
 const RETENTION_MONTHS = 12;
-/** Un message de contact est supprimé 12 mois après sa réception, l'empreinte de son IP 24 h après (spec de la rubrique, §4). */
-const CONTACT_RETENTION_MONTHS = 12;
-const CONTACT_IP_HOURS = 24;
-const HOUR_MS = 3_600_000;
+/** Un message de contact est supprimé 12 mois après sa réception, l'empreinte de son IP 24 h après (`DAY_MS`, la fenêtre de la limite par connexion) (spec de la rubrique, §4). */
+export const CONTACT_RETENTION_MONTHS = 12;
 const MONDAY = 1;
 const DIGEST_CHANNELS = ["telegram", "email"] as const;
 
@@ -87,7 +86,7 @@ export async function enqueueWeeklyDigest(deps: Deps): Promise<void> {
 }
 
 /** L'instant `months` mois avant `nowIso`, à la même heure. */
-const monthsBefore = (nowIso: string, months: number): string => `${addMonths(nowIso.slice(0, 10), -months)}${nowIso.slice(10)}`;
+export const monthsBefore = (nowIso: string, months: number): string => `${addMonths(nowIso.slice(0, 10), -months)}${nowIso.slice(10)}`;
 
 /** Efface les données personnelles des demandes restées sans suite de plus de 12 mois, au plus une fois par jour de Paris. */
 async function anonymizeExpiredRequests(deps: Deps): Promise<void> {
@@ -107,7 +106,7 @@ async function anonymizeExpiredRequests(deps: Deps): Promise<void> {
  */
 async function purgeExpiredContactMessages(deps: Deps): Promise<void> {
   const now = deps.now();
-  const ipCutoff = new Date(now.getTime() - CONTACT_IP_HOURS * HOUR_MS).toISOString();
+  const ipCutoff = new Date(now.getTime() - DAY_MS).toISOString();
   await purgeContactMessages(deps.env.DB, monthsBefore(now.toISOString(), CONTACT_RETENTION_MONTHS), ipCutoff);
 }
 
