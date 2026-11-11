@@ -148,10 +148,15 @@ export function buildOffer(config: OfferConfig): Offer {
     return { ...plan, name: `${booth.name} · ${plan.prints} tirages` };
   });
   checkTiers(config);
-  for (const { name, number } of config.contact.phones) {
-    if (!name.trim() || !number.trim()) throw new Error("config/offer.json : chaque numéro de contact doit avoir un prénom et un numéro");
+  const phones = config.contact.phones.map(({ name, number }) => ({ name: name.trim(), number: number.trim() }));
+  for (const { name, number } of phones) {
+    if (!name || !number) throw new Error("config/offer.json : chaque numéro de contact doit avoir un prénom et un numéro");
+    if (!/\d/.test(number)) throw new Error(`config/offer.json : le numéro de ${name} doit contenir au moins un chiffre`);
   }
-  return { ...config, plans, contact: { ...config.contact, phone: config.contact.phones[0]?.number ?? "" } };
+  for (const link of config.contact.social) {
+    if (!link.startsWith("https://")) throw new Error(`config/offer.json : le lien « ${link} » de contact.social doit commencer par https://`);
+  }
+  return { ...config, plans, contact: { ...config.contact, phones, phone: phones[0]?.number ?? "" } };
 }
 
 export const offer: Offer = buildOffer(offerJson);
