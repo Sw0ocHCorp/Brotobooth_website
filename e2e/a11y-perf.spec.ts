@@ -66,7 +66,7 @@ test("le titre reste lisible au-dessus du mur", async ({ page }) => {
   await settled(page);
   await expect(page.locator("#wall .print").first()).toBeVisible();
   expect((await new AxeBuilder({ page }).include("#hero").withRules(["color-contrast"]).analyze()).violations).toEqual([]);
-  for (const selector of ["#hero h1", "#hero .hero-copy p", "#hero .btn.ghost"]) {
+  for (const selector of ["#hero h1", "#hero .btn.ghost"]) {
     const weakest = await weakestContrast(page, selector);
     console.log(`Contraste le plus faible, ${selector}, ${page.viewportSize()!.width} px : ${weakest.toFixed(2)}`);
     expect(weakest, selector).toBeGreaterThanOrEqual(CONTRAST_MIN);

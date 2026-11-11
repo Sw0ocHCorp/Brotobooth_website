@@ -2,7 +2,7 @@
 import zone from "../generated/zone.json";
 
 /**
- * « Où nous venons » (`#zone`) : la carte de la zone où nous installons la borne, tracée en SVG en ligne à partir de
+ * « Notre zone de déplacement » (`#zone`) : la carte de la zone où nous installons la borne, tracée en SVG en ligne à partir de
  * `src/generated/zone.json` (`npm run zone`), donc sans requête chez le visiteur. La mer est le fond de la section, les
  * communes voisines des traits discrets, la zone une seule forme pleine. La carte est une image (`role="img"`) dont
  * l'`aria-label` donne la zone en toutes lettres ; la phrase à côté ne cite aucun nom, la carte les porte. Les repères
@@ -17,7 +17,7 @@ const OFFSET = 14;
 ---
 
 <section class="block" id="zone">
-  <div class="head"><h2>Où nous venons</h2></div>
+  <div class="head"><h2>Notre zone de déplacement</h2></div>
   <div class="zone-in">
     <div class="zone-text">
       <p>Nous installons la borne partout dans la zone dessinée sur la carte, sur la côte comme dans les terres.</p>

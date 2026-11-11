@@ -28,7 +28,7 @@ Les îles (Porquerolles, Port-Cros, Le Levant, Les Embiez, Bendor, l'île Verte�
 
 ## 3. Ce que voit le client
 
-Une section `#zone` « Où nous venons », sur l'accueil, juste après « Les formules » et avant « Une date en tête ? ». Pas de lien dans le menu.
+Une section `#zone` « Notre zone de déplacement » (d'abord « Où nous venons », renommée à la demande du propriétaire le 2026-11-12), sur l'accueil, juste après « Les formules » et avant « Une date en tête ? ». Pas de lien dans le menu.
 
 - **La carte** : le fond nuit du site pour la mer ; les communes voisines (et les îles) en traits discrets ; la zone en **une seule forme unie**, d'un blanc grisé, sans frontières entre ses communes (demande du propriétaire, 2026-11-11) ; sept villes repères nommées : Cassis, Aubagne, Signes, Méounes, Toulon, Hyères, La Londe-les-Maures. Elle s'adapte à la largeur de l'écran sans débordement, et ses noms restent lisibles sur tous les téléphones : pas en dessous de 11 px, jamais l'un sur l'autre ni hors du cadre ; sur une carte de moins de 400 px de large, seuls Cassis, Signes, Toulon et Hyères sont écrits. Sous elle, en petit : « Contours des communes : IGN, Admin Express (Licence Ouverte), novembre 2026 » (le mois où les contours ont été lus : la Licence Ouverte demande la date des données).
 - **La phrase à côté de la carte** : les noms sont sur la carte, pas dans le texte (demande du propriétaire, 2026-11-11) : « Nous installons la borne partout dans la zone dessinée sur la carte, sur la côte comme dans les terres. »

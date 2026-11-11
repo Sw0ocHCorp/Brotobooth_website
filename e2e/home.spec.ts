@@ -8,7 +8,7 @@ import { discountText, euros, isBookable, launchBody, normalPrice, offer, plansO
 const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
 const CLEAR = "rgba(0, 0, 0, 0)";
-const SECTIONS = ["Ce que vivent vos invités", "Des moments qui subliment votre événement", "Les formules", "Où nous venons", "Une date en tête ?", "Contact"];
+const SECTIONS = ["Ce que vivent vos invités", "Des moments qui subliment votre événement", "Les formules", "Notre zone de déplacement", "Une date en tête ?", "Contact"];
 
 const menu = (page: Page) => page.getByRole("navigation", { name: "Menu principal" });
 
@@ -127,12 +127,16 @@ test("les cartes des formules gardent une largeur lisible, alignées sous le tit
 // Chaque phrase parle à celui qui réserve : ce que vivront ses invités, ce que nous installons chez lui, rien qui n'existe pas encore.
 test("l'accueil parle à celui qui réserve", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("#hero p")).toHaveText("Vos invités se prennent en photo, repartent avec leur tirage et se laissent des messages audio-vidéo au combiné.");
+  // L'ouverture n'a que son titre et ses boutons, et chaque étape des invités ne garde une phrase que si elle apprend quelque chose.
+  await expect(page.locator("#hero p")).toHaveCount(0);
+  await expect(page.locator("#borne h3")).toHaveText(["Ils prennent la pose", "Clic, clic, clic", "Ils choisissent leur format", "Un souvenir à emporter"]);
+  await expect(page.locator("#borne .step p")).toHaveCount(1);
   await expect(page.locator(".founders blockquote")).toHaveText(/^Une borne construite de nos mains, que nous venons installer chez vous\.$/);
   await expect(page.locator(".founders p")).toHaveText(
     "Nous avons construit cette borne nous-mêmes, du meuble en bois au logiciel. Nous l'installons chez vous, sur le lieu de votre événement.",
   );
-  // Seule la borne à venir, à la demande du propriétaire, dit « Bientôt disponible. » : rien d'autre n'est annoncé pour plus tard.
+  // Seule la borne à venir, à la demande du propriétaire, dit « Bientôt disponible. » ; la section des fonctionnalités annonce
+  // que d'autres viendront, sans en nommer aucune : rien d'autre n'est annoncé pour plus tard.
   await expect(page.getByRole("main")).not.toContainText(/Bientôt(?! disponible\.)|Boîte à questions|notre premier/);
 });
 

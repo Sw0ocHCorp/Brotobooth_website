@@ -160,16 +160,9 @@ html.js:has(#hero) .bar:not(.veiled) { background: none; -webkit-backdrop-filter
 .hero-copy { position: relative; z-index: 2; max-width: 880px; }
 
 .hero h1 {
-  margin-bottom: .45em;
+  margin-bottom: .6em;
   font: 800 clamp(32px, 5.4vw, 78px) / 1.08 var(--font-title);
   letter-spacing: -.01em;
-}
-
-.hero-copy p {
-  max-width: 40em;
-  margin: 0 auto 1.5em;
-  font-size: clamp(16px, 1.35vw, 20px);
-  color: rgba(255, 255, 255, .88);
 }
 
 .cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
@@ -252,6 +245,7 @@ main { overflow-x: clip; }
 }
 
 .extras b { font-weight: 600; }
+.handset .more { margin: 1.4em 0 0; }
 .extras span { text-align: right; color: var(--text-soft); }
 
 @media (max-width: 760px) {
@@ -502,7 +496,7 @@ html.intro .logo svg { opacity: 0; }
   :root .no-js { display: none; }
 }
 
-/* Où nous venons : la phrase à côté de la carte (mise en page de `.handset-in`). */
+/* Notre zone de déplacement : la phrase à côté de la carte (mise en page de `.handset-in`). */
 .zone-in { --ratio: 1.4fr; }
 
 /* La mer est le fond de la section ; la carte prend la largeur de son conteneur et sa hauteur suit. */

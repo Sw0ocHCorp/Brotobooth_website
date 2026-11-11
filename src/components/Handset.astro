@@ -4,11 +4,12 @@ import Shot from "./Shot.astro";
 /**
  * « Des moments qui subliment votre événement » : ce que la borne réserve aux invités au-delà des photos, le combiné et ses
  * messages audio-vidéo d'abord, puis le cadre et les filtres. Seulement ce qu'elle sait faire aujourd'hui : qui réserve pour
- * dans deux semaines doit pouvoir compter sur chaque ligne.
+ * dans deux semaines doit pouvoir compter sur chaque ligne. La dernière phrase annonce, à la demande du propriétaire, que
+ * d'autres viendront, sans en nommer aucune.
  */
 const MOMENTS = [
   { title: "Un combiné sur le côté", text: "Vos invités décrochent et se laissent des messages audio-vidéo, à écouter directement à la borne" },
-  { title: "Un cadre à votre image", text: "Préparez-le avant le jour J, il apparaît sur les tirages" },
+  { title: "Un cadre à votre image", text: "Ajoutez-le à tout moment, même pendant l'événement\u00a0: il apparaît sur les tirages" },
   { title: "Filtres et dessin", text: "Vos invités personnalisent leur photo à l'écran" },
 ];
 ---
@@ -28,6 +29,7 @@ const MOMENTS = [
           ))
         }
       </ul>
+      <p class="more">Et ce n'est qu'un début&nbsp;: de nouvelles fonctionnalités arriveront, selon vos besoins.</p>
     </div>
     <Shot
       name="gros-combine"

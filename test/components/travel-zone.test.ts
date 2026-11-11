@@ -4,7 +4,7 @@ import TravelZone from "../../src/components/TravelZone.astro";
 import zone from "../../src/generated/zone.json";
 import { offer, type Offer } from "../../worker/offer";
 
-/** La section « Où nous venons », rendue avec une offre d'essai qui a WhatsApp : la section n'en propose pas pour autant. */
+/** La section « Notre zone de déplacement », rendue avec une offre d'essai qui a WhatsApp : la section n'en propose pas pour autant. */
 
 const WITH_WHATSAPP: Offer["contact"] = { phones: [], phone: "06 00 00 00 01", email: "bonjour@example.test", whatsapp: "+33 6 00 00 00 03", social: [] };
 
@@ -22,10 +22,10 @@ async function render(contact: Offer["contact"]): Promise<string> {
 const text = (html: string): string => html.replace(/<svg\b[\s\S]*?<\/svg>/g, " ").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
 
 describe("the travel zone section", () => {
-  it("is the #zone section titled « Où nous venons »", async () => {
+  it("is the #zone section titled « Notre zone de déplacement »", async () => {
     const html = await render(WITH_WHATSAPP);
     expect(html).toMatch(/<section\b[^>]*\bid="zone"/);
-    expect(html).toMatch(/<h2\b[^>]*>Où nous venons<\/h2>/);
+    expect(html).toMatch(/<h2\b[^>]*>Notre zone de déplacement<\/h2>/);
   });
 
   it("says the zone is the one drawn, names no town, and dates the outlines under the map", async () => {

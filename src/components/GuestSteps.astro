@@ -3,20 +3,19 @@ import Shot from "./Shot.astro";
 
 /**
  * « Ce que vivent vos invités » (`#borne`) : quatre étapes, chacune avec un vrai écran de la borne ou une vraie photo.
- * Photo et texte changent de côté à chaque étape, et chaque photo arrivera du côté où elle se pose.
+ * Photo et texte changent de côté à chaque étape, et chaque photo arrivera du côté où elle se pose. Une étape n'a de
+ * phrase que si elle apprend quelque chose au client (les formats d'impression) : sinon, la photo et le titre suffisent.
  */
-const STEPS = [
+const STEPS: { image: { name: string; width: number; height: number; tilt: string; alt: string }; over: string; title: string; text?: string }[] = [
   {
     image: { name: "ecran-pose", width: 1400, height: 788, tilt: "-2deg", alt: "L'écran de la borne pendant le compte à rebours" },
     over: "La prise de vue",
     title: "Ils prennent la pose",
-    text: "Un compte à rebours à l'écran leur laisse le temps de se placer, seuls ou en groupe.",
   },
   {
     image: { name: "ecran-3photos", width: 1400, height: 788, tilt: "1.6deg", alt: "Les trois photos proposées par la borne" },
     over: "La prise de vue",
     title: "Clic, clic, clic",
-    text: "Trois photos à la suite pour ne pas rater le bon moment. Ils gardent leur préférée.",
   },
   {
     image: { name: "ecran-format", width: 1400, height: 788, tilt: "-1.2deg", alt: "Le choix du format d'impression sur la borne" },
@@ -27,8 +26,7 @@ const STEPS = [
   {
     image: { name: "gros-tirages", width: 1500, height: 844, tilt: "2.2deg", alt: "Deux tirages tenus devant la borne" },
     over: "Le tirage",
-    title: "Ils repartent avec",
-    text: "Le tirage sort de la borne, prêt à emporter. Ils retrouvent aussi leur photo sur leur téléphone.",
+    title: "Un souvenir à emporter",
   },
 ];
 ---
@@ -43,7 +41,7 @@ const STEPS = [
           <div>
             <span class="over">{over}</span>
             <h3>{title}</h3>
-            <p>{text}</p>
+            {text && <p>{text}</p>}
           </div>
         </li>
       ))
