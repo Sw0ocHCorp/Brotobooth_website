@@ -6,7 +6,9 @@
 #   fondateurs           la photo dos à dos de la présentation des fondateurs (WebP, 1000 px), la même que tirage-1 :
 #                        un fichier à part, pour qu'une photo de soirée puisse remplacer tirage-1 sans changer cette section ;
 #   *-800                chaque image de section (ecran-*, gros-*, fondateurs) en 800 px, pour les téléphones (srcset) ;
-#   borne-boucle.mp4     la vidéo de la réservation : muette, 3 Mo au plus, en boucle aller-retour ;
+#   borne-boucle.mp4     la vidéo de la réservation : muette, 3 Mo au plus, en boucle aller-retour (960 px, téléphones) ;
+#   borne-boucle-1080    la même en 1920 px, 8 Mo au plus, pour les écrans d'au moins 1024 px : agrandie sur un grand écran,
+#                        la version des téléphones y paraîtrait floue ;
 #   borne-boucle-poster  son image fixe (économie de données, avant le premier affichage).
 # Rien ne vient d'une banque d'images. Remplacer un tirage par une photo de soirée : copier le fichier sous le même nom.
 # Le script se relance sans risque : il réécrit chaque fichier, et seulement une fois son encodage réussi.
@@ -24,14 +26,17 @@ SPOT=spot_reseau_brotobooth.mp4
 SPOT_FRAME=1286:964:132:70
 # Les rushs de la GoPro sont en 4K 16:9 ; le cadre 4:3 centré sur la borne.
 RUSH_FRAME=2880:2160:480:0
-# La vidéo : l'extrait de GX011249 (début et durée en secondes), son ralenti, sa largeur, sa cadence et son poids maximal en Ko.
+# La vidéo : l'extrait de GX011249 (début et durée en secondes), son ralenti, sa cadence, puis la largeur et le poids maximal
+# en Ko de chaque version : celle des téléphones et celle des grands écrans.
 LOOP_SOURCE=GX011249.MP4
 LOOP_START=9
 LOOP_LENGTH=6.5
 LOOP_SLOWDOWN=1.5
-LOOP_WIDTH=960
 LOOP_FPS=20
+LOOP_WIDTH=960
 LOOP_MAX_KB=3072
+LOOP_LARGE_WIDTH=1920
+LOOP_LARGE_MAX_KB=8192
 LOOP_CRF_FIRST=24
 LOOP_CRF_LAST=40
 POSTER_WIDTH=1280
@@ -78,23 +83,25 @@ section() {
   still "$1-$SECTION_PHONE_WIDTH" "$2" "$3" "$SECTION_PHONE_WIDTH" "${5:-}"
 }
 
-# loop : l'extrait ralenti, suivi de lui-même à l'envers sans répéter l'image de la jointure, au plus léger CRF qui tient dans le poids permis.
+# loop NOM LARGEUR POIDS_MAX_KO : l'extrait ralenti, suivi de lui-même à l'envers sans répéter l'image de la jointure, à la
+# largeur donnée et au plus léger CRF qui tient dans le poids permis.
 loop() {
-  local out="$work/borne-boucle.mp4" crf size_kb
+  local name=$1 width=$2 max_kb=$3
+  local out="$work/$name.mp4" crf size_kb
   # L'aller est l'extrait entier ; le retour va de l'avant-dernière image à la deuxième, pour que ni le sommet ni la reprise ne marque un arrêt.
-  local filters="scale=$LOOP_WIDTH:-2,split[forward][back];[back]trim=start_frame=1,reverse,trim=start_frame=1[return];[forward][return]concat=n=2:v=1:a=0,setpts=$LOOP_SLOWDOWN*PTS,fps=$LOOP_FPS,format=yuv420p"
+  local filters="scale=$width:-2,split[forward][back];[back]trim=start_frame=1,reverse,trim=start_frame=1[return];[forward][return]concat=n=2:v=1:a=0,setpts=$LOOP_SLOWDOWN*PTS,fps=$LOOP_FPS,format=yuv420p"
   for ((crf = LOOP_CRF_FIRST; crf <= LOOP_CRF_LAST; crf++)); do
     ffmpeg_quiet -ss "$LOOP_START" -t "$LOOP_LENGTH" -i "$(source_path "$LOOP_SOURCE")" -filter_complex "$filters" -an \
       -c:v libx264 -preset slow -crf "$crf" -profile:v high -movflags +faststart -map_metadata -1 -fflags +bitexact -flags:v +bitexact \
       -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv "$out"
     size_kb=$(( ($(stat -c %s "$out") + 1023) / 1024 ))
-    if [ "$size_kb" -le "$LOOP_MAX_KB" ]; then
-      mv -f "$out" "$target_dir/borne-boucle.mp4"
-      echo "borne-boucle.mp4 (${size_kb} Ko, CRF $crf)"
+    if [ "$size_kb" -le "$max_kb" ]; then
+      mv -f "$out" "$target_dir/$name.mp4"
+      echo "$name.mp4 (${size_kb} Ko, CRF $crf)"
       return
     fi
   done
-  echo "borne-boucle.mp4 dépasse ${LOOP_MAX_KB} Ko même à CRF $LOOP_CRF_LAST." >&2
+  echo "$name.mp4 dépasse ${max_kb} Ko même à CRF $LOOP_CRF_LAST." >&2
   exit 1
 }
 
@@ -115,5 +122,6 @@ section gros-tirages GX011244.MP4 2.8 1500
 section gros-combine GX011249.MP4 10.7 1500
 section fondateurs "$SPOT" 300 1000 "$SPOT_FRAME"
 
-loop
+loop borne-boucle "$LOOP_WIDTH" "$LOOP_MAX_KB"
+loop borne-boucle-1080 "$LOOP_LARGE_WIDTH" "$LOOP_LARGE_MAX_KB"
 still borne-boucle-poster "$LOOP_SOURCE" "$LOOP_START" "$POSTER_WIDTH"

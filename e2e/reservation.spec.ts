@@ -38,6 +38,9 @@ const PRICES = "**/api/prices";
 const isAvailability = (url: URL) => url.pathname === "/api/availability";
 const POSTER = /\/media\/borne-boucle-poster\.webp$/;
 const FILM = "/media/borne-boucle.mp4";
+/** La version nette des grands écrans (1080p) ; FILM reste celle des téléphones, sous 3 Mo. */
+const FILM_LARGE = "/media/borne-boucle-1080.mp4";
+const LARGE_SCREEN = "(min-width: 1024px)";
 /** La clé de test de Cloudflare : la page servie la reçoit à la place de la clé vide de la construction d'essai. */
 const TEST_SITE_KEY = "1x00000000000000000000AA";
 const isTurnstile = (url: URL) => url.hostname === "challenges.cloudflare.com";
@@ -865,7 +868,7 @@ test("avec réduction des animations ou économie de données, seule l'image fix
     if (init) await page.addInitScript(init);
     const films: string[] = [];
     page.on("request", (req) => {
-      if (new URL(req.url()).pathname === FILM) films.push(req.url());
+      if ([FILM, FILM_LARGE].includes(new URL(req.url()).pathname)) films.push(req.url());
     });
     const poster = page.waitForResponse(POSTER);
     await page.goto("/reserver");
@@ -878,6 +881,28 @@ test("avec réduction des animations ou économie de données, seule l'image fix
     // Rien ne bouge : pas de bouton pour mettre en pause.
     await expect(page.getByRole("button", { name: /vidéo/ }), label).toHaveCount(0);
     await context.close();
+  }
+});
+
+test("un grand écran reçoit la vidéo nette, un téléphone la vidéo légère", async ({ page, request, viewport }) => {
+  await page.goto("/reserver");
+  const sources = page.locator("video source");
+  expect(await sources.evaluateAll((all) => all.map((source) => [source.getAttribute("src"), source.getAttribute("media")]))).toEqual([
+    [FILM_LARGE, LARGE_SCREEN],
+    [FILM, null],
+  ]);
+  // Le navigateur prend la première source dont `media` convient à l'écran.
+  const chosen = await sources.evaluateAll((all) =>
+    all.find((source) => { const media = source.getAttribute("media"); return !media || matchMedia(media).matches; })?.getAttribute("src"),
+  );
+  expect(chosen).toBe(viewport!.width >= 1024 ? FILM_LARGE : FILM);
+
+  // Les deux fichiers existent, à leur poids : 3 Mo au plus pour les téléphones, 8 Mo pour les grands écrans.
+  for (const [path, maxBytes] of [[FILM, 3 * 1024 * 1024], [FILM_LARGE, 8 * 1024 * 1024]] as const) {
+    const response = await request.get(path);
+    expect(response.status(), path).toBe(200);
+    expect(response.headers()["content-type"], path).toBe("video/mp4");
+    expect((await response.body()).byteLength, path).toBeLessThanOrEqual(maxBytes);
   }
 });
 

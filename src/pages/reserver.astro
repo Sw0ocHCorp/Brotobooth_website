@@ -64,6 +64,8 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
   <TopBar variant="reserve" />
   <main class="res">
     <video class="film needs-js" muted loop playsinline preload="none" poster="/media/borne-boucle-poster.webp" aria-hidden="true">
+      {/* Un grand écran agrandit la vidéo : il reçoit la version 1080p ; un téléphone, la version légère. Seule la première qui convient est chargée. */}
+      <source src="/media/borne-boucle-1080.mp4" media="(min-width: 1024px)" type='video/mp4; codecs="avc1.640032"' />
       <source src="/media/borne-boucle.mp4" type='video/mp4; codecs="avc1.64001F"' />
     </video>
     <div class="res-veil"></div>

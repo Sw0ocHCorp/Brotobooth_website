@@ -289,7 +289,7 @@ Il n'y en a que trois. Toutes sont désactivées si le visiteur a demandé de r�
 
 1. **Le logo coupé, une fois par visite.** Mêmes formes et même minutage que `ui/widgets/BrandLogo.py` : logo grand et centré avec BOOTH ouvert (0,3 s), les moitiés se referment (jusqu'à 0,8 s), rebond et traits d'impact (jusqu'à 1,3 s), départ vers l'en-tête (de 1,4 à 2 s), apparition du contenu (de 1,6 à 2 s). Un clic, un toucher ou un défilement la termine aussitôt. Le contenu est présent dans le HTML dès le départ, et sans JavaScript la page s'affiche directement.
 2. **Les tirages lancés.** Au mur, avec les réglages de `ui/widgets/PhotoWall.py` : pas de fondu, vol de 560 ms avec léger rebond, inclinaison de 14° au plus, 9 tirages sur ordinateur et 8 sur téléphone, un tirage renouvelé toutes les 3 secondes environ, à l'arrêt quand le mur n'est plus visible. Les images des sections de l'accueil arrivent de la même façon, une seule fois.
-3. **La vidéo de la réservation.** Muette, en boucle aller-retour, 3 Mo au plus. Elle ne démarre pas si le visiteur a activé l'économie de données : une image fixe la remplace.
+3. **La vidéo de la réservation.** Muette, en boucle aller-retour, en deux versions : 960 px et 3 Mo au plus pour les téléphones ; 1920 px et 8 Mo au plus pour les écrans d'au moins 1024 px, où la version légère, agrandie, paraîtrait floue. Le navigateur ne charge que celle qui convient à l'écran. Elle ne démarre pas si le visiteur a activé l'économie de données : une image fixe la remplace.
 
 ### Médias
 
