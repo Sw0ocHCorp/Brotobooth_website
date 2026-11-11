@@ -23,6 +23,7 @@ const completeOffer: Offer = buildOffer({
   termsVersion: "2026-11-07",
   eventTypes: ["Mariage"],
   contact: { phones: [{ name: "Camille", number: "06 12 34 56 78" }], email: "contact@example.test", whatsapp: "", social: [] },
+  zone: { border: [{ name: "A", department: "00" }, { name: "B", department: "00" }, { name: "C", department: "00" }] },
   booths: [{ id: "borne", name: "La borne", includes: ["Un fond au choix"] }],
   plans: [
     { id: "borne-100", booth: "borne", prints: 100 },

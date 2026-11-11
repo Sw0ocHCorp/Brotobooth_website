@@ -21,6 +21,22 @@
     "whatsapp": "+33 6 29 43 02 10",
     "social": ["https://www.instagram.com/brotobooth/"]
   },
+  "zone": {
+    "border": [
+      { "name": "Cassis", "department": "13" },
+      { "name": "Aubagne", "department": "13" },
+      { "name": "Gémenos", "department": "13" },
+      { "name": "Cuges-les-Pins", "department": "13" },
+      { "name": "Signes", "department": "83" },
+      { "name": "Méounes-lès-Montrieux", "department": "83" },
+      { "name": "Belgentier", "department": "83" },
+      { "name": "Solliès-Toucas", "department": "83" },
+      { "name": "La Farlède", "department": "83" },
+      { "name": "La Crau", "department": "83" },
+      { "name": "Hyères", "department": "83" },
+      { "name": "La Londe-les-Maures", "department": "83" }
+    ]
+  },
   "booths": [
     { "id": "brotobooth", "name": "BrotoBooth", "includes": [] },
     { "id": "brotobooth-tiny", "name": "BrotoBooth tiny", "includes": [] }

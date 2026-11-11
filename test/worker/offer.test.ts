@@ -68,3 +68,20 @@ describe("contactLinks", () => {
     expect(contactLinks({ ...contact, whatsapp: "" }, () => "").map(({ icon }) => icon)).toEqual([undefined, "instagram", undefined]);
   });
 });
+
+describe("buildOffer, zone", () => {
+  const withBorder = (border: { name: string; department: string }[]): OfferConfig => ({
+    ...withContact({}),
+    zone: { border },
+  });
+  const commune = (name: string) => ({ name, department: "00" });
+
+  it("refuses a border of fewer than three communes", () => {
+    expect(() => buildOffer(withBorder([commune("A"), commune("B")]))).toThrow(/config\/offer\.json.*commune/);
+  });
+
+  it("keeps the border in order", () => {
+    const border = [commune("A"), commune("B"), commune("C")];
+    expect(buildOffer(withBorder(border)).zone.border).toEqual(border);
+  });
+});

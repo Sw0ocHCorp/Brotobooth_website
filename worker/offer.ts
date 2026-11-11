@@ -57,6 +57,10 @@ export interface Offer {
     whatsapp: string;
     social: string[];
   };
+  /** La zone de déplacement : les communes qui la bordent côté terre, dans l'ordre où on les suit de la côte est à la côte ouest. */
+  zone: {
+    border: { name: string; department: string }[];
+  };
   booths: Booth[];
   plans: Plan[];
   tiers: Tier[];
@@ -165,6 +169,7 @@ export function buildOffer(config: OfferConfig): Offer {
     return { ...plan, name: `${booth.name} · ${plan.prints} tirages` };
   });
   checkTiers(config);
+  if (config.zone.border.length < 3) throw new Error("config/offer.json : zone.border doit compter au moins trois communes");
   const phones = config.contact.phones.map(({ name, number }) => ({ name: name.trim(), number: number.trim() }));
   for (const { name, number } of phones) {
     if (!name || !number) throw new Error("config/offer.json : chaque numéro de contact doit avoir un prénom et un numéro");
