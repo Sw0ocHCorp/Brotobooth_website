@@ -15,3 +15,17 @@ describe("prérequis de l'essai local", () => {
     expect(beforeFirstCommand).toContain("npm install");
   });
 });
+
+describe("les essais automatiques à côté du site local", () => {
+  // `npm run dev` et `npm run demo` servent `dist/` : les essais du navigateur, lancés aussi par `npm run deploy`,
+  // construisent et servent le site ailleurs, pour ne jamais vider sous un site local ouvert les pages qu'il sert.
+  const e2e = (pkg as { scripts: Record<string, string> }).scripts["dev:e2e"];
+
+  it("construisent le site hors de dist/", () => {
+    expect(e2e).toMatch(/astro build --outDir \.wrangler\/e2e\/dist\b/);
+  });
+
+  it("servent ce qu'ils ont construit", () => {
+    expect(e2e).toMatch(/wrangler dev [^&]*--assets \.wrangler\/e2e\/dist\b/);
+  });
+});
