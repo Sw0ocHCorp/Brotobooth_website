@@ -2,7 +2,7 @@ import { reminderAt, type BookingStatus } from "./bookings";
 import type { Button } from "./deps";
 import { escapeHtml, formatDay, formatEuros, formatHours, formatMoment } from "./html";
 import type { Template } from "./notifications";
-import { REFILL_LABEL, offer, planById, tierById } from "./offer";
+import { REFILL_LABEL, offer, planById, telHref, tierById } from "./offer";
 import type { Booking, ContactMessage } from "./repository";
 
 /** `upcoming` : les prestations du point du lundi ; `contact` : le message de contact de l'envoi. L'appelant les lit dans la base. */
@@ -92,7 +92,7 @@ const priceRows = (b: Booking, deposit: string, rest: string): Row[] => [
 function contact(): Block {
   const { phone, email } = offer.contact;
   const ways: Piece[][] = [];
-  if (phone) ways.push(["nous appeler au ", { link: phone, url: `tel:${phone.replace(/[^+\d]/g, "")}` }]);
+  if (phone) ways.push(["nous appeler au ", { link: phone, url: telHref(phone) }]);
   if (email) ways.push(["nous écrire à ", { link: email, url: `mailto:${email}` }]);
   if (ways.length === 0) return para("Une question\u00a0? Répondez simplement à cet e-mail.");
   return para("Une question\u00a0? Vous pouvez ", ...ways.flatMap((way, i) => (i === 0 ? way : [" ou ", ...way])), ".");

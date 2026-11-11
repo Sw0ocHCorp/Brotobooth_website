@@ -449,7 +449,7 @@ test("lire un message de contact, puis l'effacer après confirmation", async ({ 
   const zone = page.getByRole("region", { name: "Messages" });
   const message = zone.getByRole("listitem").filter({ hasText: name });
   await expect(message).toBeVisible();
-  await expect(message.getByRole("link", { name: "lou@example.test" })).toHaveAttribute("href", "mailto:lou@example.test");
+  await expect(message.getByRole("link", { name: "lou@example.test" })).toHaveAttribute("href", "mailto:lou%40example.test");
   await expect(message.getByRole("link", { name: "06 12 34 56 78" })).toHaveAttribute("href", /^tel:/);
   await expect(message.locator(".body")).toHaveText("Êtes-vous libres ?\nMerci d'avance.");
   expect(await message.locator(".body").evaluate((element) => getComputedStyle(element).whiteSpace)).toBe("pre-wrap");

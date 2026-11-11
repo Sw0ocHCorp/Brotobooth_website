@@ -1,6 +1,6 @@
 import { formatEuros } from "../../worker/html";
 import { depositCents } from "../../worker/bookings";
-import { REFILL_LABEL, normalTier, offer, planById, priceOf, tierById, type PricesBody } from "../../worker/offer";
+import { REFILL_LABEL, normalTier, offer, planById, priceOf, telHref, tierById, type PricesBody } from "../../worker/offer";
 import { fetchPrices } from "./prices";
 
 /**
@@ -293,8 +293,8 @@ function messageRow(m: ContactMessage): HTMLElement {
     h(
       "p",
       { class: "contact" },
-      h("a", { href: `mailto:${m.email}` }, m.email),
-      m.phone && h("a", { href: `tel:${m.phone.replace(/[^\d+]/g, "")}` }, m.phone),
+      h("a", { href: `mailto:${encodeURIComponent(m.email)}` }, m.email),
+      m.phone && h("a", { href: telHref(m.phone) }, m.phone),
     ),
     h("p", { class: "body" }, m.message),
     h(
@@ -649,7 +649,7 @@ function renderSheet(b: Booking, history: HistoryEntry[]): void {
         h(
           "div",
           { class: "contact" },
-          phone && h("a", { class: "btn ghost", href: `tel:${phone.replace(/[^\d+]/g, "")}` }, `Appeler ${phone}`),
+          phone && h("a", { class: "btn ghost", href: telHref(phone) }, `Appeler ${phone}`),
           b.client_email && h("a", { class: "btn ghost", href: `mailto:${encodeURIComponent(b.client_email)}` }, `Écrire à ${b.client_email}`),
         ),
       left && h("p", { class: "notice" }, left.late ? "Délai dépassé : la date va être libérée." : `Il reste ${left.text} ${purpose}.`),

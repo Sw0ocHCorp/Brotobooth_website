@@ -1,7 +1,7 @@
 ---
 import Fact from "../components/Fact.astro";
 import Legal from "../layouts/Legal.astro";
-import { offer } from "../../worker/offer";
+import { offer, telHref } from "../../worker/offer";
 
 /** Le téléphone et l'e-mail de `config/offer.json`, avec leur lien ; `Fact` met le marqueur à la place d'un moyen encore vide. */
 const { phone, email } = offer.contact;
@@ -43,7 +43,7 @@ const { phone, email } = offer.contact;
     <h2 id="contact">Contact</h2>
     <dl>
       <dt>Téléphone</dt>
-      <dd><Fact value={phone} href={`tel:${phone.replace(/[^\d+]/g, "")}`} /></dd>
+      <dd><Fact value={phone} href={telHref(phone)} /></dd>
       <dt>E-mail</dt>
       <dd><Fact value={email} href={`mailto:${email}`} /></dd>
     </dl>

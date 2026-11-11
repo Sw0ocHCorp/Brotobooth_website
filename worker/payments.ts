@@ -2,7 +2,7 @@ import type { Deps, StripeSession } from "./deps";
 import { escapeHtml, formatDay, formatEuros, formatHours, formatMoment, page } from "./html";
 import { html, json, readText, redirect, type Handler } from "./http";
 import { sendSoon } from "./notifications";
-import { REFILL_LABEL, hasContact, offer } from "./offer";
+import { REFILL_LABEL, hasContact, offer, telHref } from "./offer";
 import { attachSession, confirmDeposit } from "./operations";
 import {
   enqueue,
@@ -37,7 +37,7 @@ const payable = (b: Booking, now: Date): boolean =>
 function contactHtml(): string {
   const { phone, email } = offer.contact;
   const ways = [
-    phone && `appelez-nous au <a href="tel:${escapeHtml(phone.replace(/[^+\d]/g, ""))}">${escapeHtml(phone)}</a>`,
+    phone && `appelez-nous au <a href="${escapeHtml(telHref(phone))}">${escapeHtml(phone)}</a>`,
     email && `écrivez-nous à <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>`,
   ].filter((way): way is string => Boolean(way));
   if (ways.length === 0) return "";
