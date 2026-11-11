@@ -1,13 +1,13 @@
 ---
-import { offer } from "../../worker/offer";
+import { offer, telHref } from "../../worker/offer";
 
 /**
  * Le pied de page : les moyens de contact renseignés dans `config/offer.json`, un champ vide n'apparaissant pas,
  * puis les pages légales.
  */
-const { phone, email, social } = offer.contact;
+const { phones, email, social } = offer.contact;
 const contacts = [
-  ...(phone ? [{ href: `tel:${phone.replace(/[^\d+]/g, "")}`, label: phone }] : []),
+  ...phones.map(({ name, number }) => ({ href: telHref(number), label: `${name} · ${number}` })),
   ...(email ? [{ href: `mailto:${email}`, label: email }] : []),
   ...social.map((url) => ({ href: url, label: url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") })),
 ];

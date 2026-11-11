@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { normalTier, pricesBody, type PricesBody } from "../worker/offer";
+import { normalTier, pricesBody, telHref, type PricesBody } from "../worker/offer";
 import { placesLine } from "../src/scripts/prices";
 import { discountText, euros, isBookable, launchBody, normalPrice, offer, plansOf, refillText } from "./seed";
 
@@ -190,10 +190,12 @@ test("le pied de page donne le contact renseigné et les pages légales", async 
     await expect(footer.getByRole("link", { name, exact: true })).toHaveAttribute("href", href);
   }
   // Un moyen de contact encore vide n'apparaît pas.
-  const { phone, email, social } = offer.contact;
-  await expect(footer.locator('a[href^="tel:"]')).toHaveCount(phone ? 1 : 0);
+  const { phones, email, social } = offer.contact;
+  await expect(footer.locator('a[href^="tel:"]')).toHaveCount(phones.length);
   await expect(footer.locator('a[href^="mailto:"]')).toHaveCount(email ? 1 : 0);
-  if (phone) await expect(footer.getByRole("link", { name: phone })).toBeVisible();
+  for (const { name, number } of phones) {
+    await expect(footer.getByRole("link", { name: `${name} · ${number}` })).toHaveAttribute("href", telHref(number));
+  }
   if (email) await expect(footer.getByRole("link", { name: email })).toHaveAttribute("href", `mailto:${email}`);
   for (const url of social) await expect(footer.locator(`a[href="${url}"]`)).toBeVisible();
 });

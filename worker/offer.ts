@@ -29,6 +29,12 @@ export interface Tier {
   prices: Record<string, number>;
 }
 
+/** Un fondateur qu'on peut appeler. */
+export interface Phone {
+  name: string;
+  number: string;
+}
+
 export interface Offer {
   /** `true` tant que les contenus sont provisoires : la publication est refusée. */
   draft: boolean;
@@ -42,14 +48,26 @@ export interface Offer {
   reminderHourParis: number;
   termsVersion: string;
   eventTypes: string[];
-  contact: { phone: string; email: string; social: string[] };
+  contact: {
+    phones: Phone[];
+    /** Calculé par `buildOffer` : le numéro du premier fondateur, ou `""`. C'est celui que citent les phrases du site et les e-mails. */
+    phone: string;
+    email: string;
+    social: string[];
+  };
   booths: Booth[];
   plans: Plan[];
   tiers: Tier[];
 }
 
 /** L'offre telle que `config/offer.json` l'écrit : les formules sans leur nom. */
-export type OfferConfig = Omit<Offer, "plans"> & { plans: Omit<Plan, "name">[] };
+export type OfferConfig = Omit<Offer, "plans" | "contact"> & {
+  plans: Omit<Plan, "name">[];
+  contact: Omit<Offer["contact"], "phone">;
+};
+
+/** Le lien `tel:` d'un numéro écrit à la française : seuls les chiffres et le `+` restent. */
+export const telHref = (number: string): string => `tel:${number.replace(/[^\d+]/g, "")}`;
 
 const isCents = (value: unknown): boolean => Number.isInteger(value) && (value as number) >= 0;
 
@@ -94,7 +112,10 @@ export function buildOffer(config: OfferConfig): Offer {
     return { ...plan, name: `${booth.name} · ${plan.prints} tirages` };
   });
   checkTiers(config);
-  return { ...config, plans };
+  for (const { name, number } of config.contact.phones) {
+    if (!name.trim() || !number.trim()) throw new Error("config/offer.json : chaque numéro de contact doit avoir un prénom et un numéro");
+  }
+  return { ...config, plans, contact: { ...config.contact, phone: config.contact.phones[0]?.number ?? "" } };
 }
 
 export const offer: Offer = buildOffer(offerJson);

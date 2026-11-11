@@ -22,7 +22,7 @@ const completeOffer: Offer = buildOffer({
   reminderHourParis: 9,
   termsVersion: "2026-11-07",
   eventTypes: ["Mariage"],
-  contact: { phone: "06 12 34 56 78", email: "contact@example.test", social: [] },
+  contact: { phones: [{ name: "Camille", number: "06 12 34 56 78" }], email: "contact@example.test", social: [] },
   booths: [{ id: "borne", name: "La borne", includes: ["Un fond au choix"] }],
   plans: [
     { id: "borne-100", booth: "borne", prints: 100 },
@@ -32,7 +32,7 @@ const completeOffer: Offer = buildOffer({
     { id: "normal", name: "Prix normal", refillCents: 10_000, prices: { "borne-100": 90_000, "borne-300": 120_000 } },
   ],
 });
-const draftOffer: Offer = { ...completeOffer, draft: true, contact: { phone: "", email: "", social: [] } };
+const draftOffer: Offer = { ...completeOffer, draft: true, contact: { phones: [], phone: "", email: "", social: [] } };
 
 const complete = {
   offer: completeOffer,
@@ -99,7 +99,7 @@ describe("findLaunchBlockers", () => {
   });
 
   it("refuse un téléphone ou une adresse e-mail faits d'espaces", () => {
-    const contact = { phone: "  ", email: "\t", social: [] };
+    const contact = { phones: [], phone: "  ", email: "\t", social: [] };
     const blockers = findLaunchBlockers({ ...complete, offer: { ...completeOffer, contact } });
     expect(blockers).toEqual([expect.stringMatching(/téléphone/), expect.stringMatching(/e-mail/)]);
   });

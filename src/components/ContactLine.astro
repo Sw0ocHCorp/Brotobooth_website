@@ -1,5 +1,5 @@
 ---
-import { offer } from "../../worker/offer";
+import { offer, telHref } from "../../worker/offer";
 
 /**
  * « Appelez-nous au … ou écrivez-nous à … », avec les moyens de contact renseignés dans `config/offer.json` : la phrase
@@ -15,7 +15,7 @@ const { lead } = Astro.props;
 const { phone, email } = offer.contact;
 const opening = (text: string): string => (lead ? `${lead}${text[0].toLowerCase()}${text.slice(1)}` : text);
 const parts = [
-  ...(phone ? [{ lead: opening("Appelez-nous au "), href: `tel:${phone.replace(/[^\d+]/g, "")}`, label: phone }] : []),
+  ...(phone ? [{ lead: opening("Appelez-nous au "), href: telHref(phone), label: phone }] : []),
   ...(email ? [{ lead: phone ? " ou écrivez-nous à " : opening("Écrivez-nous à "), href: `mailto:${email}`, label: email }] : []),
 ];
 ---

@@ -13,7 +13,7 @@ import {
   type BookingAction,
   type BookingStatus,
 } from "../../worker/bookings";
-import { buildOffer, currentTier, isBookable, normalTier, offer, planById, plansOf, priceOf, pricesBody, type OfferConfig, type Tier } from "../../worker/offer";
+import { buildOffer, currentTier, isBookable, normalTier, offer, planById, plansOf, priceOf, pricesBody, telHref, type OfferConfig, type Tier } from "../../worker/offer";
 
 describe("transitions de statut", () => {
   const transitions: [BookingStatus, BookingAction, BookingStatus | null][] = [
@@ -229,5 +229,32 @@ describe("offre", () => {
       reviewHours: 72, paymentHours: 72,
       minLeadDays: 7, horizonMonths: 24, reminderHourParis: 9,
     });
+  });
+});
+
+describe("contact phones", () => {
+  const config = (phones: { name: string; number: string }[]): OfferConfig => ({
+    ...offer,
+    plans: offer.plans.map(({ name: _name, ...plan }) => plan),
+    contact: { phones, email: "", social: [] },
+  });
+
+  it("contact.phone is the first number, or empty", () => {
+    const two = buildOffer(config([{ name: "Ana", number: "06 00 00 00 01" }, { name: "Ben", number: "06 00 00 00 02" }]));
+    expect(two.contact.phone).toBe("06 00 00 00 01");
+    expect(two.contact.phones).toHaveLength(2);
+    expect(buildOffer(config([])).contact.phone).toBe("");
+  });
+
+  it("buildOffer refuses a phone without a name", () => {
+    expect(() => buildOffer(config([{ name: " ", number: "06 00 00 00 01" }]))).toThrow(/config\/offer.json/);
+  });
+
+  it("buildOffer refuses a name without a number", () => {
+    expect(() => buildOffer(config([{ name: "Ana", number: "" }]))).toThrow(/config\/offer.json/);
+  });
+
+  it("telHref keeps digits and the plus sign", () => {
+    expect(telHref("+33 6 12-34")).toBe("tel:+3361234");
   });
 });
