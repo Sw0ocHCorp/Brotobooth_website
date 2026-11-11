@@ -18,7 +18,7 @@
   "contact": {
     "phones": [],
     "email": "",
-    "social": []
+    "social": ["https://www.instagram.com/brotobooth/"]
   },
   "booths": [
     { "id": "brotobooth", "name": "BrotoBooth", "includes": [] },

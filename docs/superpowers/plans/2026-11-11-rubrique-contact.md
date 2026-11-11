@@ -135,10 +135,11 @@
 
 **Interfaces :**
 - Consumes : Task 1 (`contact.phones`, `telHref`), Task 2 (`POST /api/contact`).
-- Produces : rien pour d'autres tâches.
+- Produces : `socialLabel(url: string): string` dans `worker/offer.ts` → `"@brotobooth"` pour `https://www.instagram.com/brotobooth/` (avec ou sans `www.` ni `/` final), sinon le domaine ; utilisé par la section Contact **et** par `Footer.astro`, avec le nom accessible « @compte sur Instagram » pour un compte Instagram.
 
 - [ ] **Step 1 : tests qui échouent** (e2e, offre réelle lue dans `offer`, ou offre de test servie par `page.route` quand une donnée y est vide)
-  - La section `#contact` et le lien « Contact » du menu ; un lien « Appeler {prénom} » par numéro, l'e-mail, « Instagram » pour un lien `instagram.com` ; rien pour une donnée vide.
+  - La section `#contact` et le lien « Contact » du menu ; un lien « Appeler {prénom} » par numéro, l'e-mail, « @compte » (nom accessible « @compte sur Instagram ») pour un lien `instagram.com/compte`, dans la section comme dans le pied de page ; rien pour une donnée vide.
+  - Test unitaire de `socialLabel` : `https://www.instagram.com/brotobooth/`, `https://instagram.com/brotobooth` → `@brotobooth` ; `https://exemple.fr/page` → `exemple.fr`.
   - `l'anti-robots ne se charge qu'au premier champ touché` : aucune requête vers `challenges.cloudflare.com` après le chargement de l'accueil et un défilement jusqu'à la section ; une requête après le focus du champ « Votre nom » (clé de test servie comme dans `reservation.spec.ts`).
   - Envoi réussi : le texte exact de la spec remplace le formulaire ; le serveur a enregistré le message (zone « Messages » ou API d'administration).
   - Erreurs : chaque champ refusé, son message sous lui ; `403 bot`, `429` et panne réseau (`page.route`) → les textes exacts de la spec, champs gardés.

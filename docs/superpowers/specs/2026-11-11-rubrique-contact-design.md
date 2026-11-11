@@ -21,7 +21,7 @@ Un visiteur qui a une question, sans vouloir réserver tout de suite, doit pouvo
 - **Les moyens directs**, chacun seulement s'il est renseigné :
   - un lien « Appeler {prénom} » (`tel:`) par numéro de `contact.phones` ;
   - l'adresse `contact.email` (`mailto:`) ;
-  - chaque lien de `contact.social`, nommé d'après son adresse : « Instagram » pour `instagram.com`, sinon le domaine.
+  - chaque lien de `contact.social`, court : « @compte » pour un compte `instagram.com/compte` (le lien ouvre le profil, dans l'application Instagram sur téléphone), sinon le domaine. Son nom accessible dit aussi le réseau : « @compte sur Instagram ». Le pied de page écrit les liens de la même façon.
 - **Le formulaire** : « Votre nom » (obligatoire, 120 caractères au plus), « Votre e-mail » (obligatoire), « Votre téléphone (facultatif) », « Votre message » (obligatoire, 2 000 caractères au plus), puis le bouton « Envoyer le message ». Aucun autre champ, aucune case pré-cochée, aucun abonnement.
 - **L'information sous le formulaire** (premier niveau, art. 13 RGPD) : « Brotobooth utilise votre nom, votre e-mail, votre téléphone et votre message uniquement pour vous répondre, et les efface au bout de 12 mois. Vos droits et le détail : politique de confidentialité. » (lien vers `/confidentialite#contact`).
 - **L'anti-robots** : le même widget Turnstile que la réservation, chargé seulement quand le visiteur commence à remplir le formulaire (premier focus d'un champ), jamais au chargement de l'accueil.
