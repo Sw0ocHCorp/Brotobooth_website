@@ -37,6 +37,8 @@ Après une minute environ (le temps de construire le site), le terminal affiche 
 
 **7. Les messages** : http://localhost:8790/demo. Rechargez la page après chaque étape : vous y lisez, du plus récent au plus ancien, les e-mails du client et les messages Telegram que vous auriez reçus, avec leurs boutons.
 
+**7 bis. Un message de contact.** Sur l'accueil, descendez jusqu'à la rubrique « Contact », remplissez le formulaire (nom, adresse e-mail, message ; le téléphone est facultatif) et envoyez-le. Sur http://localhost:8790/demo, l'e-mail « message de contact » arrive : « Répondre » écrirait à l'adresse du visiteur. Dans l'administration, la zone « Messages » liste le message : lisez-le, puis effacez-le avec son bouton. Il disparaît de la liste, avec ses e-mails en attente.
+
 **8. La tâche automatique.** En vrai, elle passe toutes les 5 minutes : elle libère les dates dont le délai est dépassé, envoie les rappels de 9 h et le point du lundi. Ici, vous la déclenchez en ouvrant http://localhost:8790/cdn-cgi/handler/scheduled (la page répond « ok »). Dans « Santé », en bas de l'administration, « Dernier passage » indique alors « à l'instant ». Tant qu'aucun délai n'est dépassé, elle n'a rien à faire et rien d'autre ne change.
 
 **9. L'agenda.** Le terminal affiche « Le lien de l'agenda ». Ouvrez-le : le navigateur télécharge un fichier d'agenda qui liste les dates tenues (à valider, acompte attendu, prestations, dates bloquées). C'est ce lien que votre téléphone suivra une fois le site en ligne. Il change à chaque lancement de l'essai.

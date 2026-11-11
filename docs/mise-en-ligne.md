@@ -109,6 +109,11 @@ BASE_URL=https://brotobooth.fr node scripts/set-telegram-webhook.mjs
 
 À refaire après chaque changement d'adresse ou de secret.
 
+### Les messages du formulaire de contact
+
+- **Votre boîte de réception garde une copie de chaque message, et le site ne peut pas l'effacer.** Supprimez à la main chaque e-mail de contact **12 mois après sa réception** : le site efface sa propre copie (et ses coordonnées) au même moment, et la politique de confidentialité s'y engage.
+- Si l'e-mail d'un message échoue trois fois de suite, vous recevez sur Telegram une alerte **sans aucune donnée** du visiteur : ouvrez la zone « Messages » de `/admin/` pour lire le message, qui y reste en attente d'envoi.
+
 ## 10. Les contenus
 
 Tant qu'un contenu manque, `node scripts/check-launch.mjs` refuse la publication et liste ce qui reste. Il faut :
