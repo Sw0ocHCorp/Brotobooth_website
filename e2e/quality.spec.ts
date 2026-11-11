@@ -92,8 +92,9 @@ test.describe("pages légales", () => {
     await page.goto("/cgv");
     const service = page.getByRole("region", { name: "La prestation" });
     await expect(service).toContainText(
-      "Zone de déplacement : celle que présente la page d'accueil, de Cassis et Aubagne jusqu'à Hyères et La Londe-les-Maures. Au-delà, sur demande.",
+      "Zone de déplacement : celle que présente la page d'accueil, de Cassis et Aubagne jusqu'à Hyères et La Londe-les-Maures.",
     );
+    await expect(service).not.toContainText("Au-delà");
     await expect(service).toContainText(`Frais de déplacement : ${TODO}`);
   });
 

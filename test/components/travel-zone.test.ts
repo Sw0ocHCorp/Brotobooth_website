@@ -2,12 +2,11 @@ import { experimental_AstroContainer as AstroContainer } from "astro/container";
 import { afterEach, describe, expect, it } from "vitest";
 import TravelZone from "../../src/components/TravelZone.astro";
 import zone from "../../src/generated/zone.json";
-import { offer, whatsappHref, type Offer } from "../../worker/offer";
+import { offer, type Offer } from "../../worker/offer";
 
-/** La section « Où nous venons », rendue avec une offre d'essai : l'offre réelle n'a pas toujours de WhatsApp. */
+/** La section « Où nous venons », rendue avec une offre d'essai qui a WhatsApp : la section n'en propose pas pour autant. */
 
 const WITH_WHATSAPP: Offer["contact"] = { phones: [], phone: "06 00 00 00 01", email: "bonjour@example.test", whatsapp: "+33 6 00 00 00 03", social: [] };
-const WITHOUT_WHATSAPP: Offer["contact"] = { ...WITH_WHATSAPP, whatsapp: "" };
 
 const real = offer.contact;
 afterEach(() => {
@@ -50,24 +49,12 @@ describe("the travel zone section", () => {
     expect(zone.labels.map((label) => label.name)).toEqual(names);
     for (const name of names) expect(svg).toContain(`>${name}</text>`);
     expect(svg.match(/<g class="small"/g)).toHaveLength(zone.labels.filter((label) => label.small).length);
-    expect(html).not.toMatch(/https?:\/\/(?!wa\.me)/);
+    expect(html).not.toMatch(/https?:\/\//);
   });
 
-  it("sends an event out of the zone to WhatsApp", async () => {
+  it("offers nothing outside the zone, even when the offer has WhatsApp", async () => {
     const html = await render(WITH_WHATSAPP);
-    expect(text(html)).toContain("Votre événement a lieu ailleurs ? Écrivez-nous sur WhatsApp : nous voyons ensemble ce qui est possible.");
-    expect(html).toContain(`<a href="${whatsappHref(WITH_WHATSAPP.whatsapp)}">sur WhatsApp</a>`);
-  });
-
-  it("ends the out-of-zone sentence with the contact line when there is no WhatsApp", async () => {
-    const html = await render(WITHOUT_WHATSAPP);
-    expect(html).not.toContain("wa.me");
-    expect(text(html)).toContain("Votre événement a lieu ailleurs ? Appelez-nous au 06 00 00 00 01 ou écrivez-nous à bonjour@example.test.");
-  });
-
-  it("asks nothing about another place when there is no way to answer", async () => {
-    const html = await render({ ...WITH_WHATSAPP, whatsapp: "", phone: "", phones: [], email: "" });
     expect(text(html)).not.toContain("ailleurs");
-    expect(text(html)).toContain("Nous installons la borne");
+    expect(html).not.toMatch(/<a\b/);
   });
 });

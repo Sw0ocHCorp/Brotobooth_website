@@ -1,7 +1,5 @@
 ---
 import zone from "../generated/zone.json";
-import { offer } from "../../worker/offer";
-import ContactFallback from "./ContactFallback.astro";
 
 /**
  * « Où nous venons » (`#zone`) : la carte de la zone où nous installons la borne, tracée en SVG en ligne à partir de
@@ -9,11 +7,9 @@ import ContactFallback from "./ContactFallback.astro";
  * communes voisines des traits discrets, la zone une seule forme pleine. La carte est une image (`role="img"`) dont
  * l'`aria-label` donne la zone en toutes lettres ; la phrase à côté ne cite aucun nom, la carte les porte. Les repères
  * écrits sur la carte (leur côté, ceux qui restent sur une carte étroite) viennent de `zone.json` ; voir `.zone-map`
- * dans `site.css`. La question « Votre événement a lieu ailleurs ? » n'est posée que s'il y a un moyen de répondre.
+ * dans `site.css`. La section ne parle pas d'événements hors de la zone (choix du propriétaire).
  */
 const { viewBox, zone: area, context, labels, updated } = zone;
-const { whatsapp, phone, email } = offer.contact;
-const canContact = Boolean(whatsapp || phone || email);
 // « 2026-11 » → « novembre 2026 ».
 const [year, month] = updated.split("-").map(Number);
 const asOf = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" }).format(Date.UTC(year, month - 1, 1));
@@ -25,13 +21,6 @@ const OFFSET = 14;
   <div class="zone-in">
     <div class="zone-text">
       <p>Nous installons la borne partout dans la zone dessinée sur la carte, sur la côte comme dans les terres.</p>
-      {
-        canContact && (
-          <p>
-            Votre événement a lieu ailleurs&nbsp;? <ContactFallback ending={"\u00a0: nous voyons ensemble ce qui est possible."} />
-          </p>
-        )
-      }
     </div>
     <figure class="zone-map">
       <svg
@@ -45,7 +34,7 @@ const OFFSET = 14;
         {
           labels.map(({ name, x, y, side, small }) => (
             <g class={small ? "small" : undefined}>
-              <circle cx={x} cy={y}></circle>
+              <circle cx={x} cy={y} r="5"></circle>
               <text x={side === "left" ? x - OFFSET : x + OFFSET} y={y} text-anchor={side === "left" ? "end" : "start"}>{name}</text>
             </g>
           ))

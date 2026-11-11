@@ -418,8 +418,7 @@ main { overflow-x: clip; }
 /* Les liens au milieu d'une phrase (le contact qui accompagne un message, l'information sur les données) : 44 px de haut
    pour le doigt, soulignés pour se voir. */
 .contact a,
-.contact-section p a,
-.zone-text a {
+.contact-section p a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -512,6 +511,7 @@ html.intro .logo svg { opacity: 0; }
 .zone-map .context { fill: none; stroke: var(--glass-border-soft); stroke-width: 1; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 /* Une seule forme, opaque : le trait, de la même couleur, couvre les jointures entre communes, simplifiées chacune de leur côté. */
 .zone-map .area { fill: color-mix(in srgb, #fff 22%, var(--bg-a)); stroke: color-mix(in srgb, #fff 22%, var(--bg-a)); stroke-width: 1; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+/* L'attribut `r` du composant sert de repli là où la propriété CSS `r` n'est pas prise en charge. */
 .zone-map circle { fill: var(--text); r: 4px; }
 .zone-map text { fill: var(--text); font: 600 22px / 1 var(--font-text); dominant-baseline: central; paint-order: stroke; stroke: var(--bg-a); stroke-width: 4px; stroke-linejoin: round; }
 .zone-map figcaption { margin-top: .6em; font-size: 13px; color: var(--text-soft); }
