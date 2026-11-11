@@ -810,6 +810,7 @@ describe("Turnstile réel", () => {
     const r = await handle(
       new Request("https://brotobooth.fr/api/requests", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(await requestBody({ turnstile_token: "" })),
       }),
       d,

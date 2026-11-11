@@ -1,5 +1,5 @@
 import { addDays, bookingWindow, isValidDate } from "./bookings";
-import { json, readJson, type Handler } from "./http";
+import { json, readJson, requireJson, type Handler } from "./http";
 import { sendSoon } from "./notifications";
 import { offer, pricesBody } from "./offer";
 import { createContact } from "./contact";
@@ -33,6 +33,8 @@ export const prices: Handler = async (_req, deps) =>
   json(pricesBody(offer, await readCurrentTier(deps.env.DB)), 200, CACHED_30_S);
 
 export const postRequest: Handler = async (req, deps, ctx) => {
+  const unsupported = requireJson(req);
+  if (unsupported) return unsupported;
   const body = await readJson(req, MAX_BODY_BYTES);
   if (!body.ok) return json({ error: body.error }, body.status);
 
@@ -58,6 +60,8 @@ export const postRequest: Handler = async (req, deps, ctx) => {
 
 /** Un message du formulaire de contact : il part chez le propriétaire seul, jamais un accusé au visiteur. */
 export const postContact: Handler = async (req, deps, ctx) => {
+  const unsupported = requireJson(req);
+  if (unsupported) return unsupported;
   const body = await readJson(req, MAX_BODY_BYTES);
   if (!body.ok) return json({ error: body.error }, body.status);
 

@@ -44,7 +44,7 @@ const send = async (raw: BodyInit | null, d: Deps = deps, ip: string | null = IP
     new Request("https://brotobooth.fr/api/requests", {
       method: "POST",
       body: raw,
-      headers: { ...(ip === null ? {} : { "CF-Connecting-IP": ip }), ...headers },
+      headers: { "Content-Type": "application/json", ...(ip === null ? {} : { "CF-Connecting-IP": ip }), ...headers },
     }),
     d,
     background,
@@ -599,11 +599,24 @@ describe("routage et erreurs", () => {
   });
 });
 
+describe("POST /api/requests : type du corps", () => {
+  it("répond 415 sans rien écrire à un corps annoncé text/plain ou sans type, et accepte un charset", async () => {
+    const raw = JSON.stringify(await requestBody());
+    for (const type of ["text/plain", ""]) {
+      const r = await send(raw, deps, IP, { "Content-Type": type });
+      expect(r.status).toBe(415);
+      expect(await reply(r)).toEqual({ error: "unsupported_media_type" });
+    }
+    expect(await stored()).toEqual([]);
+    expect((await send(raw, deps, IP, { "Content-Type": "application/json; charset=utf-8" })).status).toBe(201);
+  });
+});
+
 describe("POST /api/contact", () => {
   /** Une `waitUntil` qui ne lance pas l'envoi : le modèle d'e-mail n'existe pas encore, on vérifie seulement qu'il est confié. */
   const contactCtx = () => ({ waitUntil: vi.fn(), passThroughOnException: vi.fn() }) as unknown as ExecutionContext & { waitUntil: ReturnType<typeof vi.fn> };
-  const contact = (raw: BodyInit | null, c = contactCtx(), d: Deps = deps) =>
-    handle(new Request("https://brotobooth.fr/api/contact", { method: "POST", body: raw, headers: { "CF-Connecting-IP": IP } }), d, c);
+  const contact = (raw: BodyInit | null, c = contactCtx(), d: Deps = deps, headers: Record<string, string> = {}) =>
+    handle(new Request("https://brotobooth.fr/api/contact", { method: "POST", body: raw, headers: { "Content-Type": "application/json", "CF-Connecting-IP": IP, ...headers } }), d, c);
   const message = (over: Record<string, unknown> = {}) =>
     JSON.stringify({ name: "Camille Durand", email: "camille@example.test", message: "Bonjour", turnstile_token: "t", ...over });
 
@@ -631,6 +644,16 @@ describe("POST /api/contact", () => {
     const r = await contact(message(), contactCtx(), salted);
     expect(r.status).toBe(429);
     expect(await reply(r)).toEqual({ error: "too_many" });
+  });
+
+  it("answers 415 and writes nothing to a body not announced as JSON, accepts a charset", async () => {
+    for (const headers of [{ "Content-Type": "text/plain" }, { "Content-Type": "" }]) {
+      const r = await contact(message(), contactCtx(), deps, headers);
+      expect(r.status).toBe(415);
+      expect(await reply(r)).toEqual({ error: "unsupported_media_type" });
+    }
+    expect(await notificationRows()).toEqual([]);
+    expect((await contact(message(), contactCtx(), deps, { "Content-Type": "application/json; charset=utf-8" })).status).toBe(201);
   });
 
   it("answers 400 invalid_json to a body that is not JSON, like /api/requests", async () => {

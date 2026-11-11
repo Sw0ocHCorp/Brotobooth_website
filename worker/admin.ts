@@ -2,7 +2,7 @@ import { readRange } from "./api";
 import { isValidDate } from "./bookings";
 import { LAST_RUN_KEY } from "./cron";
 import type { Deps } from "./deps";
-import { findRoute, fromOtherOrigin, json, readJson, type Handler, type Route } from "./http";
+import { findRoute, fromOtherOrigin, json, readJson, requireJson, type Handler, type Route } from "./http";
 import { sendSoon } from "./notifications";
 import {
   adjustPrice,
@@ -270,8 +270,7 @@ const ROUTES: Route[] = [
  */
 function refuseForeignWrite(req: Request, deps: Deps): Response | null {
   if (!req.headers.has("Origin") || fromOtherOrigin(req, deps.env.BASE_URL)) return json({ error: "forbidden" }, 403);
-  const type = req.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase();
-  return type === "application/json" ? null : json({ error: "unsupported_media_type" }, 415);
+  return requireJson(req);
 }
 
 /** Le propriétaire d'abord : sans lui, rien ne dit même si la route existe. `path` est le chemin de la requête. */

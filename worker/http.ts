@@ -139,6 +139,15 @@ export async function readText(req: Request, maxBytes: number): Promise<TextBody
   }
 }
 
+/**
+ * `415 unsupported_media_type` si le corps n'est pas annoncé `application/json`, sinon `null`. Un autre site ne peut
+ * pas envoyer ce type sans demande préalable (CORS) : seul un envoi `text/plain` passerait, et il est refusé ici.
+ */
+export function requireJson(req: Request): Response | null {
+  const type = req.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase();
+  return type === "application/json" ? null : json({ error: "unsupported_media_type" }, 415);
+}
+
 export type JsonBody =
   | { ok: true; value: unknown }
   | { ok: false; status: 400 | 413; error: "invalid_json" | "too_large" };
