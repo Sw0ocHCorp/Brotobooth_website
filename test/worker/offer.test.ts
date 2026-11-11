@@ -80,6 +80,13 @@ describe("buildOffer, zone", () => {
     expect(() => buildOffer(withBorder([commune("A"), commune("B")]))).toThrow(/config\/offer\.json.*commune/);
   });
 
+  it("refuses a border commune without a name or a department", () => {
+    const ok = [commune("A"), commune("B"), commune("C")];
+    for (const bad of [{ name: " ", department: "13" }, { name: "D", department: "" }]) {
+      expect(() => buildOffer(withBorder([...ok, bad]))).toThrow(/config\/offer\.json.*zone\.border/);
+    }
+  });
+
   it("keeps the border in order", () => {
     const border = [commune("A"), commune("B"), commune("C")];
     expect(buildOffer(withBorder(border)).zone.border).toEqual(border);

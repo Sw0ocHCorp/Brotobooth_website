@@ -228,16 +228,19 @@ main { overflow-x: clip; }
 /* Le combiné, et ce que la borne propose en plus. */
 .handset { background: var(--bg-b); }
 
-.handset-in {
+/* Le texte à côté d'une image, qui passe dessous sur un écran étroit : `--ratio` est la largeur de la seconde colonne. */
+.handset-in,
+.zone-in {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--ratio, 1.2fr));
   gap: clamp(24px, 5vw, 80px);
   align-items: center;
   max-width: 1320px;
   margin: auto;
 }
 
-.handset p { max-width: 32em; margin-bottom: 1em; color: var(--text-soft); }
+.handset p,
+.zone-text p { max-width: 32em; margin-bottom: 1em; color: var(--text-soft); }
 .extras { list-style: none; margin-top: 1.6em; border-top: 1px solid var(--glass-border-soft); }
 
 .extras li {
@@ -500,31 +503,25 @@ html.intro .logo svg { opacity: 0; }
   :root .no-js { display: none; }
 }
 
-/* Où nous venons : la phrase à côté de la carte, qui passe dessous sur un écran étroit. */
-.zone-in {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
-  gap: clamp(24px, 5vw, 80px);
-  align-items: center;
-  max-width: 1320px;
-  margin: auto;
-}
-
-.zone-text p { max-width: 32em; margin-bottom: 1em; color: var(--text-soft); }
+/* Où nous venons : la phrase à côté de la carte (mise en page de `.handset-in`). */
+.zone-in { --ratio: 1.4fr; }
 
 /* La mer est le fond de la section ; la carte prend la largeur de son conteneur et sa hauteur suit. */
 .zone-map { container-type: inline-size; margin: 0; }
 .zone-map svg { display: block; width: 100%; height: auto; }
 .zone-map .context { fill: none; stroke: var(--glass-border-soft); stroke-width: 1; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-/* Un fin trait de la couleur du remplissage couvre les jointures entre communes, simplifiées chacune de leur côté. */
-.zone-map .area { fill: rgba(255, 255, 255, .22); stroke: rgba(255, 255, 255, .22); stroke-width: 1; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.zone-map circle { fill: var(--text); }
+/* Une seule forme, opaque : le trait, de la même couleur, couvre les jointures entre communes, simplifiées chacune de leur côté. */
+.zone-map .area { fill: color-mix(in srgb, #fff 22%, var(--bg-a)); stroke: color-mix(in srgb, #fff 22%, var(--bg-a)); stroke-width: 1; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.zone-map circle { fill: var(--text); r: 4px; }
 .zone-map text { fill: var(--text); font: 600 22px / 1 var(--font-text); dominant-baseline: central; paint-order: stroke; stroke: var(--bg-a); stroke-width: 4px; stroke-linejoin: round; }
 .zone-map figcaption { margin-top: .6em; font-size: 13px; color: var(--text-soft); }
 
-/* 22 unités de la carte font 11 px à 400 px de large : en dessous, les noms seraient illisibles, la phrase les redit. */
+/* 22 unités de la carte font 11 px à 400 px de large. En dessous, seuls les quatre repères `small` restent, écrits à 32 unités
+   (11,5 px à 288 px) avec un point de 5 px ; l'aria-label de la carte donne la zone en toutes lettres. */
 @container (max-width: 399px) {
-  .zone-map g { display: none; }
+  .zone-map g:not(.small) { display: none; }
+  .zone-map circle { r: 7px; }
+  .zone-map text { font-size: 32px; stroke-width: 6px; }
 }
 
 @media (max-width: 860px) {

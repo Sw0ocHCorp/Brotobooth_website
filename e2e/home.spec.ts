@@ -33,7 +33,8 @@ test.describe("sans JavaScript", () => {
     await expect(page.getByRole("link", { name: "Choisir une date" }).first()).toBeVisible();
 
     // Chaque section se lit sans animation : les vraies photos sont là, posées de biais comme des tirages.
-    const photos = page.getByRole("main").getByRole("img");
+    // La carte de la zone est un `role="img"` aussi, mais ce n'est pas une photo : seules les balises <img> comptent.
+    const photos = page.getByRole("main").getByRole("img").and(page.locator("img"));
     await expect(photos).toHaveCount(6);
     for (const photo of await photos.all()) {
       await photo.scrollIntoViewIfNeeded();
@@ -195,8 +196,45 @@ test("la section de la zone suit les formules, sans requête hors du site", asyn
   await page.locator("#zone").scrollIntoViewIfNeeded();
   await page.waitForLoadState("networkidle");
   expect(outside).toEqual([]);
-  await expect(page.locator("#zone figcaption")).toHaveText("Contours des communes : IGN, Admin Express (Licence Ouverte)");
+  await expect(page.locator("#zone figcaption")).toHaveText(/^Contours des communes\s: IGN, Admin Express \(Licence Ouverte\), [a-zéû]+ \d{4}$/);
 });
+
+// Sous 400 px de carte seuls quatre noms restent, à 11 px au moins ; au-dessus, les sept. Aucun ne chevauche un autre ni ne sort de la carte.
+for (const [width, names] of [[320, 4], [390, 4], [1280, 7]] as const) {
+  test(`les noms de la carte sont lisibles et séparés à ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    const map = page.locator("#zone svg");
+    await map.scrollIntoViewIfNeeded();
+    const mapWidth = (await map.boundingBox())!.width;
+    expect(names === 4 ? mapWidth < 400 : mapWidth >= 400).toBe(true);
+    const labels = page.locator("#zone svg text").filter({ visible: true });
+    await expect(labels).toHaveCount(names);
+    const frame = await map.evaluate((el) => el.getBoundingClientRect().toJSON());
+    const boxes = await labels.evaluateAll((els) =>
+      els.map((el) => {
+        const svg = (el as unknown as SVGTextElement).ownerSVGElement!;
+        return { name: el.textContent, size: Number.parseFloat(getComputedStyle(el).fontSize) * (svg.getBoundingClientRect().width / svg.viewBox.baseVal.width), box: el.getBoundingClientRect().toJSON() };
+      }),
+    );
+    const dots = await page.locator("#zone svg circle").evaluateAll((els) => els.filter((el) => el.getBoundingClientRect().width > 0).map((el) => el.getBoundingClientRect().width));
+    expect(dots.length).toBeGreaterThanOrEqual(names);
+    for (const diameter of dots) expect(diameter).toBeGreaterThanOrEqual(width < 400 ? 4 : 3);
+    for (const { name, size, box } of boxes) {
+      expect(size, `taille de ${name}`).toBeGreaterThanOrEqual(11);
+      expect(box.left, name!).toBeGreaterThanOrEqual(frame.left);
+      expect(box.right, name!).toBeLessThanOrEqual(frame.right);
+      expect(box.top, name!).toBeGreaterThanOrEqual(frame.top);
+      expect(box.bottom, name!).toBeLessThanOrEqual(frame.bottom);
+    }
+    for (const [i, a] of boxes.entries()) {
+      for (const b of boxes.slice(i + 1)) {
+        const apart = a.box.right <= b.box.left || b.box.right <= a.box.left || a.box.bottom <= b.box.top || b.box.bottom <= a.box.top;
+        expect(apart, `${a.name} et ${b.name} se chevauchent`).toBe(true);
+      }
+    }
+  });
+}
 
 test("la carte tient sur 320 px", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });

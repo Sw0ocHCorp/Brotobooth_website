@@ -20,7 +20,7 @@ async function render(contact: Offer["contact"]): Promise<string> {
 }
 
 /** Le texte de `html` sans balises, espaces réduits. */
-const text = (html: string): string => html.replace(/<svg\b[\s\S]*?<\/svg>/g, " ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+const text = (html: string): string => html.replace(/<svg\b[\s\S]*?<\/svg>/g, " ").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
 
 describe("the travel zone section", () => {
   it("is the #zone section titled « Où nous venons »", async () => {
@@ -29,22 +29,27 @@ describe("the travel zone section", () => {
     expect(html).toMatch(/<h2\b[^>]*>Où nous venons<\/h2>/);
   });
 
-  it("states the zone in words, with the source of the outlines under the map", async () => {
+  it("says the zone is the one drawn, names no town, and dates the outlines under the map", async () => {
     const plain = text(await render(WITH_WHATSAPP));
-    expect(plain).toContain(
-      "Nous installons la borne de Cassis et Aubagne jusqu'à Hyères et La Londe-les-Maures, sur la côte et dans les terres jusqu'à Gémenos, Cuges-les-Pins, Signes, Méounes, Belgentier, Solliès-Toucas, La Farlède et La Crau.",
-    );
-    expect(plain).toContain("Contours des communes : IGN, Admin Express (Licence Ouverte)");
+    expect(plain).toContain("Nous installons la borne partout dans la zone dessinée sur la carte, sur la côte comme dans les terres.");
+    for (const { name } of offer.zone.border) expect(plain).not.toContain(name);
+    const [year, month] = zone.updated.split("-").map(Number);
+    const asOf = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" }).format(Date.UTC(year, month - 1, 1));
+    expect(plain).toContain(`Contours des communes : IGN, Admin Express (Licence Ouverte), ${asOf}`);
+    expect(asOf).toMatch(/^[a-zéû]+ \d{4}$/);
   });
 
-  it("draws the map hidden from screen readers, with the seven landmark names and no external reference", async () => {
+  it("draws the map as an image named by its aria-label, with the landmarks written from zone.json and no external reference", async () => {
     const html = await render(WITH_WHATSAPP);
     const svg = /<svg\b[^>]*>[\s\S]*?<\/svg>/.exec(html)?.[0] ?? "";
-    expect(svg).toMatch(/aria-hidden="true"/);
+    expect(svg).toMatch(/role="img"/);
+    expect(svg).not.toMatch(/aria-hidden/);
+    expect(svg).toMatch(/aria-label="Carte de la zone où nous installons la borne : de Cassis et Aubagne jusqu'à Hyères et La Londe-les-Maures, [^"]*La Crau\."/);
     expect(svg).toContain(`viewBox="${zone.viewBox}"`);
     const names = ["Cassis", "Aubagne", "Signes", "Méounes", "Toulon", "Hyères", "La Londe-les-Maures"];
     expect(zone.labels.map((label) => label.name)).toEqual(names);
     for (const name of names) expect(svg).toContain(`>${name}</text>`);
+    expect(svg.match(/<g class="small"/g)).toHaveLength(zone.labels.filter((label) => label.small).length);
     expect(html).not.toMatch(/https?:\/\/(?!wa\.me)/);
   });
 
@@ -58,5 +63,11 @@ describe("the travel zone section", () => {
     const html = await render(WITHOUT_WHATSAPP);
     expect(html).not.toContain("wa.me");
     expect(text(html)).toContain("Votre événement a lieu ailleurs ? Appelez-nous au 06 00 00 00 01 ou écrivez-nous à bonjour@example.test.");
+  });
+
+  it("asks nothing about another place when there is no way to answer", async () => {
+    const html = await render({ ...WITH_WHATSAPP, whatsapp: "", phone: "", phones: [], email: "" });
+    expect(text(html)).not.toContain("ailleurs");
+    expect(text(html)).toContain("Nous installons la borne");
   });
 });

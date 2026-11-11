@@ -57,7 +57,7 @@ export interface Offer {
     whatsapp: string;
     social: string[];
   };
-  /** La zone de déplacement : les communes qui la bordent côté terre, dans l'ordre où on les suit de la côte est à la côte ouest. */
+  /** La zone de déplacement : les communes qui la bordent côté terre, dans l'ordre où on les suit d'une côte à l'autre (de Cassis à La Londe-les-Maures ou l'inverse : la mer ferme le polygone aux deux bouts de la même façon). */
   zone: {
     border: { name: string; department: string }[];
   };
@@ -170,6 +170,9 @@ export function buildOffer(config: OfferConfig): Offer {
   });
   checkTiers(config);
   if (config.zone.border.length < 3) throw new Error("config/offer.json : zone.border doit compter au moins trois communes");
+  if (config.zone.border.some(({ name, department }) => !name.trim() || !department.trim())) {
+    throw new Error("config/offer.json : chaque commune de zone.border doit avoir un nom et un département");
+  }
   const phones = config.contact.phones.map(({ name, number }) => ({ name: name.trim(), number: number.trim() }));
   for (const { name, number } of phones) {
     if (!name || !number) throw new Error("config/offer.json : chaque numéro de contact doit avoir un prénom et un numéro");
