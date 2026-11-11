@@ -8,7 +8,7 @@ import { discountText, euros, isBookable, launchBody, normalPrice, offer, plansO
 const ROSE = "rgb(242, 85, 155)";
 const ORANGE = "rgb(255, 138, 61)";
 const CLEAR = "rgba(0, 0, 0, 0)";
-const SECTIONS = ["Ce que vivent vos invités", "Des moments qui subliment votre événement", "Les formules", "Une date en tête ?", "Contact"];
+const SECTIONS = ["Ce que vivent vos invités", "Des moments qui subliment votre événement", "Les formules", "Où nous venons", "Une date en tête ?", "Contact"];
 
 const menu = (page: Page) => page.getByRole("navigation", { name: "Menu principal" });
 
@@ -182,6 +182,32 @@ test("aucun débordement horizontal, sur téléphone comme sur ordinateur, et ci
   await expect(menu(page).getByRole("link")).toHaveCount(4);
   expect(await hasNoHorizontalOverflow(page)).toBe(true);
   expect(await smallTargets(page.locator("body"))).toEqual([]);
+});
+
+// La carte de la zone est dessinée en SVG en ligne : la faire défiler ne demande rien hors du site, et elle tient sur le plus petit téléphone.
+test("la section de la zone suit les formules, sans requête hors du site", async ({ page, baseURL }) => {
+  const outside: string[] = [];
+  page.on("request", (request) => {
+    if (!request.url().startsWith("data:") && new URL(request.url()).origin !== new URL(baseURL!).origin) outside.push(request.url());
+  });
+  await page.goto("/");
+  await expect(page.locator("#formules + #zone")).toHaveCount(1);
+  await page.locator("#zone").scrollIntoViewIfNeeded();
+  await page.waitForLoadState("networkidle");
+  expect(outside).toEqual([]);
+  await expect(page.locator("#zone figcaption")).toHaveText("Contours des communes : IGN, Admin Express (Licence Ouverte)");
+});
+
+test("la carte tient sur 320 px", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto("/");
+  const map = page.locator("#zone svg");
+  await map.scrollIntoViewIfNeeded();
+  await expect(map).toBeVisible();
+  expect(await hasNoHorizontalOverflow(page)).toBe(true);
+  const box = (await map.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(320);
 });
 
 // La barre est fixe : ce qui en dépasse ne fait pas défiler la page, il est coupé. Les quatre liens du menu tiennent à côté

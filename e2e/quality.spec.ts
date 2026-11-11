@@ -88,6 +88,15 @@ test.describe("pages légales", () => {
     await expect(page.locator(".meta")).toHaveText(`Version du ${day === 1 ? "1er" : day} ${monthName} ${year}`);
   });
 
+  test("les CGV renvoient la zone de déplacement à la page d'accueil et laissent les frais à compléter", async ({ page }) => {
+    await page.goto("/cgv");
+    const service = page.getByRole("region", { name: "La prestation" });
+    await expect(service).toContainText(
+      "Zone de déplacement : celle que présente la page d'accueil, de Cassis et Aubagne jusqu'à Hyères et La Londe-les-Maures. Au-delà, sur demande.",
+    );
+    await expect(service).toContainText(`Frais de déplacement : ${TODO}`);
+  });
+
   test("l'acompte engage les deux parties, laisse le solde dû et porte le pourcentage de l'offre", async ({ page }) => {
     await page.goto("/cgv");
     const deposit = page.getByRole("region", { name: "L'acompte" });

@@ -1,0 +1,45 @@
+---
+import zone from "../generated/zone.json";
+import ContactFallback from "./ContactFallback.astro";
+
+/**
+ * « Où nous venons » (`#zone`) : la carte de la zone où nous installons la borne, tracée en SVG en ligne à partir de
+ * `src/generated/zone.json` (`npm run zone`), donc sans requête chez le visiteur. La mer est le fond nuit du site, les
+ * communes voisines des traits discrets, la zone un blanc translucide. La carte est décorative : la phrase qui la
+ * précède donne la zone en toutes lettres, et c'est elle que lit un lecteur d'écran. Les noms des villes repères se
+ * masquent quand la carte devient trop petite pour qu'ils restent lisibles (voir `.zone-map` dans `site.css`).
+ */
+const { viewBox, zone: area, context, labels } = zone;
+// Ces repères sont proches d'un voisin à leur droite : leur nom s'écrit à leur gauche.
+const LEFT_OF_DOT = new Set(["Signes", "Aubagne"]);
+---
+
+<section class="block zone" id="zone">
+  <div class="head"><h2>Où nous venons</h2></div>
+  <div class="zone-in">
+    <div class="zone-text">
+      <p>
+        Nous installons la borne de Cassis et Aubagne jusqu'à Hyères et La Londe-les-Maures, sur la côte et dans les terres
+        jusqu'à Gémenos, Cuges-les-Pins, Signes, Méounes, Belgentier, Solliès-Toucas, La Farlède et La Crau.
+      </p>
+      <p class="elsewhere">
+        Votre événement a lieu ailleurs ? <ContactFallback ending=" : nous voyons ensemble ce qui est possible." />
+      </p>
+    </div>
+    <figure class="zone-map">
+      <svg viewBox={viewBox} aria-hidden="true" focusable="false">
+        <path class="context" d={context}></path>
+        <path class="area" d={area}></path>
+        {
+          labels.map(({ name, x, y }) => (
+            <g>
+              <circle cx={x} cy={y} r="4"></circle>
+              <text x={LEFT_OF_DOT.has(name) ? x - 10 : x + 10} y={y} text-anchor={LEFT_OF_DOT.has(name) ? "end" : "start"}>{name}</text>
+            </g>
+          ))
+        }
+      </svg>
+      <figcaption>Contours des communes : IGN, Admin Express (Licence Ouverte)</figcaption>
+    </figure>
+  </div>
+</section>
