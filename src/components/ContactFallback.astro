@@ -1,0 +1,12 @@
+---
+import { offer, whatsappHref } from "../../worker/offer";
+import ContactLine from "./ContactLine.astro";
+
+/**
+ * Comment nous joindre quand le formulaire ne part pas, dans la section « Contact » : « Écrivez-nous sur WhatsApp. » quand
+ * l'offre a un numéro WhatsApp, car l'adresse e-mail n'y figure pas ; sinon `ContactLine`, comme la page de réservation.
+ */
+const { whatsapp } = offer.contact;
+---
+
+{whatsapp ? <>Écrivez-nous <a href={whatsappHref(whatsapp)}>sur WhatsApp</a>.</> : <ContactLine />}

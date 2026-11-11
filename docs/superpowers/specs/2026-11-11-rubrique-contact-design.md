@@ -30,9 +30,9 @@ Un visiteur qui a une question, sans vouloir réserver tout de suite, doit pouvo
 - **Les erreurs**, chacune à côté de ce qu'elle concerne :
   - un champ refusé : son message sous le champ, comme à la réservation (« Indiquez votre nom. », « Vérifiez votre adresse e-mail. », « Écrivez votre message. ») ;
   - anti-robots refusé : « La vérification anti-robots n'a pas abouti. Réessayez. » ;
-  - trop de messages depuis la même connexion (5 en 24 h, la même limite que les demandes) : « Beaucoup de messages sont partis de cette connexion aujourd'hui. Réessayez demain » suivi de `ContactLine` ;
-  - réseau ou serveur : « Votre message n'est pas parti. Vérifiez votre connexion, puis réessayez. » suivi de `ContactLine`. Les champs gardent leur contenu.
-- Sans JavaScript, la section montre les moyens directs et le formulaire indique d'écrire à l'adresse e-mail.
+  - trop de messages depuis la même connexion (5 en 24 h, la même limite que les demandes) : « Beaucoup de messages sont partis de cette connexion aujourd'hui. Réessayez demain » suivi de « Écrivez-nous sur WhatsApp. » (« sur WhatsApp » est le lien `wa.me`) ; sans numéro WhatsApp seulement, de `ContactLine`, comme la page de réservation, qui garde l'adresse e-mail ;
+  - réseau ou serveur : « Votre message n'est pas parti. Vérifiez votre connexion, puis réessayez. » suivi de la même phrase WhatsApp (ou de `ContactLine` sans numéro WhatsApp). Les champs gardent leur contenu.
+- Sans JavaScript, la section montre les moyens directs et le formulaire cède la place à « Écrivez-nous sur WhatsApp. » (« sur WhatsApp » est le lien `wa.me`) : l'adresse e-mail ne s'affiche pas dans la section. Sans numéro WhatsApp seulement, la phrase renvoie à l'adresse e-mail.
 
 ## 3. Ce que reçoit le propriétaire
 

@@ -27,6 +27,10 @@ describe("buildOffer, contact", () => {
     expect(buildOffer(withContact({ social: ["https://exemple.fr/a"] })).contact.social).toEqual(["https://exemple.fr/a"]);
   });
 
+  it("trims the e-mail address: it is the recipient of the contact form", () => {
+    expect(buildOffer(withContact({ email: "  contact@example.test \t" })).contact.email).toBe("contact@example.test");
+  });
+
   it("trims the WhatsApp number and accepts only the international format, or none", () => {
     expect(buildOffer(withContact({ whatsapp: "  +33 6 00 00 00 03 " })).contact.whatsapp).toBe("+33 6 00 00 00 03");
     expect(buildOffer(withContact({ whatsapp: "  " })).contact.whatsapp).toBe("");

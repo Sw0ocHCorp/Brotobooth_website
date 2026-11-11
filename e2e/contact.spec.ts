@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
-import { socialLabel, socialName, telHref } from "../worker/offer";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { socialLabel, socialName, telHref, whatsappHref } from "../worker/offer";
 import { expectIconLinks, hasNoHorizontalOverflow, smallTargets } from "./layout";
 import { TEST_SITE_KEY, eraseContacts, expectContact, fakeTurnstile, isTurnstile, offer, withSiteKey } from "./seed";
 
@@ -25,6 +25,15 @@ const FIELDS = [
   { name: "phone", label: "Votre téléphone (facultatif)", problem: "Vérifiez votre numéro de téléphone." },
   { name: "message", label: "Votre message", problem: "Écrivez votre message." },
 ];
+
+/** Ce que la section donne pour nous joindre : « sur WhatsApp » quand l'offre a un numéro WhatsApp, sinon le contact de la réservation. */
+const expectReachUs = async (zone: Locator): Promise<void> => {
+  const { whatsapp } = offer.contact;
+  if (!whatsapp) return expectContact(zone);
+  await expect(zone.getByRole("link")).toHaveCount(1);
+  await expect(zone.getByRole("link", { name: "sur WhatsApp" })).toHaveAttribute("href", whatsappHref(whatsapp));
+  await expect(zone.locator('a[href^="mailto:"]')).toHaveCount(0);
+};
 
 const section = (page: Page) => page.getByRole("region", { name: "Contact" });
 const send = (page: Page) => page.getByRole("button", { name: "Envoyer le message" });
@@ -275,7 +284,7 @@ test("anti-robots refusé, trop de messages, panne : chaque fois le texte qui co
       await expect(problem).not.toContainText(other, { useInnerText: true }); // les autres phrases sont dans la page, masquées
     }
     // Le contact suit la phrase montrée ; celui de l'autre phrase, masquée, ne compte pas.
-    if (contact) await expectContact(problem.locator("[data-problem]:visible"));
+    if (contact) await expectReachUs(problem.locator("[data-problem]:visible"));
     else await expect(problem.getByRole("link")).toHaveCount(0);
     await expectKept(page, who);
     await expect(send(page)).toBeEnabled();
@@ -300,8 +309,9 @@ test.describe("sans JavaScript", () => {
     await expect(send(page)).toBeHidden();
     const fallback = section(page).getByText("Le formulaire ne s'affiche pas sur votre navigateur.");
     await expect(fallback).toBeVisible();
-    const { email } = offer.contact;
-    if (email) await expect(fallback.getByRole("link", { name: email })).toHaveAttribute("href", `mailto:${email}`);
+    const { email, whatsapp } = offer.contact;
+    if (whatsapp) await expect(fallback.getByRole("link", { name: "sur WhatsApp" })).toHaveAttribute("href", whatsappHref(whatsapp));
+    else if (email) await expect(fallback.getByRole("link", { name: email })).toHaveAttribute("href", `mailto:${email}`);
     else await expect(fallback).toHaveText("Le formulaire ne s'affiche pas sur votre navigateur. Essayez-en un autre.");
   });
 });
@@ -329,6 +339,7 @@ test("la politique de confidentialité dit ce que devient un message", async ({ 
     "24 h",
     "Cloudflare",
     "Resend",
+    "Gmail (Google) reçoit votre message dans la messagerie de Brotobooth.",
     "Telegram n'en reçoit rien",
   ]) {
     await expect(form, text).toContainText(text);

@@ -177,7 +177,7 @@ export function buildOffer(config: OfferConfig): Offer {
   if (whatsapp && !/^\+(?:\D*\d){8}/.test(whatsapp)) {
     throw new Error("config/offer.json : le numéro WhatsApp doit être au format international (« + », puis au moins 8 chiffres)");
   }
-  return { ...config, plans, contact: { ...config.contact, phones, whatsapp, phone: phones[0]?.number ?? "" } };
+  return { ...config, plans, contact: { ...config.contact, phones, email: config.contact.email.trim(), whatsapp, phone: phones[0]?.number ?? "" } };
 }
 
 export const offer: Offer = buildOffer(offerJson);

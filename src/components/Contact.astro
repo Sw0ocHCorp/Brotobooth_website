@@ -1,7 +1,7 @@
 ---
 import { contactLinks, offer } from "../../worker/offer";
 import ContactAnchor from "./ContactAnchor.astro";
-import ContactLine from "./ContactLine.astro";
+import ContactFallback from "./ContactFallback.astro";
 
 /**
  * « Contact » (`#contact`), la dernière section de l'accueil : les moyens directs renseignés dans `config/offer.json` (un
@@ -11,10 +11,11 @@ import ContactLine from "./ContactLine.astro";
  * est sous lui, et le nom de chaque champ est celui du corps JSON. Le formulaire part caché et le script le montre une
  * fois prêt à l'envoyer : sans lui (JavaScript coupé, script qui n'arrive pas), le navigateur l'enverrait lui-même et le
  * message serait perdu ; `method="post"` garde alors au moins nom, e-mail et message hors de toute adresse. Sans
- * JavaScript, une phrase renvoie vers l'adresse e-mail à sa place. `PUBLIC_TURNSTILE_SITE_KEY` : la clé du widget
+ * JavaScript, une phrase renvoie vers WhatsApp à sa place (`ContactFallback`, comme après un envoi refusé) ; sans WhatsApp,
+ * vers l'adresse e-mail. `PUBLIC_TURNSTILE_SITE_KEY` : la clé du widget
  * anti-robots ; vide (essais), il n'est pas chargé.
  */
-const { email } = offer.contact;
+const { email, whatsapp } = offer.contact;
 const means = contactLinks(offer.contact, ({ name }) => `Appeler ${name}`);
 
 type Field = { name: string; label: string; problem: string; type?: string; autocomplete?: string; maxlength: number; optional?: boolean };
@@ -76,9 +77,9 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
       }
       <div id="turnstile" data-sitekey={turnstileKey}></div>
       <div id="send-problem" class="notice" role="alert" tabindex="-1" hidden>
-        <p data-problem="failed">Votre message n'est pas parti. Vérifiez votre connexion, puis réessayez. <ContactLine /></p>
+        <p data-problem="failed">Votre message n'est pas parti. Vérifiez votre connexion, puis réessayez. <ContactFallback /></p>
         <p data-problem="bot">La vérification anti-robots n'a pas abouti. Réessayez.</p>
-        <p data-problem="too_many">Beaucoup de messages sont partis de cette connexion aujourd'hui. Réessayez demain. <ContactLine /></p>
+        <p data-problem="too_many">Beaucoup de messages sont partis de cette connexion aujourd'hui. Réessayez demain. <ContactFallback /></p>
       </div>
       <button type="submit" class="btn ghost" id="send">Envoyer le message</button>
       <p class="privacy">
@@ -89,7 +90,9 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
     <p class="sent" id="sent" tabindex="-1" hidden>Merci, votre message est bien parti. Nous vous répondons par e-mail.</p>
     <p class="no-js">
       Le formulaire ne s'affiche pas sur votre navigateur. {
-        email ? (
+        whatsapp ? (
+          <ContactFallback />
+        ) : email ? (
           <>
             Écrivez-nous à <a href={`mailto:${email}`}>{email}</a>.
           </>

@@ -28,6 +28,11 @@ export async function expectIconLinks(root: Locator): Promise<number> {
     await expect(link).toHaveAttribute("title", name!);
     await expect(link).toHaveText("");
     await expect(link.locator('svg[aria-hidden="true"]')).toHaveCSS("fill", "rgb(255, 255, 255)");
+    // Au clavier, le focus se voit : un contour plein autour de l'icône.
+    await link.page().keyboard.press("Shift");
+    await link.focus();
+    await expect(link).toHaveCSS("outline-style", "solid");
+    await expect(link).toHaveCSS("outline-width", "2px");
     const box = (await link.boundingBox())!;
     expect(Math.round(box.width), name).toBeGreaterThanOrEqual(44);
     expect(Math.round(box.height), name).toBeGreaterThanOrEqual(44);

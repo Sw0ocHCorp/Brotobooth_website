@@ -2,7 +2,7 @@ import { experimental_AstroContainer as AstroContainer } from "astro/container";
 import { afterEach, describe, expect, it } from "vitest";
 import Contact from "../../src/components/Contact.astro";
 import Footer from "../../src/components/Footer.astro";
-import { offer, telHref, type Offer } from "../../worker/offer";
+import { offer, telHref, whatsappHref, type Offer } from "../../worker/offer";
 
 /**
  * Les moyens de contact de la section « Contact » et du pied de page, rendus avec une offre d'essai : l'offre réelle n'a
@@ -23,7 +23,7 @@ const FULL: Contact = {
   social: ["https://www.instagram.com/photomaton_test/", "https://exemple.fr/page"],
 };
 const EMPTY: Contact = { phones: [], phone: "", email: "", whatsapp: "", social: [] };
-const REAL_ICONS = ["https://wa.me/33629430210", "https://www.instagram.com/brotobooth/"];
+const REAL_ICONS = [whatsappHref(offer.contact.whatsapp), ...offer.contact.social.filter((url) => url.includes("instagram.com"))];
 
 const real = offer.contact;
 afterEach(() => {
@@ -90,7 +90,6 @@ describe("the footer", () => {
   });
 
   it("with the real offer, gives WhatsApp and Instagram icons only", async () => {
-    offer.contact = real;
     const found = links(zone(await (await AstroContainer.create()).renderToString(Footer), "address"));
     expect(found.map(({ href, icon, text }) => [href, icon, text])).toEqual(REAL_ICONS.map((href) => [href, true, ""]));
   });
@@ -112,7 +111,6 @@ describe("the contact section", () => {
   });
 
   it("with the real offer, gives WhatsApp and Instagram icons only", async () => {
-    offer.contact = real;
     const found = links(zone(await (await AstroContainer.create()).renderToString(Contact), "ul", "means"));
     expect(found.map(({ href, icon, text }) => [href, icon, text])).toEqual(REAL_ICONS.map((href) => [href, true, ""]));
   });
@@ -121,15 +119,34 @@ describe("the contact section", () => {
     expect(zone(await render(Contact, EMPTY), "ul", "means")).toBe("");
   });
 
-  it("follows a failed send and the connection limit with how to reach us, never the anti-robot refusal", async () => {
-    const html = await render(Contact, FULL);
-    const problems = Object.fromEntries([...html.matchAll(/<p data-problem="(\w+)"[^>]*>([\s\S]*?)<\/p>/g)].map(([, kind, text]) => [kind, links(text)]));
-    const call = { href: telHref("06 00 00 00 01"), name: undefined, text: "06 00 00 00 01" };
-    expect(problems).toEqual({ failed: [call, mail], bot: [], too_many: [call, mail] });
+  const problemLinks = (html: string) =>
+    Object.fromEntries([...html.matchAll(/<p data-problem="(\w+)"[^>]*>([\s\S]*?)<\/p>/g)].map(([, kind, text]) => [kind, links(text)]));
+  const onWhatsapp = { href: whatsapp.href, name: undefined, text: "sur WhatsApp" };
+
+  it("follows a failed send and the connection limit with WhatsApp, never the anti-robot refusal", async () => {
+    expect(problemLinks(await render(Contact, FULL))).toEqual({ failed: [onWhatsapp], bot: [], too_many: [onWhatsapp] });
   });
 
-  it("without JavaScript, sends the visitor to the e-mail address, only if there is one", async () => {
-    expect(links(zone(await render(Contact, FULL), "p", "no-js"))).toEqual([mail]);
+  it("without WhatsApp, follows them with how to reach us as the booking page does", async () => {
+    const call = { href: telHref("06 00 00 00 01"), name: undefined, text: "06 00 00 00 01" };
+    expect(problemLinks(await render(Contact, { ...FULL, whatsapp: "" }))).toEqual({ failed: [call, mail], bot: [], too_many: [call, mail] });
+  });
+
+  it("never gives the e-mail address anywhere in the section when WhatsApp is set", async () => {
+    const html = await render(Contact, FULL);
+    expect(html).not.toContain("mailto:");
+    expect(html).not.toContain("bonjour@example.test");
+  });
+
+  it("without JavaScript, sends the visitor to WhatsApp", async () => {
+    const noJs = zone(await render(Contact, FULL), "p", "no-js");
+    expect(links(noJs)).toEqual([onWhatsapp]);
+    expect(noJs).toContain("Écrivez-nous");
+  });
+
+  it("without JavaScript and without WhatsApp, sends the visitor to the e-mail address, only if there is one", async () => {
+    const without = { ...FULL, whatsapp: "" };
+    expect(links(zone(await render(Contact, without), "p", "no-js"))).toEqual([mail]);
     const empty = zone(await render(Contact, EMPTY), "p", "no-js");
     expect(empty).toContain("Le formulaire ne s'affiche pas sur votre navigateur.");
     expect(links(empty)).toEqual([]);
