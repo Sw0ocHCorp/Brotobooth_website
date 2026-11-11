@@ -49,6 +49,8 @@ export interface HistoryRow {
 
 export type NotificationSpec = {
   booking_id: string | null;
+  /** Le message de contact que cet envoi porte ; `null` (ou absent) pour un envoi lié à une réservation. */
+  contact_id?: string | null;
   dedupe_key: string;
   channel: "email" | "telegram";
   recipient: "owner" | "client";
@@ -178,11 +180,11 @@ const notificationStmt = (db: D1Database, n: NotificationSpec, onlyIf?: Sql) => 
   const guard = onlyIf ? `EXISTS (SELECT 1 FROM bookings WHERE ${onlyIf.sql})` : "1";
   return db
     .prepare(
-      `INSERT OR IGNORE INTO notifications (booking_id, dedupe_key, channel, recipient, template, due_at)
-       SELECT ?, ?, ?, ?, ?, ? WHERE ${guard}`,
+      `INSERT OR IGNORE INTO notifications (booking_id, contact_id, dedupe_key, channel, recipient, template, due_at)
+       SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${guard}`,
     )
     .bind(
-      ...[n.booking_id, n.dedupe_key, n.channel, n.recipient, n.template, n.due_at],
+      ...[n.booking_id, n.contact_id ?? null, n.dedupe_key, n.channel, n.recipient, n.template, n.due_at],
       ...(onlyIf?.params ?? []),
     );
 };
@@ -511,3 +513,29 @@ export async function setState(db: D1Database, key: string, value: string): Prom
     .bind(key, value)
     .run();
 }
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  message: string;
+  ip_hash: string | null;
+  created_at: string;
+}
+
+/** Le message et les envois qu'il déclenche, dans un seul lot : l'un n'existe jamais sans l'autre. */
+export async function insertContactMessage(db: D1Database, m: ContactMessage, specs: NotificationSpec[]): Promise<void> {
+  await db.batch([
+    db
+      .prepare("INSERT INTO contact_messages (id, name, email, phone, message, ip_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(m.id, m.name, m.email, m.phone, m.message, m.ip_hash, m.created_at),
+    ...specs.map((spec) => notificationStmt(db, spec)),
+  ]);
+}
+
+export const getContactMessage = (db: D1Database, id: string): Promise<ContactMessage | null> =>
+  db.prepare("SELECT * FROM contact_messages WHERE id = ?").bind(id).first<ContactMessage>();
+
+export const countRecentContactByIp = (db: D1Database, ipHash: string, sinceIso: string): Promise<number> =>
+  count(db.prepare("SELECT COUNT(*) AS n FROM contact_messages WHERE ip_hash = ? AND created_at >= ?").bind(ipHash, sinceIso));

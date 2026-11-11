@@ -57,7 +57,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const randomToken = (): string => toHex(crypto.getRandomValues(new Uint8Array(32)));
 
 /** L'empreinte salée d'une adresse IP : de quoi la compter, pas de quoi la retrouver. */
-const hashIp = (salt: string, ip: string): Promise<string> => sha256Hex(salt + ip);
+export const hashIp = (salt: string, ip: string): Promise<string> => sha256Hex(salt + ip);
 
 /** L'échéance, en UTC, `hours` heures après `now`. */
 const holdUntil = (now: Date, hours: number): string => new Date(now.getTime() + hours * HOUR_MS).toISOString();
@@ -144,7 +144,7 @@ function parseRequest(input: unknown, now: Date): { ok: true; value: RequestInpu
  * Une panne du service anti-robots, annoncée ou non, ne coûte jamais une demande. Une exception est
  * consignée (message seulement, ni jeton ni adresse) : sans trace, un secret erroné couperait la protection en silence.
  */
-async function checkTurnstile(deps: Deps, token: string, ip: string | null) {
+export async function checkTurnstile(deps: Deps, token: string, ip: string | null) {
   try {
     return await deps.verifyTurnstile(token, ip);
   } catch (error) {

@@ -1,5 +1,5 @@
 import { adminApi } from "./admin";
-import { availability, postRequest, prices } from "./api";
+import { availability, postContact, postRequest, prices } from "./api";
 import { calendarFeed } from "./calendar";
 import { demoPage } from "./demo";
 import type { Deps } from "./deps";
@@ -26,6 +26,7 @@ const ROUTES: Route[] = [
   { method: "GET", path: "/api/availability", handler: availability },
   { method: "GET", path: "/api/prices", handler: prices },
   { method: "POST", path: "/api/requests", handler: postRequest },
+  { method: "POST", path: "/api/contact", handler: postContact },
   { method: "POST", path: "/api/stripe/webhook", handler: stripeWebhook },
   { method: "POST", path: "/api/telegram/webhook", handler: telegramWebhook },
   { method: "GET", path: "/acompte/:token", handler: forToken(paymentPage) },

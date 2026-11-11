@@ -138,7 +138,7 @@ export const notificationRows = async (): Promise<NotificationRow[]> =>
 /** Vide toutes les tables, les tables filles d'abord à cause des clés étrangères. */
 export async function resetDb(db: D1Database): Promise<void> {
   await db.batch(
-    ["notifications", "booking_history", "bookings", "system_state"].map((table) =>
+    ["notifications", "contact_messages", "booking_history", "bookings", "system_state"].map((table) =>
       db.prepare(`DELETE FROM ${table}`),
     ),
   );

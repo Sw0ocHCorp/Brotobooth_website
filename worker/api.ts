@@ -2,6 +2,7 @@ import { addDays, bookingWindow, isValidDate } from "./bookings";
 import { json, readJson, type Handler } from "./http";
 import { sendSoon } from "./notifications";
 import { offer, pricesBody } from "./offer";
+import { createContact } from "./contact";
 import { createRequest, readCurrentTier } from "./operations";
 import { listUnavailableDates } from "./repository";
 
@@ -52,5 +53,24 @@ export const postRequest: Handler = async (req, deps, ctx) => {
       return json({ error: "too_many", reason: result.reason }, 429);
     case "bot":
       return json({ error: "bot" }, 403);
+  }
+};
+
+/** Un message du formulaire de contact : il part chez le propriétaire seul, jamais un accusé au visiteur. */
+export const postContact: Handler = async (req, deps, ctx) => {
+  const body = await readJson(req, MAX_BODY_BYTES);
+  if (!body.ok) return json({ error: body.error }, body.status);
+
+  const result = await createContact(deps, body.value, req.headers.get("CF-Connecting-IP") || null);
+  switch (result.kind) {
+    case "sent":
+      sendSoon(ctx, deps);
+      return json({ status: "sent" }, 201);
+    case "invalid":
+      return json({ error: "invalid", fields: result.fields }, 422);
+    case "bot":
+      return json({ error: "bot" }, 403);
+    case "too_many":
+      return json({ error: "too_many" }, 429);
   }
 };

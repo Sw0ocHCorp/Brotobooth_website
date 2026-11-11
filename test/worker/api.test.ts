@@ -598,3 +598,44 @@ describe("routage et erreurs", () => {
     }
   });
 });
+
+describe("POST /api/contact", () => {
+  /** Une `waitUntil` qui ne lance pas l'envoi : le modèle d'e-mail n'existe pas encore, on vérifie seulement qu'il est confié. */
+  const contactCtx = () => ({ waitUntil: vi.fn(), passThroughOnException: vi.fn() }) as unknown as ExecutionContext & { waitUntil: ReturnType<typeof vi.fn> };
+  const contact = (raw: BodyInit | null, c = contactCtx(), d: Deps = deps) =>
+    handle(new Request("https://brotobooth.fr/api/contact", { method: "POST", body: raw, headers: { "CF-Connecting-IP": IP } }), d, c);
+  const message = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({ name: "Camille Durand", email: "camille@example.test", message: "Bonjour", turnstile_token: "t", ...over });
+
+  it("answers 201, queues the e-mail and hands the delivery to waitUntil", async () => {
+    const c = contactCtx();
+    const r = await contact(message(), c);
+    expect(r.status).toBe(201);
+    expect(await reply(r)).toEqual({ status: "sent" });
+    expect(c.waitUntil).toHaveBeenCalledTimes(1);
+    expect(await notificationRows()).toMatchObject([{ template: "owner_contact", recipient: "owner", sent_at: null }]);
+  });
+
+  it("answers 422 with the refused fields and does not queue anything", async () => {
+    const c = contactCtx();
+    const r = await contact(message({ email: "x", message: "" }), c);
+    expect(r.status).toBe(422);
+    expect(await reply(r)).toEqual({ error: "invalid", fields: ["email", "message"] });
+    expect(c.waitUntil).not.toHaveBeenCalled();
+  });
+
+  it("answers 403 for a robot and 429 beyond the limit", async () => {
+    expect((await contact(message(), contactCtx(), fakeDeps({ verifyTurnstile: async () => "fail" }))).status).toBe(403);
+    const salted = fakeDeps({ env: { ...env, IP_HASH_SALT: "sel" } });
+    for (let i = 0; i < offer.maxPerIpPer24h; i++) await contact(message(), contactCtx(), salted);
+    const r = await contact(message(), contactCtx(), salted);
+    expect(r.status).toBe(429);
+    expect(await reply(r)).toEqual({ error: "too_many" });
+  });
+
+  it("answers 400 invalid_json to a body that is not JSON, like /api/requests", async () => {
+    const r = await contact("a=b");
+    expect(r.status).toBe(400);
+    expect(await reply(r)).toEqual({ error: "invalid_json" });
+  });
+});

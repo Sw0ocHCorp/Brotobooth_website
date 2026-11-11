@@ -543,6 +543,7 @@ describe("file de notifications", () => {
       {
         id: expect.any(Number),
         booking_id: booking.id,
+        contact_id: null,
         dedupe_key: "k",
         channel: "telegram",
         recipient: "client",
