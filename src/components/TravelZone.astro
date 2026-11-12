@@ -4,7 +4,7 @@ import zone from "../generated/zone.json";
 /**
  * « Notre zone de déplacement » (`#zone`) : la carte de la zone où nous installons la borne, tracée en SVG en ligne à partir de
  * `src/generated/zone.json` (`npm run zone`), donc sans requête chez le visiteur. La mer est le fond de la section, les
- * communes voisines des traits discrets, la zone une seule forme pleine. La carte est une image (`role="img"`) dont
+ * communes voisines des traits discrets, la zone une seule forme pleine, en dégradé du rose à l'orange du logo. La carte est une image (`role="img"`) dont
  * l'`aria-label` donne la zone en toutes lettres ; la phrase à côté ne cite aucun nom, la carte les porte. Les repères
  * écrits sur la carte (leur côté, ceux qui restent sur une carte étroite) viennent de `zone.json` ; voir `.zone-map`
  * dans `site.css`. La section ne parle pas d'événements hors de la zone (choix du propriétaire).
@@ -29,6 +29,12 @@ const OFFSET = 14;
         aria-label="Carte de la zone où nous installons la borne : de Cassis et Aubagne jusqu'à Hyères et La Londe-les-Maures, sur la côte et dans les terres jusqu'à Gémenos, Cuges-les-Pins, Signes, Méounes, Belgentier, Solliès-Toucas, La Farlède et La Crau."
         focusable="false"
       >
+        <defs>
+          <linearGradient id="zone-sunset">
+            <stop offset="0" class="from"></stop>
+            <stop offset="1" class="to"></stop>
+          </linearGradient>
+        </defs>
         <path class="context" d={context}></path>
         <path class="area" d={area}></path>
         {
