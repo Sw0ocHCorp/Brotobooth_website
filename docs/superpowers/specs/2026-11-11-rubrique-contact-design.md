@@ -18,7 +18,7 @@ Un visiteur qui a une question, sans vouloir réserver tout de suite, doit pouvo
 
 - **Emplacement** : une section `#contact` en bas de l'accueil, juste avant le pied de page. Le menu du haut gagne « Contact » (`/#contact`), après « Formules ».
 - **Titre et accroche** : « Contact », puis « Une question sur la borne ou sur votre événement ? Écrivez-nous, nous vous répondons par e-mail. »
-- **Les moyens directs**, chacun seulement s'il est renseigné :
+- **Les moyens directs**, sous le formulaire et son information sur les données (demande du propriétaire, 2026-11-12), annoncés par « Vous pouvez aussi nous contacter : ». Chacun seulement s'il est renseigné :
   - un lien « Appeler {prénom} » (`tel:`) par numéro de `contact.phones` ;
   - une icône WhatsApp (`contact.whatsapp`, lien `https://wa.me/…`), nom accessible « Nous écrire sur WhatsApp » ;
   - chaque lien de `contact.social` : une icône Instagram pour un compte `instagram.com/compte` (le lien ouvre le profil, dans l'application Instagram sur téléphone), nom accessible « @compte sur Instagram » ; un autre réseau garde son texte court (le domaine).

@@ -422,8 +422,8 @@ main { overflow-x: clip; }
 }
 
 /* ---------- contact ---------- */
-/* La dernière section, centrée comme l'appel qui la précède : le titre, les moyens directs, puis le formulaire ; le
-   remerciement prend sa place une fois le message parti. Le contact est une action secondaire à côté de la réservation :
+/* La dernière section, centrée comme l'appel qui la précède : le titre, le formulaire, puis les moyens directs et la
+   phrase qui les annonce ; le remerciement prend la place du formulaire une fois le message parti. Le contact est une action secondaire à côté de la réservation :
    tous ses boutons sont à contour, le rose reste à « Choisir une date ». */
 .contact-section { background: var(--bg-b); }
 .contact-in { max-width: 640px; margin: auto; }
@@ -431,11 +431,13 @@ main { overflow-x: clip; }
 .contact-lead { text-align: center; }
 .contact-lead { color: var(--text-soft); }
 
-.means { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; margin-top: 1.4em; list-style: none; }
+.means { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; margin-top: .8em; list-style: none; }
+.means-block { text-align: center; color: var(--text-soft); }
 
 .contact-form,
 .sent,
-.contact-in > .no-js { margin-top: clamp(32px, 4vw, 48px); }
+.contact-in > .no-js,
+.means-block { margin-top: clamp(32px, 4vw, 48px); }
 
 .contact-form .btn { margin-top: 8px; }
 .privacy { margin-top: 10px; font-size: 14px; color: var(--text-soft); }

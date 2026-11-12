@@ -84,6 +84,11 @@ test("le menu mène à la section Contact, qui donne les moyens renseignés, et 
   for (const { name, number } of phones) {
     await expect(section(page).getByRole("link", { name: `Appeler ${name}`, exact: true })).toHaveAttribute("href", telHref(number));
   }
+  // Les moyens directs viennent sous le bouton d'envoi et sa mention sur les données, annoncés par une phrase.
+  const send = (await section(page).locator("#send").boundingBox())!;
+  const block = section(page).locator(".means-block");
+  await expect(block.locator("p")).toHaveText("Vous pouvez aussi nous contacter :");
+  expect((await block.boundingBox())!.y).toBeGreaterThan(send.y + send.height);
   // L'adresse e-mail reçoit les messages du formulaire : aucun lien e-mail parmi les moyens directs.
   await expect(section(page).locator(".means").locator('a[href^="mailto:"]')).toHaveCount(0);
   // WhatsApp et Instagram sont des icônes seules ; un autre réseau s'écrit court.

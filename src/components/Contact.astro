@@ -4,9 +4,9 @@ import ContactAnchor from "./ContactAnchor.astro";
 import ContactFallback from "./ContactFallback.astro";
 
 /**
- * « Contact » (`#contact`), la dernière section de l'accueil : les moyens directs renseignés dans `config/offer.json` (un
- * appel par fondateur, WhatsApp et Instagram en icônes, tout autre réseau écrit court), chacun absent tant qu'il est vide, puis le formulaire
- * de `POST /api/contact`. Tous les textes sont ici ; `src/scripts/contact.ts` envoie le message, charge l'anti-robots au
+ * « Contact » (`#contact`), la dernière section de l'accueil : le formulaire de `POST /api/contact`, puis, sous lui, les
+ * moyens directs renseignés dans `config/offer.json` (un appel par fondateur, WhatsApp et Instagram en icônes, tout autre
+ * réseau écrit court), chacun absent tant qu'il est vide, annoncés par « Vous pouvez aussi nous contacter : ». Tous les textes sont ici ; `src/scripts/contact.ts` envoie le message, charge l'anti-robots au
  * premier champ touché et montre ce qui convient. Comme à la réservation, le message d'un champ refusé (`problem-<champ>`)
  * est sous lui, et le nom de chaque champ est celui du corps JSON. Le formulaire part caché et le script le montre une
  * fois prêt à l'envoyer : sans lui (JavaScript coupé, script qui n'arrive pas), le navigateur l'enverrait lui-même et le
@@ -40,17 +40,6 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
   <div class="contact-in">
     <h2 id="contact-title">Contact</h2>
     <p class="contact-lead">Une question sur la borne ou sur votre événement&nbsp;? Écrivez-nous, nous vous répondons par e-mail.</p>
-    {
-      means.length > 0 && (
-        <ul class="means">
-          {means.map((link) => (
-            <li>
-              <ContactAnchor link={link} class="btn ghost" />
-            </li>
-          ))}
-        </ul>
-      )
-    }
 
     <form class="contact-form" id="contact-form" method="post" novalidate hidden>
       {
@@ -101,5 +90,19 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
         )
       }
     </p>
+    {
+      means.length > 0 && (
+        <div class="means-block">
+          <p>Vous pouvez aussi nous contacter&nbsp;:</p>
+          <ul class="means">
+            {means.map((link) => (
+              <li>
+                <ContactAnchor link={link} class="btn ghost" />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )
+    }
   </div>
 </section>

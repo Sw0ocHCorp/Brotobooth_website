@@ -116,7 +116,16 @@ describe("the contact section", () => {
   });
 
   it("gives no direct means when none is filled in", async () => {
-    expect(zone(await render(Contact, EMPTY), "ul", "means")).toBe("");
+    const html = await render(Contact, EMPTY);
+    expect(zone(html, "ul", "means")).toBe("");
+    expect(html).not.toContain("Vous pouvez aussi");
+  });
+
+  it("puts the direct means under the form, announced by a sentence", async () => {
+    const html = await render(Contact, FULL);
+    expect(html.indexOf('class="means-block"')).toBeGreaterThan(html.indexOf("</form>"));
+    const intro = zone(html, "div", "means-block").replace(/<ul\b[\s\S]*<\/ul>/, "").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim();
+    expect(intro).toBe("Vous pouvez aussi nous contacter :");
   });
 
   const problemLinks = (html: string) =>
