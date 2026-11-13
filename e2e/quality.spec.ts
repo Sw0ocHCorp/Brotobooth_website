@@ -151,8 +151,12 @@ test.describe("pages légales", () => {
     for (const heading of ["Éditeur du site", "Hébergeur", "Contact"]) {
       await expect(page.getByRole("heading", { level: 2, name: heading })).toBeVisible();
     }
-    // Un SIRET renseigné ou le marqueur : jamais un champ vide, ni un numéro inventé.
-    await expect(page.locator("dt", { hasText: "SIRET" }).locator("+ dd")).toContainText(/\[À compléter\]|\d{14}/);
+    // L'immatriculation au RCS (ville du greffe et SIREN de 9 chiffres) ou le marqueur : jamais un champ vide, ni un numéro inventé.
+    await expect(page.locator("dt", { hasText: "Immatriculation" }).locator("+ dd")).toHaveText(/^(\[À compléter\]|RCS [A-ZÀ-Ý][\p{L}-]+ \d{3} \d{3} \d{3})$/u);
+    // Une entreprise individuelle : le nom de l'entrepreneur suivi de « EI », pas de dénomination sociale.
+    await expect(page.locator("dt", { hasText: "Entrepreneur" }).locator("+ dd")).toHaveText(/^(\[À compléter\]|.+, entrepreneur individuel \(EI\))$/);
+    // Le téléphone que la loi demande : un numéro qui s'appelle, jamais un champ vide.
+    await expect(page.locator("dt", { hasText: "Téléphone" }).locator("+ dd").getByRole("link")).toHaveAttribute("href", /^tel:\+?\d{8,}$/);
   });
 });
 

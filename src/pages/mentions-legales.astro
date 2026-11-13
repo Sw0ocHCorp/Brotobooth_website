@@ -3,8 +3,15 @@ import Fact from "../components/Fact.astro";
 import Legal from "../layouts/Legal.astro";
 import { offer, telHref } from "../../worker/offer";
 
-/** Le téléphone et l'e-mail de `config/offer.json`, avec leur lien ; `Fact` met le marqueur à la place d'un moyen encore vide. */
-const { phone, email } = offer.contact;
+/**
+ * L'éditeur est une entreprise individuelle : pas de dénomination sociale, mais l'entrepreneur (nom suivi de « EI »), le
+ * nom commercial et l'immatriculation au RCS, d'après l'extrait Kbis du 30 octobre 2026. La loi (LCEN, art. 6) demande
+ * aussi un téléphone : celui du premier fondateur de `config/offer.json`, sinon le numéro WhatsApp, qui s'appelle aussi.
+ * `Fact` met le marqueur à la place d'un moyen encore vide.
+ */
+const ENTREPRENEUR = "Nicolas Raze";
+const { phone, whatsapp, email } = offer.contact;
+const callable = phone || whatsapp;
 ---
 
 <Legal title="Mentions légales" description="Qui édite le site Brotobooth, qui l'héberge, et comment nous joindre.">
@@ -15,16 +22,16 @@ const { phone, email } = offer.contact;
     <h2 id="editeur">Éditeur du site</h2>
     <p>Ce site est édité par l'entreprise suivante.</p>
     <dl>
-      <dt>Dénomination</dt>
-      <dd><Fact /></dd>
-      <dt>Forme juridique</dt>
-      <dd><Fact /></dd>
-      <dt>SIRET</dt>
-      <dd><Fact /></dd>
+      <dt>Nom commercial</dt>
+      <dd><Fact value="Brotobooth" /></dd>
+      <dt>Entrepreneur</dt>
+      <dd><Fact value={`${ENTREPRENEUR}, entrepreneur individuel (EI)`} /></dd>
+      <dt>Immatriculation</dt>
+      <dd><Fact value="RCS Toulon 132 103 151" /></dd>
       <dt>Adresse</dt>
-      <dd><Fact /></dd>
+      <dd><Fact value="18 rue de l'Aube, 83330 Le Castellet" /></dd>
       <dt>Directeur de la publication</dt>
-      <dd><Fact /></dd>
+      <dd><Fact value={ENTREPRENEUR} /></dd>
     </dl>
   </section>
 
@@ -35,7 +42,7 @@ const { phone, email } = offer.contact;
     </p>
     <dl>
       <dt>Coordonnées de l'hébergeur</dt>
-      <dd><Fact /></dd>
+      <dd><Fact value="Cloudflare, Inc., 101 Townsend Street, San Francisco, CA 94107, États-Unis ; +1 650 319 8930" /></dd>
     </dl>
   </section>
 
@@ -43,7 +50,7 @@ const { phone, email } = offer.contact;
     <h2 id="contact">Contact</h2>
     <dl>
       <dt>Téléphone</dt>
-      <dd><Fact value={phone} href={telHref(phone)} /></dd>
+      <dd><Fact value={callable} href={telHref(callable)} /></dd>
       <dt>E-mail</dt>
       <dd><Fact value={email} href={`mailto:${email}`} /></dd>
     </dl>
