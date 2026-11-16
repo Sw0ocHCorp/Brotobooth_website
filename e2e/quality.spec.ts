@@ -153,6 +153,9 @@ test.describe("pages légales", () => {
     }
     // L'immatriculation au RCS (ville du greffe et SIREN de 9 chiffres) ou le marqueur : jamais un champ vide, ni un numéro inventé.
     await expect(page.locator("dt", { hasText: "Immatriculation" }).locator("+ dd")).toHaveText(/^(\[À compléter\]|RCS [A-ZÀ-Ý][\p{L}-]+ \d{3} \d{3} \d{3})$/u);
+    // Le SIRET (14 chiffres) commence par le SIREN de l'immatriculation.
+    const siren = (await page.locator("dt", { hasText: "Immatriculation" }).locator("+ dd").innerText()).replace(/\D/g, "");
+    await expect(page.locator("dt", { hasText: "SIRET" }).locator("+ dd")).toHaveText(new RegExp(`^(\\[À compléter\\]|${siren.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3")} \\d{5})$`));
     // Une entreprise individuelle : le nom de l'entrepreneur suivi de « EI », pas de dénomination sociale.
     await expect(page.locator("dt", { hasText: "Entrepreneur" }).locator("+ dd")).toHaveText(/^(\[À compléter\]|.+, entrepreneur individuel \(EI\))$/);
     // Le téléphone que la loi demande : un numéro qui s'appelle, jamais un champ vide.

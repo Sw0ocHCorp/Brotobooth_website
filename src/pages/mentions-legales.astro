@@ -1,15 +1,15 @@
 ---
 import Fact from "../components/Fact.astro";
 import Legal from "../layouts/Legal.astro";
+import { BUSINESS } from "../legal";
 import { offer, telHref } from "../../worker/offer";
 
 /**
- * L'éditeur est une entreprise individuelle : pas de dénomination sociale, mais l'entrepreneur (nom suivi de « EI »), le
- * nom commercial et l'immatriculation au RCS, d'après l'extrait Kbis du 30 octobre 2026. La loi (LCEN, art. 6) demande
- * aussi un téléphone : celui du premier fondateur de `config/offer.json`, sinon le numéro WhatsApp, qui s'appelle aussi.
- * `Fact` met le marqueur à la place d'un moyen encore vide.
+ * L'éditeur est une entreprise individuelle (`BUSINESS`, dans `src/legal.ts`) : pas de dénomination sociale, mais
+ * l'entrepreneur (nom suivi de « EI »), le nom commercial, l'immatriculation au RCS, le SIRET et le régime de TVA. La loi
+ * (LCEN, art. 6) demande aussi un téléphone : celui du premier fondateur de `config/offer.json`, sinon le numéro WhatsApp,
+ * qui s'appelle aussi. `Fact` met le marqueur à la place d'un moyen encore vide.
  */
-const ENTREPRENEUR = "Nicolas Raze";
 const { phone, whatsapp, email } = offer.contact;
 const callable = phone || whatsapp;
 ---
@@ -23,15 +23,19 @@ const callable = phone || whatsapp;
     <p>Ce site est édité par l'entreprise suivante.</p>
     <dl>
       <dt>Nom commercial</dt>
-      <dd><Fact value="Brotobooth" /></dd>
+      <dd><Fact value={BUSINESS.tradeName} /></dd>
       <dt>Entrepreneur</dt>
-      <dd><Fact value={`${ENTREPRENEUR}, entrepreneur individuel (EI)`} /></dd>
+      <dd><Fact value={`${BUSINESS.entrepreneur}, entrepreneur individuel (EI)`} /></dd>
       <dt>Immatriculation</dt>
-      <dd><Fact value="RCS Toulon 132 103 151" /></dd>
+      <dd><Fact value={BUSINESS.registration} /></dd>
+      <dt>SIRET</dt>
+      <dd><Fact value={BUSINESS.siret} /></dd>
+      <dt>TVA</dt>
+      <dd><Fact value={BUSINESS.vat} /></dd>
       <dt>Adresse</dt>
-      <dd><Fact value="18 rue de l'Aube, 83330 Le Castellet" /></dd>
+      <dd><Fact value={BUSINESS.address} /></dd>
       <dt>Directeur de la publication</dt>
-      <dd><Fact value={ENTREPRENEUR} /></dd>
+      <dd><Fact value={BUSINESS.entrepreneur} /></dd>
     </dl>
   </section>
 

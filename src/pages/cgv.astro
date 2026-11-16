@@ -1,6 +1,7 @@
 ---
 import Fact from "../components/Fact.astro";
 import Legal from "../layouts/Legal.astro";
+import { BUSINESS } from "../legal";
 import { finalDepositPercent, offer } from "../../worker/offer";
 
 /** Le pourcentage d'acompte n'est donné qu'une fois l'offre définitive (`draft` à `false`) : avant, le marqueur le remplace. */
@@ -55,7 +56,7 @@ const version = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long"
   <section aria-labelledby="prix">
     <h2 id="prix">Le prix</h2>
     <p>
-      Le prix de votre prestation est celui de la formule choisie, confirmé dans l'e-mail qui contient le lien de paiement de l'acompte. Taxes (TVA) : <Fact />.
+      Le prix de votre prestation est celui de la formule choisie, confirmé dans l'e-mail qui contient le lien de paiement de l'acompte. <Fact value={BUSINESS.vat} />.
     </p>
     <p>
       Si les tirages compris s'épuisent pendant votre événement, vous pouvez ajouter des recharges de 100 tirages, au tarif indiqué dans votre récapitulatif. Elles se règlent avec le solde.
