@@ -118,6 +118,10 @@ test.describe("pages légales", () => {
     await expect(page.getByRole("region", { name: "Annulation par vous" })).toContainText("l'acompte reste acquis à Brotobooth et ne vous est pas remboursé");
     await expect(page.getByRole("region", { name: "Annulation par Brotobooth" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Médiation" })).toContainText("médiateur de la consommation");
+    // Les photos se récupèrent par QR code pendant l'événement ; Brotobooth n'en garde rien.
+    await expect(page.getByRole("region", { name: "Les photos" })).toContainText("Brotobooth ne conserve ni les photos ni les messages vidéo");
+    await page.goto("/confidentialite");
+    await expect(page.getByRole("region", { name: "Les photos de votre événement" })).toContainText("Brotobooth n'en garde aucune copie");
   });
 
   test("la confidentialité dit ce que reçoit Telegram, et jamais l'adresse e-mail", async ({ page }) => {
