@@ -88,33 +88,34 @@ test.describe("pages légales", () => {
     await expect(page.locator(".meta")).toHaveText(`Version du ${day === 1 ? "1er" : day} ${monthName} ${year}`);
   });
 
-  test("les CGV renvoient la zone de déplacement à la page d'accueil et laissent les frais à compléter", async ({ page }) => {
+  test("les CGV renvoient la zone de déplacement à la page d'accueil et incluent les frais de déplacement", async ({ page }) => {
     await page.goto("/cgv");
     const service = page.getByRole("region", { name: "La prestation" });
     await expect(service).toContainText(
       "Zone de déplacement : celle que présente la page d'accueil, de Cassis et Aubagne jusqu'à Hyères et La Londe-les-Maures.",
     );
     await expect(service).not.toContainText("Au-delà");
-    await expect(service).toContainText(`Frais de déplacement : ${TODO}`);
+    await expect(service).toContainText("Frais de déplacement : inclus dans le prix de la prestation.");
   });
 
-  test("l'acompte engage les deux parties, laisse le solde dû et porte le pourcentage de l'offre", async ({ page }) => {
+  test("l'acompte engage les deux parties, dit quand et comment se règle le solde et porte le pourcentage de l'offre", async ({ page }) => {
     await page.goto("/cgv");
     const deposit = page.getByRole("region", { name: "L'acompte" });
     await expect(deposit).toContainText("la réservation vous engage, et nous aussi");
     await expect(deposit).not.toContainText("arrhes");
     await expect(deposit).toContainText("solde reste dû");
+    await expect(deposit).toContainText("le jour de votre événement, à la fin de la prestation, avec les recharges éventuelles, en espèces, par virement ou par carte bancaire");
     // Tant que l'offre est provisoire, le pourcentage n'est pas inventé.
     await expect(deposit).toContainText(offer.draft ? TODO : `${offer.depositPercent} %`);
     await expect(deposit).toContainText(`${offer.paymentHours} h`);
   });
 
-  test("les CGV réservent un paragraphe à la conclusion du professionnel sur la rétractation, et disent l'annulation et la médiation", async ({ page }) => {
+  test("les CGV écartent la rétractation pour une prestation datée, et disent l'annulation et la médiation", async ({ page }) => {
     await page.goto("/cgv");
     const withdrawal = page.getByRole("region", { name: "Droit de rétractation" });
     await expect(withdrawal).toContainText("L221-28, 12°");
-    await expect(withdrawal).toContainText(/conclusion du professionnel\s*:/i);
-    await expect(page.getByRole("region", { name: "Annulation par vous" })).toBeVisible();
+    await expect(withdrawal).toContainText("vous ne disposez donc pas de ce droit de rétractation");
+    await expect(page.getByRole("region", { name: "Annulation par vous" })).toContainText("l'acompte reste acquis à Brotobooth et ne vous est pas remboursé");
     await expect(page.getByRole("region", { name: "Annulation par Brotobooth" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Médiation" })).toContainText("médiateur de la consommation");
   });

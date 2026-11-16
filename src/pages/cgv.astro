@@ -33,7 +33,7 @@ const version = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long"
     <p>
       Zone de déplacement : celle que présente la page d'accueil, de Cassis et Aubagne jusqu'à Hyères et La Londe-les-Maures.
     </p>
-    <p>Frais de déplacement : <Fact />.</p>
+    <p>Frais de déplacement : inclus dans le prix de la prestation.</p>
   </section>
 
   <section aria-labelledby="reservation">
@@ -66,11 +66,11 @@ const version = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long"
   <section aria-labelledby="acompte">
     <h2 id="acompte">L'acompte</h2>
     <p>Pour confirmer votre date, vous versez un acompte de <Fact value={deposit} /> du prix de la prestation, en ligne, sur la page sécurisée de Stripe, dans les {offer.paymentHours} h qui suivent notre réponse.</p>
+    <p>Une fois l'acompte payé, la réservation vous engage, et nous aussi&nbsp;: nous gardons votre date, et nous venons à la date convenue.</p>
     <p>
-      Cet acompte n'est pas un simple dépôt que vous pourriez abandonner pour annuler&nbsp;: une fois payé, la réservation vous engage, et nous
-      aussi. Vous réglez le reste du prix, et nous venons à la date convenue.
+      L'acompte vient en déduction du prix. Le solde reste dû&nbsp;: il se règle le jour de votre événement, à la fin de la prestation, avec les
+      recharges éventuelles, en espèces, par virement ou par carte bancaire.
     </p>
-    <p>L'acompte vient en déduction du prix. Le solde reste dû, et se règle comme suit : <Fact />.</p>
   </section>
 
   <section aria-labelledby="annulation-client">
@@ -80,7 +80,8 @@ const version = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long"
       l'acompte. La date est alors de nouveau libre.
     </p>
     <p>
-      Après le paiement de l'acompte, votre engagement est ferme. Si vous annulez après ce paiement&nbsp;: <Fact />.
+      Après le paiement de l'acompte, votre engagement est ferme. Si vous annulez après ce paiement, l'acompte reste acquis à Brotobooth et ne
+      vous est pas remboursé&nbsp;; le solde, lui, ne vous est pas demandé.
     </p>
   </section>
 
@@ -99,7 +100,10 @@ const version = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long"
       L'article L221-28, 12° du Code de la consommation écarte le droit de rétractation de quatorze jours pour les activités de loisirs qui doivent
       être fournies à une date ou selon une périodicité déterminée.
     </p>
-    <p class="reserved"><strong>Conclusion du professionnel :</strong> <Fact /></p>
+    <p>
+      Votre prestation a lieu à la date de votre événement&nbsp;: vous ne disposez donc pas de ce droit de rétractation. Vous pouvez en revanche
+      annuler votre réservation dans les conditions prévues plus haut.
+    </p>
   </section>
 
   <section aria-labelledby="responsabilite">

@@ -43,13 +43,3 @@
 
 /* Un fait qui manque encore : en blanc comme tout texte, souligné de citron en pointillés. */
 .legal mark.todo { background: none; white-space: nowrap; color: var(--text); font-weight: 600; border-bottom: 1.5px dashed var(--warn); }
-
-/* L'emplacement réservé à la conclusion du professionnel : à part, avec le filet citron des avertissements. */
-.legal .reserved {
-  margin-top: 1em;
-  padding: 12px 16px;
-  border-left: 3px solid var(--warn);
-  border-radius: 0 14px 14px 0;
-  background: var(--warn-soft);
-  color: var(--text);
-}

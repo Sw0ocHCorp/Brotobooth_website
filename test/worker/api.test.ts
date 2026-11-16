@@ -77,7 +77,7 @@ describe("POST /api/requests : enregistrement", () => {
     expect(b.status).toBe("pending_review");
     expect(b.source).toBe("site");
     expect(b.hold_until).toBe("2026-11-10T10:00:00.000Z");
-    expect(b.terms_version).toBe("2026-11-07");
+    expect(b.terms_version).toBe(offer.termsVersion);
     expect(b.price_cents).toBe(input.price_cents);
     expect(b.deposit_cents).toBe(depositFor(input.price_cents as number));
     expect(b.created_at).toBe(T0);
