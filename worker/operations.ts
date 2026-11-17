@@ -300,7 +300,7 @@ const STEPS: Record<BookingAction, Step> = {
 async function transition(deps: Deps, b: Booking, actor: Actor, action: BookingAction): Promise<OpResult> {
   const to = nextStatus(b.status, action);
   if (to === null) return STALE;
-  const { event, patch } = action === "validate" && !hasDeposit() ? CONFIRM_WITHOUT_DEPOSIT : STEPS[action];
+  const { event, patch } = action === "validate" && to === "confirmed" ? CONFIRM_WITHOUT_DEPOSIT : STEPS[action];
   const now = deps.now();
   const fields = patch(now, b);
   // `cancelled` et `released` lisent la réservation d'avant (une date bloquée ne prévient personne, et le client n'apprend pas
@@ -389,6 +389,13 @@ const closeSessionOrUnavailable = (stripe: StripeGateway, id: string): Promise<S
   });
 
 /**
+ * L'acompte d'un nouveau prix quand le propriétaire n'en donne pas : celui du pourcentage actif ; sans acompte actif, celui
+ * d'une réservation qui en a déjà un (son lien est parti), plafonné au prix, et 0 pour les autres.
+ */
+const keptOrComputedDeposit = (b: Booking, priceCents: number): number =>
+  hasDeposit() ? depositCents(priceCents, offer.depositPercent) : hasBookingDeposit(b) ? Math.min(b.deposit_cents!, priceCents) : 0;
+
+/**
  * Fixe le prix, et l'acompte à la main ou d'après `offer.depositPercent`. Une session ouverte est expirée et
  * oubliée : le client en rouvre une au même montant que le nouveau prix. Une session déjà payée donne `stale`.
  * Une panne de Stripe lève `PaymentUnavailable`, sans rien modifier.
@@ -404,7 +411,7 @@ export const adjustPrice = (
     return stay(deps, b, deps.now(), "price_adjusted", {
       patch: {
         price_cents: a.priceCents,
-        deposit_cents: a.depositCents ?? depositCents(a.priceCents, offer.depositPercent),
+        deposit_cents: a.depositCents ?? keptOrComputedDeposit(b, a.priceCents),
         stripe_session: null,
         stripe_session_expires: null,
       },

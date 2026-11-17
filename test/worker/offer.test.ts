@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { useDeposit } from "../support";
 import { buildOffer, contactLinks, hasDeposit, offer, whatsappHref, type OfferConfig } from "../../worker/offer";
 
 /** `buildOffer` refuse un contact mal écrit dans `config/offer.json` et nettoie les prénoms et les numéros. */
@@ -27,8 +28,15 @@ describe("hasDeposit et depositPercent", () => {
     expect(hasDeposit({ depositPercent: 25 })).toBe(true);
   });
 
-  it("suit l'offre de l'application quand on ne lui en donne pas", () => {
-    expect(hasDeposit()).toBe(offer.depositPercent > 0);
+  describe("sans argument, suit l'offre de l'application", () => {
+    describe("sans acompte", () => {
+      useDeposit(0);
+      it("est faux", () => expect(hasDeposit()).toBe(false));
+    });
+    describe("avec acompte", () => {
+      useDeposit(25);
+      it("est vrai", () => expect(hasDeposit()).toBe(true));
+    });
   });
 
   it.each([-1, 101, 12.5, Number.NaN])("buildOffer refuse un acompte de %s %", (depositPercent) => {

@@ -375,8 +375,12 @@ describe("messages au client sans acompte", () => {
     expect(text).not.toMatch(/Reste à régler/);
   });
 
+  // Le lien et le rappel de paiement ne partent jamais sans acompte (`isRelevant`), ni « date libérée faute d'acompte » : leur texte en parle.
+  const DEPOSIT_ONLY = ["client_deposit_link", "client_deposit_reminder", "client_released"];
+  const SENT_WITHOUT_DEPOSIT = CLIENT_TEMPLATES.filter((t) => !DEPOSIT_ONLY.includes(t));
+
   it("no client message mentions a deposit without one", () => {
-    for (const t of CLIENT_TEMPLATES) {
+    for (const t of SENT_WITHOUT_DEPOSIT) {
       for (const b of [free(), free({ status: "confirmed" }), free({ status: "refused" })]) {
         const { subject, text, html } = renderEmail(t, b, ctx);
         // « acompte » couvre aussi le lien `/acompte/…`.
@@ -386,7 +390,7 @@ describe("messages au client sans acompte", () => {
   });
 
   it("aucun message au client n'a de lien de paiement", () => {
-    for (const t of CLIENT_TEMPLATES) {
+    for (const t of SENT_WITHOUT_DEPOSIT) {
       expect(renderEmail(t, free(), ctx).html, t).not.toContain("/acompte/");
     }
   });

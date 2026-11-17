@@ -856,6 +856,21 @@ describe("sans acompte", () => {
 describe("une réservation d'avant le changement de réglage", () => {
   useDeposit(25);
 
+  it("adjusting the price keeps the deposit of a booking that awaits it", async () => {
+    const v = await validated({ price_cents: 150_000, deposit_cents: 45_000 });
+    offer.depositPercent = 0;
+    expect(ok(await adjustPrice(deps, v.id, { priceCents: 200_000 })).deposit_cents).toBe(45_000);
+    const lower = ok(await adjustPrice(deps, v.id, { priceCents: 30_000 }));
+    expect(lower.deposit_cents).toBe(30_000);
+    expect(ok(await confirmDeposit(deps, v.id, "stripe")).status).toBe("confirmed");
+  });
+
+  it("adjusting the price of a booking without a deposit leaves it without one when the deposit is off", async () => {
+    const p = await request({ deposit_cents: 0 });
+    offer.depositPercent = 0;
+    expect(ok(await adjustPrice(deps, p.id, { priceCents: 200_000 })).deposit_cents).toBe(0);
+  });
+
   it("a booking already awaiting its deposit keeps its path", async () => {
     const paying = await validated();
     const lapsing = await validated({ event_date: "2026-12-20", client_email: "autre@example.test" });

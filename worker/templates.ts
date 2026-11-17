@@ -204,9 +204,8 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       action("Choisir une autre date", absolute(ctx, "/reserver")),
     ),
 
-  // Sans acompte, il n'y a ni lien ni rappel de paiement (`isRelevant` les écarte) : la date est simplement confirmée.
   client_deposit_link: (b, ctx) =>
-    !hasBookingDeposit(b) ? confirmation(b, ctx) : forClient(
+    forClient(
       b,
       `Bonne nouvelle : nous pouvons être là le ${day(b)}`,
       para(`Bonne nouvelle\u00a0: nous pouvons être présents à votre événement le ${day(b)}\u00a0!`),
@@ -220,7 +219,7 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
     ),
 
   client_deposit_reminder: (b, ctx) =>
-    !hasBookingDeposit(b) ? confirmation(b, ctx) : forClient(
+    forClient(
       b,
       `Plus que 24 h pour régler l'acompte du ${day(b)}`,
       para(`Votre date du ${day(b)} reste gardée pour vous${through(b)}. Ensuite, elle sera de nouveau proposée à d'autres.`),
@@ -234,10 +233,8 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       b,
       `Votre date du ${day(b)} n'est plus gardée pour vous`,
       para(
-        hasBookingDeposit(b)
-          ? `Nous n'avons pas reçu votre acompte dans les ${formatHours(offer.paymentHours)} prévues\u00a0: la date du ${day(b)} n'est donc plus gardée pour vous. ` +
-              "Si vous avez payé entre-temps, écrivez-nous\u00a0: nous vous rembourserons."
-          : `La date du ${day(b)} n'est plus gardée pour vous.`,
+        `Nous n'avons pas reçu votre acompte dans les ${formatHours(offer.paymentHours)} prévues\u00a0: la date du ${day(b)} n'est donc plus gardée pour vous. ` +
+          "Si vous avez payé entre-temps, écrivez-nous\u00a0: nous vous rembourserons.",
       ),
       para("Si cette date est encore libre, vous pouvez refaire une demande\u00a0:"),
       action("Refaire une demande", absolute(ctx, "/reserver")),
