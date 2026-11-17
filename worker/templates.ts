@@ -197,8 +197,8 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       b,
       `Désolés, nous ne pouvons pas être là le ${day(b)}`,
       para(
-        `Merci d'avoir pensé à nous pour votre événement. Malheureusement, nous ne pouvons pas être présents le ${day(b)}, et nous en sommes désolés.` +
-          (hasBookingDeposit(b) ? " Vous n'avez rien à payer." : ""),
+        `Merci d'avoir pensé à nous pour votre événement. Malheureusement, nous ne pouvons pas être présents le ${day(b)}, et nous en sommes désolés. ` +
+          "Vous n'avez rien à payer.",
       ),
       para("Si une autre date vous convient, nous serons ravis d'étudier une nouvelle demande\u00a0:"),
       action("Choisir une autre date", absolute(ctx, "/reserver")),
@@ -248,8 +248,8 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       b,
       `Désolés de ne pas avoir répondu à temps à votre demande du ${day(b)}`,
       para(
-        `Nous sommes désolés\u00a0: nous n'avons pas pu vous répondre à temps, et la date du ${day(b)} n'est plus gardée pour vous.` +
-          (hasBookingDeposit(b) ? " Vous n'avez rien payé." : ""),
+        `Nous sommes désolés\u00a0: nous n'avons pas pu vous répondre à temps, et la date du ${day(b)} n'est plus gardée pour vous. ` +
+          "Vous n'avez rien payé.",
       ),
       para("Si cette date est encore libre, vous pouvez refaire une demande\u00a0:"),
       action("Refaire une demande", absolute(ctx, "/reserver")),

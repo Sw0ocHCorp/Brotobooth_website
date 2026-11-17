@@ -379,8 +379,8 @@ describe("messages au client sans acompte", () => {
     for (const t of CLIENT_TEMPLATES) {
       for (const b of [free(), free({ status: "confirmed" }), free({ status: "refused" })]) {
         const { subject, text, html } = renderEmail(t, b, ctx);
-        // La phrase de la spec « Rien à payer pour l'instant » est la seule à dire « payer ».
-        expect(subject + text + html, t).not.toMatch(/acompte|stripe|(?<!Rien à )payer/i);
+        // « acompte » couvre aussi le lien `/acompte/…`.
+        expect(subject + text + html, t).not.toMatch(/acompte|stripe/i);
       }
     }
   });

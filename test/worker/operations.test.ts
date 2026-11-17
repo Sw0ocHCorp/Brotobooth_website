@@ -864,4 +864,21 @@ describe("une réservation d'avant le changement de réglage", () => {
     expect(ok(await expireHold(deps, lapsing)).status).toBe("expired");
     expect(await getBooking(env.DB, paying.id)).toMatchObject({ deposit_cents: 45_000, deposit_paid_at: T0 });
   });
+
+  it("a request made without a deposit gets one when accepted with the deposit on", async () => {
+    offer.depositPercent = 0;
+    const p = await request({ deposit_cents: 0, price_cents: 150_000 });
+    offer.depositPercent = 25;
+    const v = ok(await validateBooking(deps, p.id, "owner"));
+    expect(v).toMatchObject({ status: "awaiting_deposit", deposit_cents: depositFor(150_000) });
+    expect(v.deposit_cents).toBeGreaterThan(0);
+    await processDue(deps);
+    const link = deps.emails.find((m) => m.subject.startsWith("Bonne nouvelle"));
+    expect(link!.text).toContain(`${v.deposit_cents! / 100} €`);
+  });
+
+  it("a request that already has a deposit keeps it when accepted", async () => {
+    const v = ok(await validateBooking(deps, (await request({ deposit_cents: 20_000 })).id, "owner"));
+    expect(v.deposit_cents).toBe(20_000);
+  });
 });

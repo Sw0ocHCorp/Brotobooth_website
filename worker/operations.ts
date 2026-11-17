@@ -1,4 +1,4 @@
-import { checkDate, depositCents, isValidDate, nextStatus, type BookingAction, type BookingStatus } from "./bookings";
+import { checkDate, depositCents, hasBookingDeposit, isValidDate, nextStatus, type BookingAction, type BookingStatus } from "./bookings";
 import type { Deps, StripeGateway, StripeSession } from "./deps";
 import { plan, type PlanEvent } from "./notifications";
 import { sha256Hex, toHex } from "./http";
@@ -269,7 +269,7 @@ async function withBooking(deps: Deps, id: string, run: (b: Booking) => OpResult
   return b ? run(b) : NOT_FOUND;
 }
 
-type Step = { event: PlanEvent; patch: (now: Date) => Partial<Booking> };
+type Step = { event: PlanEvent; patch: (now: Date, b: Booking) => Partial<Booking> };
 
 const release = (): Partial<Booking> => ({ hold_until: null });
 
@@ -278,7 +278,14 @@ const CONFIRM_WITHOUT_DEPOSIT: Step = { event: "confirmed", patch: () => ({ hold
 
 /** Ce que chaque action écrit et annonce. L'événement nomme à la fois les messages à planifier et la ligne d'historique. */
 const STEPS: Record<BookingAction, Step> = {
-  validate: { event: "validated", patch: (now) => ({ hold_until: holdUntil(now, offer.paymentHours) }) },
+  // Une demande reçue sans acompte, acceptée quand il est actif, reçoit celui du prix et du pourcentage d'aujourd'hui.
+  validate: {
+    event: "validated",
+    patch: (now, b) => ({
+      hold_until: holdUntil(now, offer.paymentHours),
+      ...(hasBookingDeposit(b) ? {} : { deposit_cents: depositCents(b.price_cents ?? 0, offer.depositPercent) }),
+    }),
+  },
   refuse: { event: "refused", patch: release },
   pay: { event: "paid", patch: (now) => ({ hold_until: null, deposit_paid_at: now.toISOString() }) },
   expire: { event: "released", patch: release },
@@ -295,7 +302,7 @@ async function transition(deps: Deps, b: Booking, actor: Actor, action: BookingA
   if (to === null) return STALE;
   const { event, patch } = action === "validate" && !hasDeposit() ? CONFIRM_WITHOUT_DEPOSIT : STEPS[action];
   const now = deps.now();
-  const fields = patch(now);
+  const fields = patch(now, b);
   // `cancelled` et `released` lisent la réservation d'avant (une date bloquée ne prévient personne, et le client n'apprend pas
   // la même chose d'une demande restée sans réponse que d'un acompte non payé) ; les autres, celle d'après.
   const planned = event === "cancelled" || event === "released" ? b : { ...b, ...fields, status: to };
