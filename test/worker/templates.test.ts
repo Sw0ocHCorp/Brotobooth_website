@@ -4,7 +4,10 @@ import { ALL_TEMPLATES } from "../../worker/notifications";
 import { offer } from "../../worker/offer";
 import type { Booking, ContactMessage } from "../../worker/repository";
 import { renderEmail, renderTelegram, tierName } from "../../worker/templates";
-import { SECOND_PLAN, T0, newBooking } from "../support";
+import { SECOND_PLAN, T0, newBooking, useDeposit } from "../support";
+
+// Le parcours d'acompte de ce fichier : son mode ne vient jamais de `config/offer.json`.
+useDeposit(25);
 
 /** Un message du formulaire de contact, reçu à `T0`. */
 const contactMessage = (over: Partial<ContactMessage> = {}): ContactMessage => ({
@@ -331,6 +334,65 @@ describe("messages au client", () => {
       Object.assign(offer.contact, { phone: "", email: '"><script>x</script>@example.test' });
       expect(renderEmail("client_refused", booking(), ctx).html).not.toContain("<script>");
     });
+  });
+});
+
+describe("messages au client sans acompte", () => {
+  useDeposit(0);
+  const free = (over: Partial<Booking> = {}) => booking({ deposit_cents: 0, hold_until: null, ...over });
+
+  it("l'accusé de réception dit qu'il n'y a rien à payer et que la date sera confirmée par e-mail", () => {
+    const { text } = renderEmail("client_received", free(), ctx);
+    expect(text).toContain(
+      `Nous gardons cette date pour vous et nous vous répondons sous ${offer.reviewHours}${NBSP}h. ` +
+        `Rien à payer pour l'instant${NBSP}: si nous pouvons être là, nous vous confirmons votre date par e-mail.`,
+    );
+    expect(text).not.toMatch(/acompte|lien/i);
+  });
+
+  it("la confirmation annonce la date confirmée, avec une seule ligne de prix", () => {
+    const { subject, text } = renderEmail("client_confirmed", free({ event_date: "2026-12-19", price_cents: 150_000 }), ctx);
+    expect(subject).toBe("C'est confirmé pour le samedi 19 décembre 2026");
+    expect(text).toContain(`Bonne nouvelle${NBSP}: nous serons présents à votre événement le samedi 19 décembre 2026. Votre date est confirmée.`);
+    expect(text).toMatch(/Prix, à régler le jour de votre événement : 1\s?500 €/);
+    expect(text).not.toMatch(/acompte|Prix total|Reste à régler/i);
+    expect(text.endsWith("À bientôt,\nL'équipe Brotobooth")).toBe(true);
+  });
+
+  it("la confirmation n'écrit pas de prix tant qu'il n'est pas fixé", () => {
+    expect(renderEmail("client_confirmed", free({ price_cents: null }), ctx).text).not.toMatch(/Prix/);
+  });
+
+  it("la confirmation annonce le rappel d'une semaine avant, seulement s'il est prévu", () => {
+    const reminder = "Nous vous enverrons un rappel une semaine avant.";
+    expect(renderEmail("client_confirmed", free({ event_date: "2026-12-19", updated_at: T0 }), ctx).text).toContain(reminder);
+    expect(renderEmail("client_confirmed", free({ event_date: "2026-11-12", updated_at: T0 }), ctx).text).not.toContain(reminder);
+  });
+
+  it("le rappel de J-7 redit le prix à régler le jour de l'événement", () => {
+    const { text } = renderEmail("client_d7", free({ price_cents: 150_000 }), ctx);
+    expect(text).toMatch(/Prix, à régler le jour de votre événement : 1\s?500 €/);
+    expect(text).not.toMatch(/Reste à régler/);
+  });
+
+  it("no client message mentions a deposit without one", () => {
+    for (const t of CLIENT_TEMPLATES) {
+      for (const b of [free(), free({ status: "confirmed" }), free({ status: "refused" })]) {
+        const { subject, text, html } = renderEmail(t, b, ctx);
+        // La phrase de la spec « Rien à payer pour l'instant » est la seule à dire « payer ».
+        expect(subject + text + html, t).not.toMatch(/acompte|stripe|(?<!Rien à )payer/i);
+      }
+    }
+  });
+
+  it("aucun message au client n'a de lien de paiement", () => {
+    for (const t of CLIENT_TEMPLATES) {
+      expect(renderEmail(t, free(), ctx).html, t).not.toContain("/acompte/");
+    }
+  });
+
+  it("un modèle suit le propre acompte de la réservation, pas le réglage du jour", () => {
+    expect(renderEmail("client_confirmed", booking({ deposit_cents: 45_000, deposit_paid_at: T0 }), ctx).text).toMatch(/Acompte réglé : 450 €/);
   });
 });
 

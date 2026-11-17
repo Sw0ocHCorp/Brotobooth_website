@@ -1,4 +1,4 @@
-import { parisToday, reminderAt, type BookingStatus } from "./bookings";
+import { hasBookingDeposit, parisToday, reminderAt, type BookingStatus } from "./bookings";
 import type { Deps } from "./deps";
 import { chatIds } from "./env";
 import { sha256Hex } from "./http";
@@ -53,6 +53,7 @@ export type PlanEvent =
   | "validated"
   | "refused"
   | "paid"
+  | "confirmed"
   | "manual_confirmed"
   | "released"
   | "cancelled";
@@ -112,6 +113,8 @@ function drafts(event: PlanEvent, b: Booking, now: Date): Draft[] {
         draft("owner_deposit_paid", BOTH, now),
         ...eventReminders(b),
       ];
+    case "confirmed":
+      return [draft("client_confirmed", EMAIL, now), ...eventReminders(b)];
     case "manual_confirmed":
       return eventReminders(b);
     case "released":
@@ -153,10 +156,14 @@ const REQUIRED_STATUS: ReadonlyMap<string, BookingStatus> = new Map([
   ["client_d7", "confirmed"],
 ]);
 
+/** Les messages du paiement de l'acompte : sans acompte, il n'y a rien à payer ni à rappeler. */
+const DEPOSIT_PAYMENT_TEMPLATES: ReadonlySet<string> = new Set(["client_deposit_link", "client_deposit_reminder"]);
+
 /** `false` pour un rappel devenu inutile. Sans réservation (le point du lundi), tout modèle est pertinent. */
 export const isRelevant = (template: string, b: Booking | null): boolean => {
+  if (b === null) return true;
   const required = REQUIRED_STATUS.get(template);
-  return b === null || required === undefined || b.status === required;
+  return (required === undefined || b.status === required) && !(DEPOSIT_PAYMENT_TEMPLATES.has(template) && !hasBookingDeposit(b));
 };
 
 // ---------- l'envoi ----------

@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { onTestFinished } from "vitest";
+import { afterEach, beforeEach, onTestFinished } from "vitest";
 import { depositCents } from "../worker/bookings";
 import type { Button, Deps, EmailMessage, StripeGateway, StripeSession } from "../worker/deps";
 import { plan } from "../worker/notifications";
@@ -72,6 +72,21 @@ export async function requestBody(over: Record<string, unknown> = {}): Promise<R
     venue: "Salle des fêtes", name: "Camille Durand", phone: "06 12 34 56 78", email: "camille@example.test",
     terms: true, turnstile_token: "t", price_cents: priceOf(tier, chosen.id), ...over,
   };
+}
+
+/**
+ * Fixe le pourcentage d'acompte avant chaque test du `describe` courant et le rétablit après : un test du parcours d'acompte
+ * (ou de celui sans acompte) choisit son mode, il ne lit jamais celui de `config/offer.json`.
+ */
+export function useDeposit(percent: number): void {
+  let real = offer.depositPercent;
+  beforeEach(() => {
+    real = offer.depositPercent;
+    offer.depositPercent = percent;
+  });
+  afterEach(() => {
+    offer.depositPercent = real;
+  });
 }
 
 /** Un palier d'essai : `cents` pour la première formule de l'offre, 1 000 centimes de plus à chaque suivante, la recharge au dixième. */

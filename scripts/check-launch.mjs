@@ -3,6 +3,8 @@
 // Liste ce qui bloque, une phrase par point, et sort avec le code 1 ; sans blocage, sort avec le code 0.
 // `npm run deploy` le lance avant toute construction : il lit les fichiers sources, jamais `dist/`.
 
+import { buildOffer, hasDeposit } from "../worker/offer.ts";
+
 const ZERO_DATABASE_ID = "00000000-0000-0000-0000-000000000000";
 /** Le marqueur qu'un fait d'entreprise encore inconnu porte à l'écran (`Fact.astro`, seul fichier à l'écrire). */
 const TODO_MARKER = "[À compléter]";
@@ -67,7 +69,7 @@ export function findLaunchBlockers({ offer, legalPages, databaseId, vars, siteKe
   if (siteKey !== undefined && isBlank(siteKey)) {
     blockers.push(`La clé publique du widget anti-robots manque, et toutes les demandes seraient refusées comme venant d'un robot : écrivez ${SITE_KEY_NAME} dans .env.production (étape 7 de docs/mise-en-ligne.md).`);
   }
-  if (realPaymentWired === false) blockers.push("Le paiement réel de l'acompte n'est pas encore branché.");
+  if (realPaymentWired === false && hasDeposit(offer)) blockers.push("Le paiement réel de l'acompte n'est pas encore branché.");
   return blockers;
 }
 
@@ -116,7 +118,6 @@ async function readLaunchInput(root) {
   const siteKey = siteKeyFrom(process.env, await read(".env.production").catch(() => ""), parseEnv);
   const realPaymentWired = await access(join(root, REAL_PAYMENT_FILE)).then(() => true, () => false);
   // Les formules y sont nommées, comme sur le site ; une formule sans borne fait échouer le contrôle avec son explication.
-  const { buildOffer } = await import("../worker/offer.ts");
   return {
     offer: buildOffer(JSON.parse(await read("config/offer.json"))),
     legalPages,

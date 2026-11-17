@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOffer, contactLinks, offer, whatsappHref, type OfferConfig } from "../../worker/offer";
+import { buildOffer, contactLinks, hasDeposit, offer, whatsappHref, type OfferConfig } from "../../worker/offer";
 
 /** `buildOffer` refuse un contact mal écrit dans `config/offer.json` et nettoie les prénoms et les numéros. */
 
@@ -18,6 +18,25 @@ describe("buildOffer, draft", () => {
 
   it("keeps an offer marked draft provisional", () => {
     expect(buildOffer({ ...withoutDraft, draft: true }).draft).toBe(true);
+  });
+});
+
+describe("hasDeposit et depositPercent", () => {
+  it("n'y a pas d'acompte à 0 %, et il y en a un au-delà", () => {
+    expect(hasDeposit({ depositPercent: 0 })).toBe(false);
+    expect(hasDeposit({ depositPercent: 25 })).toBe(true);
+  });
+
+  it("suit l'offre de l'application quand on ne lui en donne pas", () => {
+    expect(hasDeposit()).toBe(offer.depositPercent > 0);
+  });
+
+  it.each([-1, 101, 12.5, Number.NaN])("buildOffer refuse un acompte de %s %", (depositPercent) => {
+    expect(() => buildOffer({ ...withContact({}), depositPercent })).toThrow(/config\/offer\.json.*depositPercent/);
+  });
+
+  it.each([0, 1, 25, 100])("buildOffer accepte un acompte de %s %", (depositPercent) => {
+    expect(buildOffer({ ...withContact({}), depositPercent }).depositPercent).toBe(depositPercent);
   });
 });
 

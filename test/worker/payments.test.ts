@@ -8,7 +8,10 @@ import { cancelBooking, expireHold } from "../../worker/operations";
 import { getBooking, getHistory, type Booking } from "../../worker/repository";
 import { handle } from "../../worker/router";
 import tokens from "../../public/styles/tokens.css?raw";
-import { CHAT_ID, OWNER_EMAIL, SECOND_PLAN, T0, fakeDeps, insert, newBooking, notificationRows, resetDb, validatedBooking, type FakeDeps } from "../support";
+import { CHAT_ID, OWNER_EMAIL, SECOND_PLAN, T0, fakeDeps, insert, newBooking, notificationRows, resetDb, validatedBooking, useDeposit, type FakeDeps } from "../support";
+
+// Le parcours d'acompte de ce fichier : son mode ne vient jamais de `config/offer.json`.
+useDeposit(25);
 
 const PHONE = "06 12 34 56 78";
 const NBSP = "\u00a0";

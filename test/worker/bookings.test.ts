@@ -5,6 +5,7 @@ import {
   bookingWindow,
   checkDate,
   depositCents,
+  hasBookingDeposit,
   nextStatus,
   parisHour,
   parisInstant,
@@ -13,9 +14,31 @@ import {
   type BookingAction,
   type BookingStatus,
 } from "../../worker/bookings";
+import { useDeposit } from "../support";
 import { buildOffer, currentTier, isBookable, normalTier, offer, planById, plansOf, priceOf, pricesBody, socialLabel, socialName, telHref, type OfferConfig, type Tier } from "../../worker/offer";
 
+describe("transitions de statut sans acompte", () => {
+  useDeposit(0);
+
+  it("accepter une demande la confirme directement", () => {
+    expect(nextStatus("pending_review", "validate")).toBe("confirmed");
+  });
+
+  it("refuser, expirer et annuler ne changent pas", () => {
+    expect(nextStatus("pending_review", "refuse")).toBe("refused");
+    expect(nextStatus("pending_review", "expire")).toBe("expired");
+    expect(nextStatus("confirmed", "cancel")).toBe("cancelled");
+  });
+
+  it("une réservation qui attend déjà son acompte peut encore être payée ou expirer", () => {
+    expect(nextStatus("awaiting_deposit", "pay")).toBe("confirmed");
+    expect(nextStatus("awaiting_deposit", "expire")).toBe("expired");
+  });
+});
+
 describe("transitions de statut", () => {
+  useDeposit(25);
+
   const transitions: [BookingStatus, BookingAction, BookingStatus | null][] = [
     ["pending_review", "validate", "awaiting_deposit"], ["pending_review", "refuse", "refused"],
     ["pending_review", "expire", "expired"], ["pending_review", "pay", null],
@@ -102,6 +125,12 @@ describe("date de prestation", () => {
     "refuse la date %s",
     d => expect(checkDate(d, new Date("2026-11-07T10:00:00Z"))).toBe("invalid"),
   );
+});
+
+describe("hasBookingDeposit", () => {
+  it.each([[45_000, true], [1, true], [0, false], [null, false]])("un acompte de %s centimes : %s", (deposit_cents, expected) => {
+    expect(hasBookingDeposit({ deposit_cents })).toBe(expected);
+  });
 });
 
 describe("acompte", () => {

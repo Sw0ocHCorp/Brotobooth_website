@@ -7,7 +7,10 @@ import { getBooking, listUnavailableDates, type Booking } from "../../worker/rep
 import { handle } from "../../worker/router";
 import { telegramWebhook } from "../../worker/telegram";
 import { renderTelegram } from "../../worker/templates";
-import { CHAT_ID, fakeDeps, notificationRows, request, resetDb, type FakeDeps } from "../support";
+import { CHAT_ID, fakeDeps, notificationRows, request, resetDb, useDeposit, type FakeDeps } from "../support";
+
+// Le parcours d'acompte de ce fichier : son mode ne vient jamais de `config/offer.json`.
+useDeposit(25);
 
 const URL_WEBHOOK = "https://brotobooth.fr/api/telegram/webhook";
 const HEADER = "X-Telegram-Bot-Api-Secret-Token";
@@ -119,6 +122,31 @@ describe("telegramWebhook : valider", () => {
     expect(lastEdit().html).toContain("Expirée");
     expect(lastEdit().buttons).toBeUndefined();
     expect(deps.emails).toEqual([]); // les messages de libération restent en file : l'appui n'envoie rien
+  });
+});
+
+describe("telegramWebhook : valider sans acompte", () => {
+  useDeposit(0);
+
+  it("Valider confirme la date, prévient le client et annonce « Confirmée »", async () => {
+    expect((await tap(`v:${b.id}`)).status).toBe(200);
+    expect(await status()).toBe("confirmed");
+    expect(toClient().map((m) => m.subject)).toEqual(["C'est confirmé pour le samedi 19 décembre 2026"]);
+    expect(toClient()[0].text).not.toContain("/acompte/");
+    expect(toast()).toMatch(/^Confirmée/);
+    expect(lastEdit().html).toContain("Confirmée");
+    expect(lastEdit().html).not.toMatch(/acompte|Validée/i);
+    expect(lastEdit().buttons).toBeUndefined();
+  });
+
+  it("toucher Valider deux fois n'envoie rien de plus et redit « Confirmée »", async () => {
+    await tap(`v:${b.id}`);
+    const mails = deps.emails.length;
+    await tap(`v:${b.id}`);
+    expect(deps.emails).toHaveLength(mails);
+    expect(toast()).toMatch(/déjà traitée/i);
+    expect(lastEdit().html).toContain("Confirmée");
+    expect(lastEdit().html).not.toMatch(/acompte/i);
   });
 });
 

@@ -2,7 +2,7 @@ import { checkDate, depositCents, isValidDate, nextStatus, type BookingAction, t
 import type { Deps, StripeGateway, StripeSession } from "./deps";
 import { plan, type PlanEvent } from "./notifications";
 import { sha256Hex, toHex } from "./http";
-import { currentTier, offer, planById, priceOf, type CurrentTier } from "./offer";
+import { currentTier, hasDeposit, offer, planById, priceOf, type CurrentTier } from "./offer";
 import {
   applyTransition,
   countActiveByEmail,
@@ -273,6 +273,9 @@ type Step = { event: PlanEvent; patch: (now: Date) => Partial<Booking> };
 
 const release = (): Partial<Booking> => ({ hold_until: null });
 
+/** Sans acompte, accepter une demande confirme la date : plus d'échéance, et l'acompte enregistré est 0 même si la demande en portait un. */
+const CONFIRM_WITHOUT_DEPOSIT: Step = { event: "confirmed", patch: () => ({ hold_until: null, deposit_cents: 0 }) };
+
 /** Ce que chaque action écrit et annonce. L'événement nomme à la fois les messages à planifier et la ligne d'historique. */
 const STEPS: Record<BookingAction, Step> = {
   validate: { event: "validated", patch: (now) => ({ hold_until: holdUntil(now, offer.paymentHours) }) },
@@ -290,7 +293,7 @@ const STEPS: Record<BookingAction, Step> = {
 async function transition(deps: Deps, b: Booking, actor: Actor, action: BookingAction): Promise<OpResult> {
   const to = nextStatus(b.status, action);
   if (to === null) return STALE;
-  const { event, patch } = STEPS[action];
+  const { event, patch } = action === "validate" && !hasDeposit() ? CONFIRM_WITHOUT_DEPOSIT : STEPS[action];
   const now = deps.now();
   const fields = patch(now);
   // `cancelled` et `released` lisent la réservation d'avant (une date bloquée ne prévient personne, et le client n'apprend pas

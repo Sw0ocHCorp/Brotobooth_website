@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { plan } from "../../worker/notifications";
+import { plan, processDue } from "../../worker/notifications";
 import { currentTier, offer, priceOf } from "../../worker/offer";
 import {
   adjustPrice,
@@ -43,9 +43,13 @@ import {
   strictStripe,
   takePlace,
   testTier,
+  useDeposit,
   useTiers,
   type FakeDeps,
 } from "../support";
+
+// Le parcours d'acompte de ce fichier : son mode ne vient jamais de `config/offer.json`.
+useDeposit(25);
 
 const STALE = { ok: false, reason: "stale" };
 
@@ -783,5 +787,81 @@ describe("le palier d'une réservation", () => {
     const b = ok(await blockDate(deps, "2026-12-24"));
     expect(b).toMatchObject({ price_tier: null, refill_cents: null });
     expect(await countTakenByTier(env.DB)).toEqual({});
+  });
+});
+
+describe("sans acompte", () => {
+  useDeposit(0);
+
+  it("accepter une demande la confirme, sans échéance ni acompte", async () => {
+    const p = await request();
+    const r = await validateBooking(deps, p.id, "owner");
+    expect(r.ok && r.booking).toMatchObject({ status: "confirmed", hold_until: null, deposit_cents: 0, deposit_paid_at: null });
+    expect(await getHistory(env.DB, p.id)).toMatchObject([{ actor: "owner", event: "confirmed", at: T0 }]);
+  });
+
+  it("accepter une demande prévient le client par e-mail et planifie les rappels, sans lien ni rappel de paiement", async () => {
+    const p = await request();
+    await validateBooking(deps, p.id, "owner");
+    expect(await stillDue(p.id)).toEqual(
+      [
+        `client_confirmed|email|${T0}`,
+        "client_d7|email|2026-12-12T08:00:00.000Z",
+        "owner_d7|email|2026-12-12T08:00:00.000Z",
+        "owner_d7|telegram|2026-12-12T08:00:00.000Z",
+        "owner_d1|email|2026-12-18T08:00:00.000Z",
+        "owner_d1|telegram|2026-12-18T08:00:00.000Z",
+      ].sort(),
+    );
+    const templates = (await queued(p.id)).map((n) => n.template);
+    for (const absent of ["client_deposit_link", "client_deposit_reminder", "owner_deposit_paid"]) expect(templates).not.toContain(absent);
+  });
+
+  it("accepter annule les rappels d'attente de réponse", async () => {
+    const p = await request();
+    await validateBooking(deps, p.id, "owner");
+    expect(await cancelledAt(p.id, "owner_review_reminder")).toEqual([T0, T0]);
+  });
+
+  it("une demande créée sans acompte a un acompte à 0", async () => {
+    const r = await createRequest(deps, await requestBody(), null);
+    expect(created(r).deposit_cents).toBe(0);
+  });
+
+  it("a request made with a deposit is confirmed without one", async () => {
+    const p = await request({ deposit_cents: 45_000 });
+    const r = ok(await validateBooking(deps, p.id, "owner"));
+    expect(r).toMatchObject({ status: "confirmed", deposit_cents: 0, hold_until: null });
+    await processDue(deps);
+    const mail = deps.emails.find((m) => m.subject.startsWith("C'est confirmé"));
+    expect(mail).toBeDefined();
+    expect(mail!.subject + mail!.text + mail!.html).not.toMatch(/acompte/i);
+  });
+
+  it("validating twice confirms once", async () => {
+    const p = await request();
+    const [first, second] = await Promise.all([validateBooking(deps, p.id, "owner"), validateBooking(deps, p.id, "owner")]);
+    expect([first.ok, second.ok].sort()).toEqual([false, true]);
+    expect(await validateBooking(deps, p.id, "owner")).toEqual(STALE);
+    expect((await queued(p.id)).filter((n) => n.template === "client_confirmed")).toHaveLength(1);
+    expect(await getHistory(env.DB, p.id)).toHaveLength(1);
+  });
+
+  it("une réservation confirmée sans acompte peut être annulée", async () => {
+    const c = ok(await validateBooking(deps, (await request()).id, "owner"));
+    expect(ok(await cancelBooking(deps, c.id, "owner")).status).toBe("cancelled");
+  });
+});
+
+describe("une réservation d'avant le changement de réglage", () => {
+  useDeposit(25);
+
+  it("a booking already awaiting its deposit keeps its path", async () => {
+    const paying = await validated();
+    const lapsing = await validated({ event_date: "2026-12-20", client_email: "autre@example.test" });
+    offer.depositPercent = 0;
+    expect(ok(await confirmDeposit(deps, paying.id, "stripe")).status).toBe("confirmed");
+    expect(ok(await expireHold(deps, lapsing)).status).toBe("expired");
+    expect(await getBooking(env.DB, paying.id)).toMatchObject({ deposit_cents: 45_000, deposit_paid_at: T0 });
   });
 });

@@ -1,4 +1,4 @@
-import type { BookingStatus } from "./bookings";
+import { hasBookingDeposit, type BookingStatus } from "./bookings";
 import type { Button, Deps, TelegramGateway } from "./deps";
 import { chatIds, type Env } from "./env";
 import { callServiceOk, json, jsonPost, readJson, secretMatches } from "./http";
@@ -72,13 +72,16 @@ function parseTap(update: unknown): Tap | null {
 type Reply = { toast?: string; edit?: { html: string; buttons?: Button[][] } };
 
 /** Où en est une demande qui n'attend plus de réponse. */
-const OUTCOME: Partial<Record<BookingStatus, string>> = {
-  awaiting_deposit: "Validée, acompte attendu",
-  confirmed: "Validée, acompte reçu",
-  refused: "Refusée",
-  expired: "Expirée, la date est libérée",
-  cancelled: "Annulée",
+const OUTCOME: Partial<Record<BookingStatus, (b: Booking) => string>> = {
+  awaiting_deposit: () => "Validée, acompte attendu",
+  confirmed: (b) => (hasBookingDeposit(b) ? "Validée, acompte reçu" : CONFIRMED),
+  refused: () => "Refusée",
+  expired: () => "Expirée, la date est libérée",
+  cancelled: () => "Annulée",
 };
+
+/** Une demande acceptée sans acompte : la date est confirmée, le client n'a rien à payer en ligne. */
+const CONFIRMED = "Confirmée";
 
 /** La demande telle que le propriétaire l'a reçue, avec ses boutons. */
 const asked = (deps: Deps, b: Booking) => renderTelegram("owner_new_request", b, { baseUrl: deps.env.BASE_URL });
@@ -93,7 +96,7 @@ const settled = (deps: Deps, b: Booking, line: string): Reply["edit"] => ({
  * bouton. `b` est la réservation relue, `null` si elle n'existe plus ou n'a jamais été une demande à traiter.
  */
 function stale(deps: Deps, b: Booking | null): Reply {
-  const line = b && OUTCOME[b.status];
+  const line = b && OUTCOME[b.status]?.(b);
   if (!b || !line) return { toast: "Cette demande n'est plus disponible." };
   return {
     toast: b.status === "expired" ? "Cette demande n'est plus disponible : elle a expiré." : "Cette demande est déjà traitée.",
@@ -105,12 +108,13 @@ type Action = (deps: Deps, ctx: ExecutionContext, id: string) => Promise<Reply>;
 
 /** Valide ou refuse la demande, puis envoie sans attendre ce que cela met en file. Une demande déjà traitée n'envoie rien. */
 const decide =
-  (run: typeof validateBooking, done: string): Action =>
+  (run: typeof validateBooking, done: (b: Booking) => string): Action =>
   async (deps, ctx, id) => {
     const result = await run(deps, id, "owner");
     if (!result.ok) return stale(deps, await getBooking(deps.env.DB, id));
     sendSoon(ctx, deps);
-    return { toast: done, edit: settled(deps, result.booking, done) };
+    const line = done(result.booking);
+    return { toast: line, edit: settled(deps, result.booking, line) };
   };
 
 /** Une réponse qui ne change rien à la réservation, tant qu'elle attend encore la réponse du propriétaire. */
@@ -123,8 +127,8 @@ const whilePending =
 
 /** Les boutons du bot, par le code qui précède `:` dans leur donnée. */
 const ACTIONS: Record<string, Action> = {
-  v: decide(validateBooking, "Validée, le client reçoit son lien de paiement"),
-  rc: decide(refuseBooking, "Refusée, le client en est informé"),
+  v: decide(validateBooking, (b) => (b.status === "confirmed" ? `${CONFIRMED}, le client en est informé` : "Validée, le client reçoit son lien de paiement")),
+  rc: decide(refuseBooking, () => "Refusée, le client en est informé"),
   // Refuser libère la date : on demande d'abord confirmation, et rien n'est écrit.
   r: whilePending((deps, b) => ({
     html: `${asked(deps, b).html}\n\n<b>Refuser cette demande ?</b> La date sera libérée et le client en sera informé.`,

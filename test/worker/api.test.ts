@@ -20,8 +20,12 @@ import {
   resetDb,
   testTier,
   useTiers,
+  useDeposit,
   type FakeDeps,
 } from "../support";
+
+// Le parcours d'acompte de ce fichier : son mode ne vient jamais de `config/offer.json`.
+useDeposit(25);
 
 const ctx = createExecutionContext();
 const IP = "203.0.113.5";

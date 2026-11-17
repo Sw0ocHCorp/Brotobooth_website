@@ -36,8 +36,12 @@ import {
   testTier,
   useTiers,
   validatedBooking,
+  useDeposit,
   type FakeDeps,
 } from "../support";
+
+// Le parcours d'acompte de ce fichier : son mode ne vient jamais de `config/offer.json`.
+useDeposit(25);
 
 const BASE = "https://brotobooth.fr";
 const LEASE_END = "2026-11-07T10:02:00.000Z";

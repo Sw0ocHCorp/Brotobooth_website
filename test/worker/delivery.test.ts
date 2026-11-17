@@ -22,7 +22,10 @@ import {
 import { handle } from "../../worker/router";
 import { telegramGateway } from "../../worker/telegram";
 import wrangler from "../../wrangler.jsonc?raw";
-import { CHAT_ID, OWNER_EMAIL, T0, fakeDeps, insert, newBooking, notificationRows, requestBody, resetDb, type FakeDeps } from "../support";
+import { CHAT_ID, OWNER_EMAIL, T0, fakeDeps, insert, newBooking, notificationRows, requestBody, resetDb, useDeposit, type FakeDeps } from "../support";
+
+// Le parcours d'acompte de ce fichier : son mode ne vient jamais de `config/offer.json`.
+useDeposit(25);
 
 let deps: FakeDeps;
 let logged: MockInstance<Console["error"]>;

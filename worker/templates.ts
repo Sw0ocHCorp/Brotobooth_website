@@ -1,8 +1,8 @@
-import { reminderAt, type BookingStatus } from "./bookings";
+import { hasBookingDeposit, reminderAt, type BookingStatus } from "./bookings";
 import type { Button } from "./deps";
 import { escapeHtml, formatDay, formatEuros, formatHours, formatMoment } from "./html";
 import type { Template } from "./notifications";
-import { REFILL_LABEL, offer, planById, telHref, tierById } from "./offer";
+import { REFILL_LABEL, hasDeposit, offer, planById, telHref, tierById } from "./offer";
 import type { Booking, ContactMessage } from "./repository";
 
 /** `upcoming` : les prestations du point du lundi ; `contact` : le message de contact de l'envoi. L'appelant les lit dans la base. */
@@ -78,12 +78,24 @@ const eventRows = (b: Booking): Row[] => [
   ["Horaires", b.event_hours],
 ];
 
-/** Le prix total, l'acompte sous le libellé `deposit`, puis le reste sous le libellé `rest`. */
-const priceRows = (b: Booking, deposit: string, rest: string): Row[] => [
-  ["Prix total", totalPrice(b)],
-  [deposit, euros(b.deposit_cents)],
-  [rest, leftToPay(b)],
-];
+/** Sans acompte, le prix se règle en une fois, le jour de l'événement. */
+const PRICE_DUE_ON_THE_DAY = "Prix, à régler le jour de votre événement";
+
+/**
+ * Le prix total, l'acompte sous le libellé `deposit`, puis le reste sous le libellé `rest` ; sans acompte, une seule
+ * ligne : le prix, à régler le jour de l'événement.
+ */
+const priceRows = (b: Booking, deposit: string, rest: string): Row[] =>
+  hasBookingDeposit(b)
+    ? [
+        ["Prix total", totalPrice(b)],
+        [deposit, euros(b.deposit_cents)],
+        [rest, leftToPay(b)],
+      ]
+    : [[PRICE_DUE_ON_THE_DAY, totalPrice(b)]];
+
+/** Ce qui reste à régler, ou, sans acompte, le prix à régler le jour de l'événement. */
+const dueRow = (b: Booking): Row => (hasBookingDeposit(b) ? ["Reste à régler", leftToPay(b)] : [PRICE_DUE_ON_THE_DAY, totalPrice(b)]);
 
 /**
  * « Une question ? », avec les coordonnées de l'offre quand elles sont renseignées. Sans elles, le client répond à
@@ -114,9 +126,14 @@ const forClient = letter(SEE_YOU);
 /** Un refus, une annulation ou une demande restée sans réponse. */
 const regretsToClient = letter(REGARDS);
 
-/** Le rappel de J-7 n'est prévu que si son heure n'était pas encore passée au paiement (`plan`). */
-const remindedWeekBefore = (b: Booking): boolean =>
-  b.deposit_paid_at !== null && reminderAt(b.event_date, 7).getTime() >= Date.parse(b.deposit_paid_at);
+/**
+ * Le rappel de J-7 n'est prévu que si son heure n'était pas encore passée à la confirmation (`plan`) : le paiement de
+ * l'acompte, ou, sans acompte, l'accord que la réservation vient d'enregistrer.
+ */
+const remindedWeekBefore = (b: Booking): boolean => {
+  const confirmedAt = hasBookingDeposit(b) ? b.deposit_paid_at : b.updated_at;
+  return confirmedAt !== null && reminderAt(b.event_date, 7).getTime() >= Date.parse(confirmedAt);
+};
 
 /** Sans réponse, la date est libérée à l'échéance. */
 const expiry = (b: Booking): Block[] =>
@@ -148,6 +165,18 @@ const eventReminder =
     ],
   });
 
+/** La date est confirmée : par le paiement de l'acompte, ou, sans acompte, par l'accord du propriétaire. */
+const confirmation: Build = (b) =>
+  forClient(
+    b,
+    `C'est confirmé pour le ${day(b)}`,
+    hasBookingDeposit(b)
+      ? para(`Merci, votre acompte de ${euros(b.deposit_cents)} est bien reçu\u00a0: votre date est confirmée.`)
+      : para(`Bonne nouvelle\u00a0: nous serons présents à votre événement le ${day(b)}. Votre date est confirmée.`),
+    facts([...eventRows(b), ...priceRows(b, "Acompte réglé", "Reste à régler")]),
+    para(...(remindedWeekBefore(b) ? ["Nous vous enverrons un rappel une semaine avant. "] : []), "D'ici là, n'hésitez pas à nous écrire."),
+  );
+
 const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
   client_received: (b) =>
     forClient(
@@ -156,7 +185,9 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       para(`Nous avons bien reçu votre demande pour le ${day(b)}.`),
       para(
         `Nous gardons cette date pour vous et nous vous répondons sous ${formatHours(offer.reviewHours)}. Rien à payer pour l'instant\u00a0: ` +
-          "si nous pouvons être là, vous recevrez avec notre réponse un lien pour régler l'acompte et confirmer votre date.",
+          (hasDeposit()
+            ? "si nous pouvons être là, vous recevrez avec notre réponse un lien pour régler l'acompte et confirmer votre date."
+            : "si nous pouvons être là, nous vous confirmons votre date par e-mail."),
       ),
       facts(eventRows(b)),
     ),
@@ -166,15 +197,16 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       b,
       `Désolés, nous ne pouvons pas être là le ${day(b)}`,
       para(
-        `Merci d'avoir pensé à nous pour votre événement. Malheureusement, nous ne pouvons pas être présents le ${day(b)}, et nous en sommes désolés. ` +
-          "Vous n'avez rien à payer.",
+        `Merci d'avoir pensé à nous pour votre événement. Malheureusement, nous ne pouvons pas être présents le ${day(b)}, et nous en sommes désolés.` +
+          (hasBookingDeposit(b) ? " Vous n'avez rien à payer." : ""),
       ),
       para("Si une autre date vous convient, nous serons ravis d'étudier une nouvelle demande\u00a0:"),
       action("Choisir une autre date", absolute(ctx, "/reserver")),
     ),
 
+  // Sans acompte, il n'y a ni lien ni rappel de paiement (`isRelevant` les écarte) : la date est simplement confirmée.
   client_deposit_link: (b, ctx) =>
-    forClient(
+    !hasBookingDeposit(b) ? confirmation(b, ctx) : forClient(
       b,
       `Bonne nouvelle : nous pouvons être là le ${day(b)}`,
       para(`Bonne nouvelle\u00a0: nous pouvons être présents à votre événement le ${day(b)}\u00a0!`),
@@ -188,29 +220,24 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
     ),
 
   client_deposit_reminder: (b, ctx) =>
-    forClient(
+    !hasBookingDeposit(b) ? confirmation(b, ctx) : forClient(
       b,
       `Plus que 24 h pour régler l'acompte du ${day(b)}`,
       para(`Votre date du ${day(b)} reste gardée pour vous${through(b)}. Ensuite, elle sera de nouveau proposée à d'autres.`),
       action(`Payer l'acompte de ${euros(b.deposit_cents)}`, paymentUrl(b, ctx)),
     ),
 
-  client_confirmed: (b) =>
-    forClient(
-      b,
-      `C'est confirmé pour le ${day(b)}`,
-      para(`Merci, votre acompte de ${euros(b.deposit_cents)} est bien reçu\u00a0: votre date est confirmée.`),
-      facts([...eventRows(b), ...priceRows(b, "Acompte réglé", "Reste à régler")]),
-      para(...(remindedWeekBefore(b) ? ["Nous vous enverrons un rappel une semaine avant. "] : []), "D'ici là, n'hésitez pas à nous écrire."),
-    ),
+  client_confirmed: confirmation,
 
   client_released: (b, ctx) =>
     forClient(
       b,
       `Votre date du ${day(b)} n'est plus gardée pour vous`,
       para(
-        `Nous n'avons pas reçu votre acompte dans les ${formatHours(offer.paymentHours)} prévues\u00a0: la date du ${day(b)} n'est donc plus gardée pour vous. ` +
-          "Si vous avez payé entre-temps, écrivez-nous\u00a0: nous vous rembourserons.",
+        hasBookingDeposit(b)
+          ? `Nous n'avons pas reçu votre acompte dans les ${formatHours(offer.paymentHours)} prévues\u00a0: la date du ${day(b)} n'est donc plus gardée pour vous. ` +
+              "Si vous avez payé entre-temps, écrivez-nous\u00a0: nous vous rembourserons."
+          : `La date du ${day(b)} n'est plus gardée pour vous.`,
       ),
       para("Si cette date est encore libre, vous pouvez refaire une demande\u00a0:"),
       action("Refaire une demande", absolute(ctx, "/reserver")),
@@ -221,8 +248,8 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       b,
       `Désolés de ne pas avoir répondu à temps à votre demande du ${day(b)}`,
       para(
-        `Nous sommes désolés\u00a0: nous n'avons pas pu vous répondre à temps, et la date du ${day(b)} n'est plus gardée pour vous. ` +
-          "Vous n'avez rien payé.",
+        `Nous sommes désolés\u00a0: nous n'avons pas pu vous répondre à temps, et la date du ${day(b)} n'est plus gardée pour vous.` +
+          (hasBookingDeposit(b) ? " Vous n'avez rien payé." : ""),
       ),
       para("Si cette date est encore libre, vous pouvez refaire une demande\u00a0:"),
       action("Refaire une demande", absolute(ctx, "/reserver")),
@@ -242,7 +269,7 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       b,
       `Votre photobooth arrive dans une semaine, le ${day(b)}`,
       para(`Plus qu'une semaine\u00a0: nous serons là le ${day(b)}.`),
-      facts([...eventRows(b), ["Reste à régler", leftToPay(b)]]),
+      facts([...eventRows(b), dueRow(b)]),
     ),
 
   owner_new_request: (b, ctx) => {

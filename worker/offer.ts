@@ -170,6 +170,9 @@ export function buildOffer(config: OfferConfig): Offer {
     return { ...plan, name: `${booth.name} · ${plan.prints} tirages` };
   });
   checkTiers(config);
+  if (!Number.isInteger(config.depositPercent) || config.depositPercent < 0 || config.depositPercent > 100) {
+    throw new Error("config/offer.json : depositPercent doit être un entier de 0 à 100 (0 : aucun acompte)");
+  }
   if (config.zone.border.length < 3) throw new Error("config/offer.json : zone.border doit compter au moins trois communes");
   if (config.zone.border.some(({ name, department }) => !name.trim() || !department.trim())) {
     throw new Error("config/offer.json : chaque commune de zone.border doit avoir un nom et un département");
@@ -203,6 +206,9 @@ export const isBookable = (from: Offer, booth: string): boolean => plansOf(from,
 
 /** `true` si l'offre donne un moyen de nous joindre : une phrase qui invite à le faire n'est écrite qu'à cette condition. */
 export const hasContact = (): boolean => Boolean(offer.contact.phone || offer.contact.email);
+
+/** `true` si l'offre demande un acompte ; à 0 %, accepter une demande confirme la date sans rien à payer en ligne. */
+export const hasDeposit = (from: Pick<Offer, "depositPercent"> = offer): boolean => from.depositPercent > 0;
 
 /** « 25 % », une fois l'offre définitive ; `undefined` tant qu'elle est provisoire et que le pourcentage peut encore changer. */
 export const finalDepositPercent = (): string | undefined => (offer.draft ? undefined : `${offer.depositPercent}\u00a0%`);

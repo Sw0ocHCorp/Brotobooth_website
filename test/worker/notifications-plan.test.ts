@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeDeps } from "../../worker/deps";
 import { ALL_TEMPLATES, type PlanEvent, isRelevant, plan } from "../../worker/notifications";
 import type { Booking, NotificationSpec } from "../../worker/repository";
-import { T0, fakeDeps, newBooking } from "../support";
+import { T0, fakeDeps, newBooking, useDeposit } from "../support";
+
+// Le parcours d'acompte de ce fichier : son mode ne vient jamais de `config/offer.json`.
+useDeposit(25);
 
 const b: Booking = { ...newBooking(), created_at: T0, updated_at: T0 };
 const noEmail: Booking = { ...b, client_email: null };
@@ -16,6 +19,7 @@ const EVENTS = Object.keys({
   validated: 0,
   refused: 0,
   paid: 0,
+  confirmed: 0,
   manual_confirmed: 0,
   released: 0,
   cancelled: 0,
@@ -77,6 +81,22 @@ describe("plan", () => {
     expect(p.map((n) => n.template)).not.toContain("owner_d7");
     expect(p.map((n) => n.template)).not.toContain("client_d7");
     expect(p.map((n) => n.template)).toContain("owner_d1");
+  });
+
+  it("un accord sans acompte : confirmation au client, puis les rappels, rien d'autre", () => {
+    const p = plan("confirmed", { ...b, event_date: "2026-12-19", status: "confirmed", deposit_cents: 0, hold_until: null }, new Date(T0));
+    expect(keys(p)).toEqual([
+      `client_confirmed|email|${T0}`,
+      "owner_d7|telegram|2026-12-12T08:00:00.000Z", "owner_d7|email|2026-12-12T08:00:00.000Z",
+      "owner_d1|telegram|2026-12-18T08:00:00.000Z", "owner_d1|email|2026-12-18T08:00:00.000Z",
+      "client_d7|email|2026-12-12T08:00:00.000Z",
+    ].sort());
+    expect(templates(p)).not.toContain("owner_deposit_paid");
+  });
+
+  it("un accord sans acompte et sans e-mail client ne prévient que le propriétaire", () => {
+    const p = plan("confirmed", { ...noEmail, event_date: "2026-12-19", status: "confirmed", deposit_cents: 0 }, new Date(T0));
+    expect(templates(p)).toEqual(["owner_d1", "owner_d1", "owner_d7", "owner_d7"]);
   });
 
   it("une confirmation à la main prévient comme un paiement, sans les messages de paiement", () => {
@@ -159,6 +179,10 @@ describe("isRelevant", () => {
     ["client_deposit_reminder", "awaiting_deposit", true], ["client_deposit_reminder", "confirmed", false],
     ["owner_d7", "confirmed", true], ["owner_d1", "cancelled", false], ["client_d7", "cancelled", false],
   ] as const)("%s en état %s : pertinent = %s", (t, status, e) => expect(isRelevant(t, { ...b, status })).toBe(e));
+
+  it.each(["client_deposit_link", "client_deposit_reminder"])("%s n'a plus de sens pour une réservation sans acompte", (t) => {
+    expect(isRelevant(t, { ...b, status: "awaiting_deposit", deposit_cents: 0 })).toBe(false);
+  });
 
   it.each(["owner_d1", "owner_d7", "client_d7"])("%s n'est pertinent qu'en état confirmed", (t) => {
     for (const status of ["pending_review", "awaiting_deposit", "blocked", "refused", "expired", "cancelled"] as const) {

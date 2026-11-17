@@ -6,7 +6,10 @@ import type { Env } from "../../worker/env";
 import { getBooking, getHistory, getState, setState, type Booking } from "../../worker/repository";
 import { handle } from "../../worker/router";
 import { simulatedGateway } from "../../worker/simulated-payment";
-import { T0, fakeDeps, resetDb, validatedBooking, type FakeDeps } from "../support";
+import { T0, fakeDeps, resetDb, validatedBooking, useDeposit, type FakeDeps } from "../support";
+
+// Le parcours d'acompte de ce fichier : son mode ne vient jamais de `config/offer.json`.
+useDeposit(25);
 
 const BASE = "https://brotobooth.fr";
 

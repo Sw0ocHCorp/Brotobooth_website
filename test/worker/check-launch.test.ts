@@ -124,6 +124,13 @@ describe("findLaunchBlockers", () => {
     expect(findLaunchBlockers(withoutThem)).toEqual([]);
   });
 
+  it("real payment is required only with a deposit", () => {
+    const blocker = ["Le paiement réel de l'acompte n'est pas encore branché."];
+    const withDeposit = { ...complete, realPaymentWired: false };
+    expect(findLaunchBlockers(withDeposit)).toEqual(blocker);
+    expect(findLaunchBlockers({ ...withDeposit, offer: { ...completeOffer, depositPercent: 0 } })).toEqual([]);
+  });
+
   it("bloque tant que le paiement réel de l'acompte n'est pas branché", () => {
     expect(findLaunchBlockers({ ...complete, realPaymentWired: false })).toEqual(["Le paiement réel de l'acompte n'est pas encore branché."]);
   });

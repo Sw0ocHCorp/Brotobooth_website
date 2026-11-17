@@ -1,4 +1,4 @@
-import { offer } from "./offer";
+import { hasDeposit, offer } from "./offer";
 
 export type BookingStatus =
   | "pending_review"
@@ -31,7 +31,7 @@ const TRANSITIONS: Record<BookingStatus, Partial<Record<BookingAction, BookingSt
 
 /** État suivant, ou `null` si l'action est interdite depuis cet état. */
 export const nextStatus = (status: BookingStatus, action: BookingAction): BookingStatus | null =>
-  TRANSITIONS[status][action] ?? null;
+  status === "pending_review" && action === "validate" && !hasDeposit() ? "confirmed" : (TRANSITIONS[status][action] ?? null);
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -116,3 +116,6 @@ export function checkDate(date: string, now: Date): "ok" | "too_soon" | "too_far
 /** Acompte arrondi à l'euro le plus proche, le demi-euro vers le haut. */
 export const depositCents = (priceCents: number, percent: number): number =>
   Math.round((priceCents * percent) / 10_000) * 100;
+
+/** `true` si cette réservation a un acompte : c'est elle, et non le réglage du jour, qui décide de ce que disent ses messages. */
+export const hasBookingDeposit = (b: { deposit_cents: number | null }): boolean => (b.deposit_cents ?? 0) > 0;

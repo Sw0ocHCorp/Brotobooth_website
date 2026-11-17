@@ -29,8 +29,12 @@ import {
   resetDb,
   strictStripe,
   validatedBooking,
+  useDeposit,
   type FakeDeps,
 } from "../support";
+
+// Le parcours d'acompte de ce fichier : son mode ne vient jamais de `config/offer.json`.
+useDeposit(25);
 
 const DEADLINE = "2026-11-10T10:00:00.000Z";
 /** Lundi 9 h à Paris, un an et un jour après `T0` : de quoi libérer, annoncer le point et anonymiser dans un même passage. */
