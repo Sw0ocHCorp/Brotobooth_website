@@ -7,7 +7,7 @@ import { closeSession, expireHold } from "./operations";
 import { logFailure, recordPayment } from "./payments";
 import { anonymizeOld, enqueue, getBooking, getState, listDueHolds, purgeContactMessages, setState, type Booking } from "./repository";
 
-/** Les demandes restées sans suite (refus, expirations, annulations avant acompte) sont anonymisées au bout de 12 mois (spec, section 9). */
+/** Les demandes restées sans suite (refus, expirations) et les annulations sans acompte payé sont anonymisées au bout de 12 mois, ceux des annulations comptés depuis l'annulation (spec, section 9). */
 const RETENTION_MONTHS = 12;
 /** Un message de contact est supprimé 12 mois après sa réception, l'empreinte de son IP 24 h après (`DAY_MS`, la fenêtre de la limite par connexion) (spec de la rubrique, §4). */
 export const CONTACT_RETENTION_MONTHS = 12;

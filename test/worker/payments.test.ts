@@ -248,6 +248,17 @@ describe("GET /acompte/<jeton> : récapitulatif", () => {
     },
   );
 
+  // Sans acompte, aucun message ne porte ce lien : la page ne dit pas « acompte de 0 € », elle répond comme un jeton inconnu.
+  it("une réservation sans acompte n'a pas de page, comme un jeton inconnu", async () => {
+    const free = await withStatus("confirmed");
+    await env.DB.prepare("UPDATE bookings SET deposit_cents = 0 WHERE id = ?").bind(free.id).run();
+    const r = await open(free.token);
+    expect(r.status).toBe(404);
+    const html = await r.text();
+    expect(html).toContain("Page introuvable");
+    expect(html).not.toMatch(/acompte/i);
+  });
+
   it("une date bloquée par le propriétaire n'a pas de page", async () => {
     const blocked = await withStatus("blocked");
     expect((await open(blocked.token)).status).toBe(404);

@@ -91,7 +91,7 @@ const COUNT_WORD = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "se
     <h2 id="duree">Combien de temps nous les gardons</h2>
     <ul>
       <li>
-        Une demande que nous refusons, ou qui reste sans suite faute de réponse{withDeposit && " ou d'acompte"} : votre nom, votre téléphone, votre adresse e-mail,
+        Une demande que nous refusons{withDeposit ? ", ou qui reste sans suite faute de réponse ou d'acompte" : " ou qui reste sans suite faute de réponse, ou une réservation annulée"} : votre nom, votre téléphone, votre adresse e-mail,
         le lieu, les horaires et la version brouillée de votre adresse IP sont effacés automatiquement au bout de 12 mois. Il ne reste alors ni nom ni
         coordonnées, seulement la date, la formule et les montants.
       </li>

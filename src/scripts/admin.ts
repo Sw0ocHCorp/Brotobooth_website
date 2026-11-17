@@ -466,7 +466,7 @@ let prefilledTier: string | undefined;
 /** Le prix d'une formule au palier montré, ou au prix normal quand le serveur n'a pas dit lequel. */
 const proposedPrice = (planId: string): number => shownPrices?.plans[planId]?.priceCents ?? priceOf(normalTier(offer), planId);
 
-/** Une formule choisie propose son prix et son acompte, que le propriétaire peut modifier ; « Prix libre » ne touche à rien. */
+/** Une formule choisie propose son prix et, avec un acompte, son acompte, que le propriétaire peut modifier ; « Prix libre » ne touche à rien. */
 function proposePrice(form: HTMLFormElement): void {
   const planId = $<HTMLSelectElement>("[name=plan]", form).value;
   prefilledTier = planId ? shownPrices?.tier : undefined;

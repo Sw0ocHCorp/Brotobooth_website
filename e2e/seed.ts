@@ -190,7 +190,8 @@ export async function seed(
       date,
       ...common,
       price_cents: 150_000,
-      deposit_cents: 45_000,
+      // Sans acompte, l'administration n'en crée pas : la fiche de test n'en a pas non plus.
+      ...(hasDeposit(offer) && { deposit_cents: 45_000 }),
       notes: "Rappeler avant la date.",
     }));
     if (kind === "cancelled") await write(request, "post", `${ADMIN}/${booking.id}/cancel`, {});

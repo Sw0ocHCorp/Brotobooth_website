@@ -1,3 +1,4 @@
+import { hasBookingDeposit } from "./bookings";
 import type { Deps, StripeSession } from "./deps";
 import { escapeHtml, formatDay, formatEuros, formatHours, formatMoment, page } from "./html";
 import { html, json, readText, redirect, type Handler } from "./http";
@@ -141,7 +142,7 @@ function statusView(b: Booking, verifying: boolean, returning: boolean): string 
         reserve("Choisir une autre date"),
       );
     default:
-      // Le lien de paiement ne part qu'après notre réponse : une date qui n'est plus gardée l'est faute d'acompte.
+      // Cette page n'existe que pour une réservation avec acompte (`paymentPage`), dont le lien ne part qu'après notre réponse : une date qui n'est plus gardée l'est faute d'acompte.
       return view(
         "Cette date n'est plus réservée",
         `<p>Nous n'avons pas reçu votre acompte dans les ${formatHours(offer.paymentHours)} prévues\u00a0: la date du ${day} n'est plus gardée pour vous. Si elle est encore libre, vous pouvez refaire une demande.</p>`,
@@ -172,7 +173,8 @@ async function settleReturn(deps: Deps, ctx: ExecutionContext, b: Booking): Prom
 /** `GET /acompte/<jeton>` : le récapitulatif à payer, ou ce qu'il en est de la réservation. */
 export async function paymentPage(req: Request, deps: Deps, token: string, ctx: ExecutionContext): Promise<Response> {
   let booking = await getBookingByToken(deps.env.DB, token);
-  if (!booking || booking.status === "blocked") return notFoundPage();
+  // Une réservation sans acompte n'a pas de page de paiement : aucun message n'en porte le lien.
+  if (!booking || booking.status === "blocked" || !hasBookingDeposit(booking)) return notFoundPage();
 
   const returning = new URL(req.url).searchParams.get("paid") === "1";
   const waiting = returning && booking.status === "awaiting_deposit";

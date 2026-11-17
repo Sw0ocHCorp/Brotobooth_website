@@ -5,8 +5,8 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { hasDeposit, offer } from "../worker/offer.ts";
 
 const PORT = 8790;
 const ORIGIN = `http://localhost:${PORT}`;
@@ -68,8 +68,7 @@ async function request(date, planId, client) {
 }
 
 async function seedExamples() {
-  const plans = JSON.parse(readFileSync("config/offer.json", "utf8")).plans;
-  const [first, second = first] = plans.map((plan) => plan.id);
+  const [first, second = first] = offer.plans.map((plan) => plan.id);
   const venue = "Domaine des Pins, Lyon";
 
   // Une demande à valider.
@@ -78,7 +77,7 @@ async function seedExamples() {
   const awaiting = await request(saturdayAfter(60), second, { name: "Nadia Lefèvre", phone: "06 98 76 54 32", email: "nadia.lefevre@example.test", venue: "Salle des fêtes, Annecy", event_hours: "19h-01h" });
   await call("POST", `/api/admin/bookings/${awaiting.id}/validate`, {});
   // Une prestation déjà confirmée, et une date bloquée.
-  await call("POST", "/api/admin/bookings", { kind: "manual", date: saturdayAfter(75), name: "Julien Moreau", phone: "06 55 44 33 22", email: "julien.moreau@example.test", event_type: "Événement d'entreprise", venue: "Hôtel du Parc, Grenoble", event_hours: "20h-02h", price_cents: 150_000, deposit_cents: 45_000, notes: "Rappeler avant la date." });
+  await call("POST", "/api/admin/bookings", { kind: "manual", date: saturdayAfter(75), name: "Julien Moreau", phone: "06 55 44 33 22", email: "julien.moreau@example.test", event_type: "Événement d'entreprise", venue: "Hôtel du Parc, Grenoble", event_hours: "20h-02h", price_cents: 150_000, ...(hasDeposit(offer) && { deposit_cents: 45_000 }), notes: "Rappeler avant la date." });
   await call("POST", "/api/admin/bookings", { kind: "blocked", date: saturdayAfter(90), notes: "Congés" });
 }
 

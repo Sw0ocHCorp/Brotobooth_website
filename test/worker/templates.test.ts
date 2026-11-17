@@ -375,7 +375,13 @@ describe("messages au client sans acompte", () => {
     expect(text).not.toMatch(/Reste à régler/);
   });
 
-  // Le lien et le rappel de paiement ne partent jamais sans acompte (`isRelevant`), ni « date libérée faute d'acompte » : leur texte en parle.
+  it("n'annonce plus rien à régler quand le solde est déjà réglé", () => {
+    const { text } = renderEmail("client_d7", free({ price_cents: 150_000, balance_paid_at: T0 }), ctx);
+    expect(text).not.toContain("à régler le jour de votre événement");
+    expect(text).toMatch(/Reste à régler : 0 €/);
+  });
+
+  // Ces trois modèles parlent d'acompte et ne partent pas pour une réservation sans acompte (`isRelevant`), sauf si le propriétaire remet à 0 l'acompte d'une réservation qui l'attendait.
   const DEPOSIT_ONLY = ["client_deposit_link", "client_deposit_reminder", "client_released"];
   const SENT_WITHOUT_DEPOSIT = CLIENT_TEMPLATES.filter((t) => !DEPOSIT_ONLY.includes(t));
 

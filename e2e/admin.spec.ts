@@ -3,7 +3,7 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from "@
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
 import { currentTier, normalTier, priceOf, pricesBody, tierById, type PricesBody } from "../worker/offer";
 import {
-  addDays, cleanup, depositFor, eraseContacts, euros, FIRST_PLAN, freeDate, hasDeposit, launchBody, normalPrice, offer, ORIGIN, seed, WITH_DEPOSIT, WITHOUT_DEPOSIT,
+  addDays, cleanup, depositFor, eraseContacts, euros, FIRST_PLAN, freeDate, hasDeposit, launchBody, normalPrice, offer, ORIGIN, seed, WITH_DEPOSIT,
   type Kind,
 } from "./seed";
 
@@ -267,7 +267,8 @@ test("marquer le solde comme réglé", async ({ page, request }) => {
   const booking = await seed(request, "confirmed");
   await page.goto(`/admin#${booking.id}`);
   const sheet = sheetOf(page, booking.name);
-  await expect(sheet.getByText("1 050 €", { exact: true })).toBeVisible();
+  // Le solde, avec un acompte de 450 € sur 1 500 € ; sans acompte, le prix entier (la fiche de test n'en a pas).
+  await expect(sheet.locator("dt", { hasText: "Solde restant" }).locator("+ dd")).toHaveText(hasDeposit(offer) ? "1 050 €" : "1 500 €");
   await sheet.getByRole("button", { name: "Solde réglé" }).click();
   await expect(sheet.getByRole("button", { name: "Solde réglé" })).toHaveCount(0);
   await expect(sheet.getByText(/Solde réglé le/)).toBeVisible();

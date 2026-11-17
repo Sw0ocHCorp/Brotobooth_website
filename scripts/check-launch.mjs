@@ -3,7 +3,14 @@
 // Liste ce qui bloque, une phrase par point, et sort avec le code 1 ; sans blocage, sort avec le code 0.
 // `npm run deploy` le lance avant toute construction : il lit les fichiers sources, jamais `dist/`.
 
-import { buildOffer, hasDeposit } from "../worker/offer.ts";
+// `worker/offer.ts` construit l'offre en s'important : une `config/offer.json` invalide y lève. L'erreur est gardée et relancée par
+// `readLaunchInput`, sous `main().catch` (« Contrôle impossible : … »), plutôt que de sortir en trace Node avant tout contrôle.
+let buildOffer, hasDeposit, offerError;
+try {
+  ({ buildOffer, hasDeposit } = await import("../worker/offer.ts"));
+} catch (error) {
+  offerError = error;
+}
 
 const ZERO_DATABASE_ID = "00000000-0000-0000-0000-000000000000";
 /** Le marqueur qu'un fait d'entreprise encore inconnu porte à l'écran (`Fact.astro`, seul fichier à l'écrire). */
@@ -101,6 +108,7 @@ const MARKER_SOURCE = "src/components/Fact.astro";
 const REAL_PAYMENT_FILE = "worker/stripe.ts";
 
 async function readLaunchInput(root) {
+  if (offerError) throw offerError;
   const { access, readFile, readdir } = await import("node:fs/promises");
   const { join } = await import("node:path");
   const read = (file) => readFile(join(root, file), "utf8");

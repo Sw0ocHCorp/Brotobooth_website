@@ -82,9 +82,13 @@ const eventRows = (b: Booking): Row[] => [
 const PRICE_DUE_ON_THE_DAY = "Prix, à régler le jour de votre événement";
 
 /**
- * Le prix total, l'acompte sous le libellé `deposit`, puis le reste sous le libellé `rest` ; sans acompte, une seule
- * ligne : le prix, à régler le jour de l'événement.
+ * Ce qui reste à régler ; sans acompte, le prix à régler le jour de l'événement, jusqu'à ce que le solde soit marqué
+ * payé : la ligne redevient alors « Reste à régler », à 0 €.
  */
+const dueRow = (b: Booking): Row =>
+  hasBookingDeposit(b) || b.balance_paid_at ? ["Reste à régler", leftToPay(b)] : [PRICE_DUE_ON_THE_DAY, totalPrice(b)];
+
+/** Le prix total, l'acompte sous le libellé `deposit`, puis le reste sous le libellé `rest` ; sans acompte, la seule ligne `dueRow`. */
 const priceRows = (b: Booking, deposit: string, rest: string): Row[] =>
   hasBookingDeposit(b)
     ? [
@@ -92,10 +96,7 @@ const priceRows = (b: Booking, deposit: string, rest: string): Row[] =>
         [deposit, euros(b.deposit_cents)],
         [rest, leftToPay(b)],
       ]
-    : [[PRICE_DUE_ON_THE_DAY, totalPrice(b)]];
-
-/** Ce qui reste à régler, ou, sans acompte, le prix à régler le jour de l'événement. */
-const dueRow = (b: Booking): Row => (hasBookingDeposit(b) ? ["Reste à régler", leftToPay(b)] : [PRICE_DUE_ON_THE_DAY, totalPrice(b)]);
+    : [dueRow(b)];
 
 /**
  * « Une question ? », avec les coordonnées de l'offre quand elles sont renseignées. Sans elles, le client répond à

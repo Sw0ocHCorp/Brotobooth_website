@@ -199,7 +199,9 @@ test.describe("pages légales", () => {
       await expect(page.getByRole("region", { name: "Pourquoi nous les utilisons" })).toContainText(
         "à votre demande, vous envoyer la confirmation de votre date et les rappels",
       );
-      await expect(page.getByRole("region", { name: "Combien de temps nous les gardons" })).toContainText("faute de réponse");
+      await expect(page.getByRole("region", { name: "Combien de temps nous les gardons" })).toContainText(
+        "Une demande que nous refusons ou qui reste sans suite faute de réponse, ou une réservation annulée :",
+      );
     });
   });
 

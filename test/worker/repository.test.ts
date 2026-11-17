@@ -762,6 +762,25 @@ describe("anonymizeOld", () => {
     expect(await getBooking(env.DB, paid.id)).toEqual(paid);
   });
 
+  // Sans acompte, une réservation confirmée puis annulée n'a jamais d'acompte payé : les 12 mois courent depuis l'annulation.
+  it("compte les 12 mois d'une annulation depuis l'annulation, pas depuis la création", async () => {
+    const booked = await seed("cancelled", "2028-01-15", "2026-11-07T10:00:00.000Z");
+    const refused = await seed("refused", "2028-01-16", "2026-11-07T10:00:00.000Z");
+    const cancelledAt = "2027-12-01T10:00:00.000Z";
+    await env.DB.prepare("UPDATE bookings SET updated_at = ? WHERE id = ?").bind(cancelledAt, booked.id).run();
+    const cutoffOf = (today: string) => `${Number(today.slice(0, 4)) - 1}${today.slice(4)}T10:00:00.000Z`;
+
+    // Le lendemain de l'annulation, jusqu'au dernier jour avant le douzième mois : seule la demande refusée part.
+    expect(await anonymizeOld(env.DB, cutoffOf("2027-12-02"), "2027-12-02T10:00:00.000Z")).toBe(1);
+    expect(await getBooking(env.DB, booked.id)).toEqual({ ...booked, updated_at: cancelledAt });
+    expect((await getBooking(env.DB, refused.id))!.anonymized_at).not.toBeNull();
+    expect(await anonymizeOld(env.DB, cutoffOf("2028-11-30"), "2028-11-30T10:00:00.000Z")).toBe(0);
+    expect((await getBooking(env.DB, booked.id))!.anonymized_at).toBeNull();
+
+    expect(await anonymizeOld(env.DB, cutoffOf("2028-12-02"), "2028-12-02T10:00:00.000Z")).toBe(1);
+    expect(await getBooking(env.DB, booked.id)).toMatchObject({ ...PERSONAL, anonymized_at: "2028-12-02T10:00:00.000Z" });
+  });
+
   it("laisse les demandes récentes, celles en cours et les annulations récentes", async () => {
     const recent = await seed("refused", "2026-12-01", "2026-06-01T10:00:00.000Z");
     const recentCancelled = await seed("cancelled", "2026-12-02", "2026-06-01T10:00:00.000Z");

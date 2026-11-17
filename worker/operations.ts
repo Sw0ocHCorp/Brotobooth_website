@@ -379,7 +379,7 @@ export async function closeSession(stripe: StripeGateway, id: string): Promise<S
 /** Stripe ne répond pas : l'opération qui l'appelait n'a rien modifié. Le message est celui de la passerelle. */
 export class PaymentUnavailable extends Error {}
 
-/** Le prix se règle tant que l'acompte n'est pas payé. */
+/** Le prix se règle tant que la date n'est pas confirmée : avant notre réponse et, avec un acompte, pendant l'attente de son paiement. */
 const PRICE_EDITABLE: readonly BookingStatus[] = ["pending_review", "awaiting_deposit"];
 
 /** `closeSession`, dont toute exception est une panne de Stripe, annoncée comme telle : celles de D1 n'en sont pas. */
