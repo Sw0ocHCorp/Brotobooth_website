@@ -74,7 +74,7 @@ async function seedExamples() {
 
   // Une demande à valider.
   await request(saturdayAfter(45), first, { name: "Camille Martin", phone: "06 12 34 56 78", email: "camille.martin@example.test", venue, event_hours: "18h-02h", message: "Un fond rose, si possible." });
-  // Une demande validée, qui attend son acompte : le lien de paiement est dans le message lisible sur /demo.
+  // Une demande acceptée : avec un acompte, elle attend son paiement (le lien est dans le message lisible sur /demo) ; sans acompte, elle est confirmée.
   const awaiting = await request(saturdayAfter(60), second, { name: "Nadia Lefèvre", phone: "06 98 76 54 32", email: "nadia.lefevre@example.test", venue: "Salle des fêtes, Annecy", event_hours: "19h-01h" });
   await call("POST", `/api/admin/bookings/${awaiting.id}/validate`, {});
   // Une prestation déjà confirmée, et une date bloquée.

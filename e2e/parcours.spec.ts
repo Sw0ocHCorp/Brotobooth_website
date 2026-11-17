@@ -88,7 +88,6 @@ test("une réservation de bout en bout, sans acompte", async ({ page, browser, v
   await page.getByRole("button", { name: new RegExp(who.name) }).click();
   const sheet = page.getByRole("dialog", { name: who.name });
   await expect(sheet.getByText("À valider", { exact: true })).toBeVisible();
-  const id = new URL(page.url()).hash.slice(1);
   await sheet.getByRole("button", { name: "Valider" }).click();
   await expect(sheet.getByText("Confirmée", { exact: true }).first()).toBeVisible();
   await expect(sheet.getByText("Attente d'acompte")).toHaveCount(0);
@@ -106,11 +105,12 @@ test("une réservation de bout en bout, sans acompte", async ({ page, browser, v
   await expect(message.getByRole("link", { name: new RegExp(`${ORIGIN}/acompte/`) })).toHaveCount(0);
 
   // 4. La date est barrée sur /reserver pour le visiteur suivant.
-  await page.goto(`/admin/#${id}`);
   const visitor = await browser.newContext({ viewport });
   const other = await visitor.newPage();
   await other.goto("/reserver");
   const day = await showDay(other, date);
   await expect(day).toBeDisabled();
+  await expect(day).toHaveCSS("text-decoration-line", "line-through");
+  await expect(day).toHaveAccessibleName(/, déjà réservée$/);
   await visitor.close();
 });

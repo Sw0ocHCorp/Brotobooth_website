@@ -566,8 +566,8 @@ function post(b: Booking, path: string, options: { confirm?: Confirmation; notic
   };
 }
 
-function definitions(rows: [string, string | null][]): HTMLElement | null {
-  const shown = rows.filter((row): row is [string, string] => Boolean(row[1]));
+function definitions(rows: ([string, string | null] | false)[]): HTMLElement | null {
+  const shown = rows.filter((row): row is [string, string] => Boolean(row && row[1]));
   return shown.length === 0 ? null : h("dl", { class: "facts" }, ...shown.flatMap(([term, value]) => [h("dt", {}, term), h("dd", {}, value)]));
 }
 
@@ -658,12 +658,8 @@ function renderSheet(b: Booking, history: HistoryEntry[]): void {
       definitions([["Formule", planName(b.plan)], ["Palier", tierName(b.price_tier)], [REFILL_LABEL, b.refill_cents === null ? null : euros(b.refill_cents)], ["Type d'événement", b.event_type], ["Lieu", b.venue], ["Horaires", b.event_hours]]),
       b.message && h("div", {}, h("h3", {}, "Message du client"), h("p", { class: "quote" }, b.message)),
       b.price_cents !== null &&
-        definitions(
-          hasBookingDeposit(b)
-            ? [["Prix", euros(b.price_cents)], ["Acompte", euros(b.deposit_cents)], ["Solde restant", euros(balance)]]
-            : [["Prix", euros(b.price_cents)]],
-        ),
-      b.deposit_paid_at && h("p", {}, `Acompte payé le ${formatMoment(b.deposit_paid_at)}.`),
+        definitions([["Prix", euros(b.price_cents)], hasBookingDeposit(b) && ["Acompte", euros(b.deposit_cents)], ["Solde restant", euros(balance)]]),
+      hasBookingDeposit(b) && b.deposit_paid_at && h("p", {}, `Acompte payé le ${formatMoment(b.deposit_paid_at)}.`),
       b.balance_paid_at && h("p", {}, `Solde réglé le ${formatMoment(b.balance_paid_at)}.`),
       b.status === "awaiting_deposit" && paymentLink(b),
       actions.length > 0 &&

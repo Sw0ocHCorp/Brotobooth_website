@@ -27,7 +27,7 @@ const notes: Field = { name: "notes", label: "Notes", long: true, maxlength: 200
 const price: Field = { name: "price_cents", label: "Prix (€)", money: true, required: true };
 
 /** Le champ « Acompte (€) » n'existe que si l'offre demande un acompte (`depositPercent` supérieur à 0). */
-const depositFields: Field[] = hasDeposit() ? [{ name: "deposit_cents", label: "Acompte (€)", money: true }] : [];
+const depositField = (hint: string): Field[] => (hasDeposit() ? [{ name: "deposit_cents", label: "Acompte (€)", money: true, hint }] : []);
 
 const forms: { id: string; title: string; submit: string; fields: Field[] }[] = [
   {
@@ -49,7 +49,7 @@ const forms: { id: string; title: string; submit: string; fields: Field[] }[] = 
         hint: hasDeposit() ? "Propose le prix et l'acompte du palier en cours ; vous pouvez les modifier." : "Propose le prix du palier en cours ; vous pouvez le modifier.",
       },
       price,
-      ...depositFields.map((field) => ({ ...field, hint: "Il ne peut pas dépasser le prix." })),
+      ...depositField("Il ne peut pas dépasser le prix."),
       notes,
     ],
   },
@@ -63,7 +63,7 @@ const forms: { id: string; title: string; submit: string; fields: Field[] }[] = 
     id: "price",
     title: "Ajuster le prix",
     submit: "Enregistrer le prix",
-    fields: [price, ...depositFields.map((field) => ({ ...field, hint: `Laissez vide pour le recalculer : ${offer.depositPercent} % du prix, arrondi à l'euro.` }))],
+    fields: [price, ...depositField(`Laissez vide pour le recalculer : ${offer.depositPercent} % du prix, arrondi à l'euro.`)],
   },
 ];
 ---

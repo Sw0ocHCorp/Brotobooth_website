@@ -80,8 +80,7 @@ test.describe("pages légales", () => {
     }
   });
 
-  test("les CGV parlent d'acompte et portent leur version, datée en toutes lettres", async ({ page }) => {
-    test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
+  test("les CGV parlent d'acompte, ou disent qu'aucun n'est demandé, et portent leur version, datée en toutes lettres", async ({ page }) => {
     await page.goto("/cgv");
     await expect(page.getByText(/acompte/i).first()).toBeVisible();
     const [year, month, day] = offer.termsVersion.split("-").map(Number);
@@ -113,12 +112,13 @@ test.describe("pages légales", () => {
   });
 
   test("les CGV écartent la rétractation pour une prestation datée, et disent l'annulation et la médiation", async ({ page }) => {
-    test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
     await page.goto("/cgv");
     const withdrawal = page.getByRole("region", { name: "Droit de rétractation" });
     await expect(withdrawal).toContainText("L221-28, 12°");
     await expect(withdrawal).toContainText("vous ne disposez donc pas de ce droit de rétractation");
-    await expect(page.getByRole("region", { name: "Annulation par vous" })).toContainText("l'acompte reste acquis à Brotobooth et ne vous est pas remboursé");
+    if (hasDeposit(offer)) {
+      await expect(page.getByRole("region", { name: "Annulation par vous" })).toContainText("l'acompte reste acquis à Brotobooth et ne vous est pas remboursé");
+    }
     await expect(page.getByRole("region", { name: "Annulation par Brotobooth" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Médiation" })).toContainText("médiateur de la consommation");
     // Les photos se récupèrent par QR code pendant l'événement ; Brotobooth n'en garde rien.
@@ -128,11 +128,11 @@ test.describe("pages légales", () => {
   });
 
   test("la confidentialité dit ce que reçoit Telegram, et jamais l'adresse e-mail", async ({ page }) => {
-    test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
     await page.goto("/confidentialite");
     const recipients = page.getByRole("region", { name: "Qui reçoit vos données" });
-    await expect(recipients.getByRole("listitem")).toHaveCount(5);
-    for (const name of ["Cloudflare", "Stripe", "Resend", "Telegram", "Gmail"]) {
+    const names = ["Cloudflare", ...(hasDeposit(offer) ? ["Stripe"] : []), "Resend", "Telegram", "Gmail"];
+    await expect(recipients.getByRole("listitem")).toHaveCount(names.length);
+    for (const name of names) {
       await expect(recipients.getByRole("listitem").filter({ hasText: name })).toHaveCount(1);
     }
     const telegram = recipients.getByRole("listitem").filter({ hasText: "Telegram" });
