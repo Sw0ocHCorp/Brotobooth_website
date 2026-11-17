@@ -9,6 +9,18 @@ const withContact = (contact: Partial<OfferConfig["contact"]>): OfferConfig => (
   contact: { phones: [], email: "", whatsapp: "", social: [], ...contact },
 });
 
+describe("buildOffer, draft", () => {
+  const { draft: _draft, ...withoutDraft } = withContact({});
+
+  it("treats an offer without a draft line as final", () => {
+    expect(buildOffer(withoutDraft).draft).toBe(false);
+  });
+
+  it("keeps an offer marked draft provisional", () => {
+    expect(buildOffer({ ...withoutDraft, draft: true }).draft).toBe(true);
+  });
+});
+
 describe("buildOffer, contact", () => {
   it("trims the founders' first names and numbers", () => {
     const built = buildOffer(withContact({ phones: [{ name: "  Camille ", number: " 06 12 34 56 78\t" }] }));

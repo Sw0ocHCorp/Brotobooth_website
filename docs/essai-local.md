@@ -53,4 +53,4 @@ Après une minute environ (le temps de construire le site), le terminal affiche 
 | L'anti-robots | Il laisse tout passer et n'appelle aucun service extérieur. |
 | La connexion à l'administration | Aucune en essai. En ligne, un code reçu par e-mail sera demandé. |
 
-Les contenus sont encore provisoires : contact vide, pages légales avec des passages « [À compléter] ». C'est normal, et c'est ce qui empêche de publier par erreur.
+Quelques passages des pages légales portent encore « [À compléter] » (le médiateur, deux points de la confidentialité). C'est normal, et c'est ce qui empêche de publier par erreur.

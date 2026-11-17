@@ -66,8 +66,9 @@ export interface Offer {
   tiers: Tier[];
 }
 
-/** L'offre telle que `config/offer.json` l'écrit : les formules sans leur nom. */
-export type OfferConfig = Omit<Offer, "plans" | "contact"> & {
+/** L'offre telle que `config/offer.json` l'écrit : les formules sans leur nom, et `draft` seulement tant qu'elle est provisoire. */
+export type OfferConfig = Omit<Offer, "plans" | "contact" | "draft"> & {
+  draft?: boolean;
   plans: Omit<Plan, "name">[];
   contact: Omit<Offer["contact"], "phone">;
 };
@@ -185,7 +186,8 @@ export function buildOffer(config: OfferConfig): Offer {
   if (whatsapp && !/^\+(?:\D*\d){8}/.test(whatsapp)) {
     throw new Error("config/offer.json : le numéro WhatsApp doit être au format international (« + », puis au moins 8 chiffres)");
   }
-  return { ...config, plans, contact: { ...config.contact, phones, email: config.contact.email.trim(), whatsapp, phone: phones[0]?.number ?? "" } };
+  // Une offre sans ligne `draft` est définitive.
+  return { ...config, draft: config.draft === true, plans, contact: { ...config.contact, phones, email: config.contact.email.trim(), whatsapp, phone: phones[0]?.number ?? "" } };
 }
 
 export const offer: Offer = buildOffer(offerJson);
@@ -202,7 +204,7 @@ export const isBookable = (from: Offer, booth: string): boolean => plansOf(from,
 /** `true` si l'offre donne un moyen de nous joindre : une phrase qui invite à le faire n'est écrite qu'à cette condition. */
 export const hasContact = (): boolean => Boolean(offer.contact.phone || offer.contact.email);
 
-/** « 30 % », une fois l'offre définitive ; `undefined` tant qu'elle est provisoire et que le pourcentage peut encore changer. */
+/** « 25 % », une fois l'offre définitive ; `undefined` tant qu'elle est provisoire et que le pourcentage peut encore changer. */
 export const finalDepositPercent = (): string | undefined => (offer.draft ? undefined : `${offer.depositPercent}\u00a0%`);
 
 /** Le palier en cours, avec ses places restantes (`null` s'il est illimité) ; `launch` vaut `true` tant qu'il est limité. */
