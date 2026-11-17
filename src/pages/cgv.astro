@@ -2,10 +2,12 @@
 import Fact from "../components/Fact.astro";
 import Legal from "../layouts/Legal.astro";
 import { BUSINESS } from "../legal";
-import { finalDepositPercent, offer } from "../../worker/offer";
+import { finalDepositPercent, hasDeposit, offer } from "../../worker/offer";
 
 /** Le pourcentage d'acompte n'est donné qu'une fois l'offre définitive (`draft` à `false`) : avant, le marqueur le remplace. */
 const deposit = finalDepositPercent();
+/** Sans acompte (`depositPercent` à 0), les conditions disent qu'aucun n'est demandé et que le prix se règle le jour de l'événement. */
+const withDeposit = hasDeposit();
 /** « 7 novembre 2026 », « 1er décembre 2026 » : la version des conditions, `AAAA-MM-JJ` dans l'offre, datée pour le lecteur. */
 const version = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
   .format(new Date(offer.termsVersion))
@@ -14,7 +16,7 @@ const version = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long"
 
 <Legal
   title="Conditions générales de vente"
-  description="Les conditions de réservation de la borne photo Brotobooth : date, acompte, annulation, rétractation, responsabilité et médiation."
+  description={`Les conditions de réservation de la borne photo Brotobooth : date, ${withDeposit ? "acompte" : "paiement"}, annulation, rétractation, responsabilité et médiation.`}
 >
   <h1>Conditions générales de vente</h1>
   <p class="meta">Version du {version}</p>
@@ -46,52 +48,92 @@ const version = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long"
       Envoyer votre demande ne vous coûte rien et ne vous engage à rien. Nous gardons la date pour vous et nous vous répondons sous {offer.reviewHours} h.
       Sans réponse de notre part dans ce délai, la date est de nouveau libre.
     </p>
-    <p>
-      Si nous acceptons, vous recevez un e-mail avec le prix de votre prestation et un lien pour régler l'acompte. Vous avez {offer.paymentHours} h
-      pour le payer : passé ce délai, la date est de nouveau libre, et vous pouvez refaire une demande. Votre date n'est confirmée qu'une fois
-      l'acompte payé.
-    </p>
+    {
+      withDeposit ? (
+        <p>
+          Si nous acceptons, vous recevez un e-mail avec le prix de votre prestation et un lien pour régler l'acompte. Vous avez {offer.paymentHours} h
+          pour le payer : passé ce délai, la date est de nouveau libre, et vous pouvez refaire une demande. Votre date n'est confirmée qu'une fois
+          l'acompte payé.
+        </p>
+      ) : (
+        <p>Si nous acceptons, vous recevez un e-mail qui confirme votre date et le prix de votre prestation. Votre réservation est alors conclue.</p>
+      )
+    }
   </section>
 
   <section aria-labelledby="prix">
     <h2 id="prix">Le prix</h2>
     <p>
-      Le prix de votre prestation est celui de la formule choisie, confirmé dans l'e-mail qui contient le lien de paiement de l'acompte. <Fact value={BUSINESS.vat} />.
+      Le prix de votre prestation est celui de la formule choisie, confirmé dans {withDeposit ? "l'e-mail qui contient le lien de paiement de l'acompte" : "l'e-mail de confirmation"}. <Fact value={BUSINESS.vat} />.
     </p>
     <p>
-      Si les tirages compris s'épuisent pendant votre événement, vous pouvez ajouter des recharges de 100 tirages, au tarif indiqué dans votre récapitulatif. Elles se règlent avec le solde.
+      Si les tirages compris s'épuisent pendant votre événement, vous pouvez ajouter des recharges de 100 tirages, au tarif indiqué dans votre récapitulatif. Elles se règlent avec {withDeposit ? "le solde" : "le prix de la prestation"}.
     </p>
   </section>
 
-  <section aria-labelledby="acompte">
-    <h2 id="acompte">L'acompte</h2>
-    <p>Pour confirmer votre date, vous versez un acompte de <Fact value={deposit} /> du prix de la prestation, en ligne, sur la page sécurisée de Stripe, dans les {offer.paymentHours} h qui suivent notre réponse.</p>
-    <p>Une fois l'acompte payé, la réservation vous engage, et nous aussi&nbsp;: nous gardons votre date, et nous venons à la date convenue.</p>
-    <p>
-      L'acompte vient en déduction du prix. Le solde reste dû&nbsp;: il se règle le jour de votre événement, à la fin de la prestation, avec les
-      recharges éventuelles, en espèces, par virement ou par carte bancaire.
-    </p>
-  </section>
+  {
+    withDeposit ? (
+      <section aria-labelledby="acompte">
+        <h2 id="acompte">L'acompte</h2>
+        <p>Pour confirmer votre date, vous versez un acompte de <Fact value={deposit} /> du prix de la prestation, en ligne, sur la page sécurisée de Stripe, dans les {offer.paymentHours} h qui suivent notre réponse.</p>
+        <p>Une fois l'acompte payé, la réservation vous engage, et nous aussi&nbsp;: nous gardons votre date, et nous venons à la date convenue.</p>
+        <p>
+          L'acompte vient en déduction du prix. Le solde reste dû&nbsp;: il se règle le jour de votre événement, à la fin de la prestation, avec les
+          recharges éventuelles, en espèces, par virement ou par carte bancaire.
+        </p>
+      </section>
+    ) : (
+      <section aria-labelledby="paiement">
+        <h2 id="paiement">Le paiement</h2>
+        <p>
+          Aucun acompte ne vous est demandé. Le prix se règle le jour de votre événement, à la fin de la prestation, avec les recharges éventuelles,
+          en espèces, par virement ou par carte bancaire.
+        </p>
+      </section>
+    )
+  }
 
   <section aria-labelledby="annulation-client">
     <h2 id="annulation-client">Annulation par vous</h2>
-    <p>
-      Avant le paiement de l'acompte, vous pouvez renoncer à votre demande sans frais&nbsp;: prévenez-nous, ou ne réglez simplement pas
-      l'acompte. La date est alors de nouveau libre.
-    </p>
-    <p>
-      Après le paiement de l'acompte, votre engagement est ferme. Si vous annulez après ce paiement, l'acompte reste acquis à Brotobooth et ne
-      vous est pas remboursé&nbsp;; le solde, lui, ne vous est pas demandé.
-    </p>
+    {
+      withDeposit ? (
+        <>
+          <p>
+            Avant le paiement de l'acompte, vous pouvez renoncer à votre demande sans frais&nbsp;: prévenez-nous, ou ne réglez simplement pas
+            l'acompte. La date est alors de nouveau libre.
+          </p>
+          <p>
+            Après le paiement de l'acompte, votre engagement est ferme. Si vous annulez après ce paiement, l'acompte reste acquis à Brotobooth et ne
+            vous est pas remboursé&nbsp;; le solde, lui, ne vous est pas demandé.
+          </p>
+        </>
+      ) : (
+        <p>Vous pouvez annuler votre réservation sans frais. Prévenez-nous dès que possible, pour que la date puisse être proposée à quelqu'un d'autre.</p>
+      )
+    }
   </section>
 
   <section aria-labelledby="annulation-brotobooth">
     <h2 id="annulation-brotobooth">Annulation par Brotobooth</h2>
-    <p>Si nous refusons votre demande, vous n'avez rien payé et rien à faire.</p>
-    <p>
-      Si, après le paiement de l'acompte, nous ne pouvons plus être présents à votre événement, nous vous prévenons dès que possible et nous vous
-      remboursons les sommes déjà versées.
-    </p>
+    {
+      withDeposit ? (
+        <>
+          <p>Si nous refusons votre demande, vous n'avez rien payé et rien à faire.</p>
+          <p>
+            Si, après le paiement de l'acompte, nous ne pouvons plus être présents à votre événement, nous vous prévenons dès que possible et nous vous
+            remboursons les sommes déjà versées.
+          </p>
+        </>
+      ) : (
+        <>
+          <p>Si nous refusons votre demande, vous n'avez rien à faire.</p>
+          <p>
+            Si, après avoir confirmé votre date, nous ne pouvons plus être présents à votre événement, nous vous prévenons dès que possible. Vous
+            n'avez rien à régler.
+          </p>
+        </>
+      )
+    }
   </section>
 
   <section aria-labelledby="retractation">

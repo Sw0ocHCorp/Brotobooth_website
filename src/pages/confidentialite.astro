@@ -1,11 +1,39 @@
 ---
 import Fact from "../components/Fact.astro";
 import Legal from "../layouts/Legal.astro";
-import { offer } from "../../worker/offer";
+import { hasDeposit, offer } from "../../worker/offer";
 
 const { email } = offer.contact;
 /** Les messages qui peuvent partir d'une même connexion en 24 h : la même limite que les demandes de réservation. */
 const perConnection = offer.maxPerIpPer24h;
+/** Avec un acompte, il est encaissé chez Stripe, qui devient un prestataire de plus ; sans acompte, le site n'encaisse rien. */
+const withDeposit = hasDeposit();
+
+/** Les prestataires qui reçoivent des données, dans l'ordre où la page les liste : leur nombre se déduit de cette liste. */
+const providers = [
+  {
+    name: "Cloudflare",
+    text: "héberge le site et la base de données qui garde vos demandes, dans l'Union européenne, et fournit la vérification anti-robots. Il reçoit ce que vous saisissez sur le site.",
+  },
+  ...(withDeposit
+    ? [
+        {
+          name: "Stripe",
+          text: "encaisse l'acompte. Vous saisissez vos informations de paiement sur sa page, et nous n'en voyons rien : Stripe nous indique seulement que l'acompte est payé.",
+        },
+      ]
+    : []),
+  {
+    name: "Resend",
+    text: `envoie nos e-mails : le récapitulatif de votre demande, ${withDeposit ? "le lien de paiement de l'acompte" : "la confirmation de votre date"} et les rappels. Il reçoit votre adresse e-mail et le contenu des messages, et les traite dans l'Union européenne. Il nous transmet aussi, par e-mail, les messages que vous nous écrivez par le formulaire de contact.`,
+  },
+  {
+    name: "Telegram",
+    text: "est la messagerie que nous utilisons pour être prévenus d'une nouvelle demande et des rappels avant votre événement. Il reçoit votre nom, le lieu de votre événement et votre numéro de téléphone, avec les détails de votre réservation (date, type d'événement, formule, horaires), mais jamais votre adresse e-mail. Il ne reçoit rien des messages que vous nous écrivez par le formulaire de contact. Telegram ne vous écrit jamais et vous n'avez aucun compte à y ouvrir.",
+  },
+  { name: "Gmail", text: "(Google) est la messagerie de Brotobooth\u00a0: elle reçoit les messages du formulaire de contact." },
+];
+const COUNT_WORD = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix"];
 ---
 
 <Legal
@@ -36,7 +64,7 @@ const perConnection = offer.maxPerIpPer24h;
       </li>
     </ul>
     <p>
-      Vous payez l'acompte sur la page de Stripe : nous ne voyons ni ne gardons votre numéro de carte, nous savons seulement que le paiement a eu lieu.
+      {withDeposit && "Vous payez l'acompte sur la page de Stripe : nous ne voyons ni ne gardons votre numéro de carte, nous savons seulement que le paiement a eu lieu. "}
       Il n'y a pas de compte à créer ni de mot de passe.
     </p>
   </section>
@@ -45,7 +73,7 @@ const perConnection = offer.maxPerIpPer24h;
     <h2 id="finalites">Pourquoi nous les utilisons</h2>
     <ul>
       <li>
-        Répondre à votre demande, vous envoyer le lien de paiement de l'acompte et les rappels, et être présents à votre événement&nbsp;: c'est
+        Répondre à votre demande, vous envoyer {withDeposit ? "le lien de paiement de l'acompte" : "la confirmation de votre date"} et les rappels, et être présents à votre événement&nbsp;: c'est
         l'exécution du contrat que vous concluez avec nous, et les démarches qui le précèdent.
       </li>
       <li>Garder la preuve de votre acceptation des conditions générales de vente, ce qui est notre intérêt légitime.</li>
@@ -63,7 +91,7 @@ const perConnection = offer.maxPerIpPer24h;
     <h2 id="duree">Combien de temps nous les gardons</h2>
     <ul>
       <li>
-        Une demande que nous refusons, ou qui reste sans suite faute de réponse ou d'acompte : votre nom, votre téléphone, votre adresse e-mail,
+        Une demande que nous refusons, ou qui reste sans suite faute de réponse{withDeposit && " ou d'acompte"} : votre nom, votre téléphone, votre adresse e-mail,
         le lieu, les horaires et la version brouillée de votre adresse IP sont effacés automatiquement au bout de 12 mois. Il ne reste alors ni nom ni
         coordonnées, seulement la date, la formule et les montants.
       </li>
@@ -74,28 +102,9 @@ const perConnection = offer.maxPerIpPer24h;
 
   <section aria-labelledby="destinataires">
     <h2 id="destinataires">Qui reçoit vos données</h2>
-    <p>Pour faire fonctionner le site, nous faisons appel à cinq prestataires. Chacun ne reçoit que ce dont il a besoin.</p>
+    <p>Pour faire fonctionner le site, nous faisons appel à {COUNT_WORD[providers.length]} prestataires. Chacun ne reçoit que ce dont il a besoin.</p>
     <ul>
-      <li>
-        <strong>Cloudflare</strong> héberge le site et la base de données qui garde vos demandes, dans l'Union européenne, et fournit la
-        vérification anti-robots. Il reçoit ce que vous saisissez sur le site.
-      </li>
-      <li>
-        <strong>Stripe</strong> encaisse l'acompte. Vous saisissez vos informations de paiement sur sa page, et nous n'en voyons rien : Stripe
-        nous indique seulement que l'acompte est payé.
-      </li>
-      <li>
-        <strong>Resend</strong> envoie nos e-mails : le récapitulatif de votre demande, le lien de paiement de l'acompte et les rappels. Il
-        reçoit votre adresse e-mail et le contenu des messages, et les traite dans l'Union européenne. Il nous transmet aussi, par e-mail,
-        les messages que vous nous écrivez par le formulaire de contact.
-      </li>
-      <li>
-        <strong>Telegram</strong> est la messagerie que nous utilisons pour être prévenus d'une nouvelle demande et des rappels avant votre
-        événement. Il reçoit votre nom, le lieu de votre événement et votre numéro de téléphone, avec les détails de votre
-        réservation (date, type d'événement, formule, horaires), mais jamais votre adresse e-mail. Il ne reçoit rien des messages que vous nous
-        écrivez par le formulaire de contact. Telegram ne vous écrit jamais et vous n'avez aucun compte à y ouvrir.
-      </li>
-      <li><strong>Gmail</strong> (Google) est la messagerie de Brotobooth&nbsp;: elle reçoit les messages du formulaire de contact.</li>
+      {providers.map(({ name, text }) => <li><strong>{name}</strong> {text}</li>)}
     </ul>
     <p>Certains de ces prestataires peuvent traiter des données hors de l'Union européenne. Les garanties qui encadrent ces transferts : <Fact />.</p>
   </section>
@@ -152,8 +161,9 @@ const perConnection = offer.maxPerIpPer24h;
   <section aria-labelledby="cookies">
     <h2 id="cookies">Cookies</h2>
     <p>
-      Ce site ne dépose aucun cookie de suivi ni de mesure d'audience : il n'a donc pas de bandeau à vous faire accepter. La page de paiement
-      de Stripe est celle de Stripe, qui suit sa propre politique.
+      Ce site ne dépose aucun cookie de suivi ni de mesure d'audience : il n'a donc pas de bandeau à vous faire accepter.{
+        withDeposit && " La page de paiement de Stripe est celle de Stripe, qui suit sa propre politique."
+      }
     </p>
   </section>
 

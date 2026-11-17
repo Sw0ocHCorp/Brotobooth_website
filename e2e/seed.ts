@@ -1,12 +1,16 @@
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { depositCents } from "../worker/bookings";
-import { currentTier, isBookable, normalTier, offer, plansOf, priceOf, pricesBody, type Plan, type PricesBody } from "../worker/offer";
+import { currentTier, hasDeposit, isBookable, normalTier, offer, plansOf, priceOf, pricesBody, type Plan, type PricesBody } from "../worker/offer";
 
 /**
  * L'offre telle que le propriétaire l'écrit dans `config/offer.json`. Il y change les bornes, les identifiants et les prix :
  * aucun essai ne suppose ceux d'aujourd'hui, ils passent par `FIRST_PLAN`, `SECOND_PLAN`, `boothButton`, `planButton` et `choosePlan`.
  */
-export { isBookable, offer, plansOf };
+export { hasDeposit, isBookable, offer, plansOf };
+
+/** Les raisons d'ignorer un essai qui ne vaut que pour un mode de l'offre : `test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT)`. */
+export const WITHOUT_DEPOSIT = "l'acompte est désactivé dans l'offre";
+export const WITH_DEPOSIT = "l'acompte est actif dans l'offre";
 export const [FIRST_PLAN, SECOND_PLAN] = offer.plans;
 
 /** Le prix normal d'une formule, celui du dernier palier. */

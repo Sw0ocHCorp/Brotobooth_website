@@ -1,6 +1,6 @@
 ---
 import { formatEuros } from "../../worker/html";
-import { REFILL_LABEL, finalDepositPercent, hasContact, isBookable, normalTier, offer, priceOf } from "../../worker/offer";
+import { REFILL_LABEL, finalDepositPercent, hasContact, hasDeposit, isBookable, normalTier, offer, priceOf } from "../../worker/offer";
 import ContactLine from "../components/ContactLine.astro";
 import TopBar from "../components/TopBar.astro";
 import Base from "../layouts/Base.astro";
@@ -116,9 +116,12 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
             Cette date n'est plus disponible à la réservation. Choisissez-en une autre&nbsp;: vos informations sont conservées.
           </p>
           <p class="res-note">
-            Rien à payer maintenant. Une fois votre demande envoyée, nous gardons cette date pour vous et nous vous répondons sous {offer.reviewHours}&nbsp;h.
-            Si nous pouvons être là, vous recevez par e-mail un lien pour régler l'acompte{share && ` (${share} du prix)`}, et votre date est confirmée dès
-            qu'il est payé.
+            Rien à payer maintenant. Une fois votre demande envoyée, nous gardons cette date pour vous et nous vous répondons sous {offer.reviewHours}&nbsp;h.{" "}
+            {
+              hasDeposit()
+                ? `Si nous pouvons être là, vous recevez par e-mail un lien pour régler l'acompte${share ? ` (${share} du prix)` : ""}, et votre date est confirmée dès qu'il est payé.`
+                : "Si nous pouvons être là, nous vous confirmons votre date par e-mail. Vous réglez le jour de votre événement."
+            }
           </p>
           <div class="res-foot needs-js">
             <span id="picked">Aucune date choisie</span>

@@ -17,7 +17,7 @@ npm run demo
 
 Après une minute environ (le temps de construire le site), le terminal affiche « Le site d'essai est prêt » avec les adresses utiles. Pour arrêter : `Ctrl+C`.
 
-- Au premier lancement, quatre réservations d'exemple sont posées : une demande à valider, une demande validée qui attend son acompte, une prestation confirmée et une date bloquée.
+- Au premier lancement, quatre réservations d'exemple sont posées : une demande à valider, une demande que l'essai accepte aussitôt (sans acompte, elle est « Confirmée » ; avec un acompte, elle attend son acompte), une prestation confirmée et une date bloquée.
 - La base d'essai est gardée d'un lancement à l'autre, et les exemples vieillissent avec elle : leurs dates se rapprochent et leurs délais de 72 h finissent par passer. Pour repartir d'une base neuve, avec des exemples à jour : `npm run demo:reset`, puis `npm run demo`.
 - Comme en ligne, chaque demande et chaque prestation ajoutée prend une place de l'offre de lancement, même refusée ou annulée, et le prix monte d'un palier quand ses places sont prises : les exemples en prennent déjà trois. `npm run demo:reset` rend toutes les places.
 
@@ -29,11 +29,11 @@ Après une minute environ (le temps de construire le site), le terminal affiche 
 
 **3. L'administration** : http://localhost:8790/admin/. Aucune connexion n'est demandée en essai. Vos demandes sont dans « À traiter ».
 
-**4. Valider une demande.** Ouvrez-la : le prix est celui de la formule choisie, et « Ajuster le prix » permet de le changer ; l'acompte se calcule à partir du prix. Enregistrez si vous l'avez changé, puis « Valider ». La demande passe en « Attente d'acompte ».
+**4. Accepter une demande.** Ouvrez-la : le prix est celui de la formule choisie, et « Ajuster le prix » permet de le changer. Enregistrez si vous l'avez changé, puis « Valider ». Le site est réglé sans acompte (`depositPercent` à 0) : la demande passe directement en « Confirmée », sans rien à payer.
 
-**5. Le lien de paiement.** La fiche le montre (« Copier le lien »). Le client le reçoit aussi par e-mail : sur http://localhost:8790/demo, le message « Bonne nouvelle : nous pouvons être là le … » contient ce lien.
+**5. Le message au client.** Sur http://localhost:8790/demo, le message « C'est confirmé pour le … » confirme la date et le prix, à régler le jour de l'événement. Il ne parle d'aucun acompte et ne contient aucun lien de paiement. Sur la page de réservation, la date est maintenant barrée.
 
-**6. Le paiement simulé.** Ouvrez le lien, cliquez sur « Payer l'acompte », puis « Simuler un paiement réussi » (ou « Abandonner » pour voir ce qui se passe quand le client renonce). La page annonce « Votre date est confirmée ». Dans l'administration, la prestation est « Confirmée », et sur la page de réservation la date est barrée.
+**6. Remettre l'acompte (facultatif).** Pour essayer le parcours avec acompte, mettez `depositPercent` à 25 dans `config/offer.json` et relancez `npm run demo` : « Valider » mène alors à « Attente d'acompte », la fiche montre le lien de paiement (« Copier le lien »), et le client le reçoit aussi sur `/demo`. Ouvrez-le, cliquez sur « Payer l'acompte », puis « Simuler un paiement réussi » (ou « Abandonner ») : la page annonce « Votre date est confirmée ». Remettez ensuite `depositPercent` à 0.
 
 **7. Les messages** : http://localhost:8790/demo. Rechargez la page après chaque étape : vous y lisez, du plus récent au plus ancien, les e-mails du client et les messages Telegram que vous auriez reçus, avec leurs boutons.
 
@@ -41,13 +41,13 @@ Après une minute environ (le temps de construire le site), le terminal affiche 
 
 **8. La tâche automatique.** En vrai, elle passe toutes les 5 minutes : elle libère les dates dont le délai est dépassé, envoie les rappels de 9 h et le point du lundi. Ici, vous la déclenchez en ouvrant http://localhost:8790/cdn-cgi/handler/scheduled (la page répond « ok »). Dans « Santé », en bas de l'administration, « Dernier passage » indique alors « à l'instant ». Tant qu'aucun délai n'est dépassé, elle n'a rien à faire et rien d'autre ne change.
 
-**9. L'agenda.** Le terminal affiche « Le lien de l'agenda ». Ouvrez-le : le navigateur télécharge un fichier d'agenda qui liste les dates tenues (à valider, acompte attendu, prestations, dates bloquées). C'est ce lien que votre téléphone suivra une fois le site en ligne. Il change à chaque lancement de l'essai.
+**9. L'agenda.** Le terminal affiche « Le lien de l'agenda ». Ouvrez-le : le navigateur télécharge un fichier d'agenda qui liste les dates tenues (à valider, prestations, dates bloquées, et acompte attendu si vous l'avez remis). C'est ce lien que votre téléphone suivra une fois le site en ligne. Il change à chaque lancement de l'essai.
 
 ## Ce qui est simulé
 
 | Ce qui est simulé | Ce qui se passe en essai |
 |---|---|
-| Le paiement | Aucune carte, aucun argent : une page « Simulation » remplace la page de paiement. Le vrai paiement sera branché en dernier, avec votre accord. |
+| Le paiement (avec acompte) | Sans acompte, il n'y a aucun paiement en ligne. Avec un acompte, aucune carte, aucun argent : une page « Simulation » remplace la page de paiement. Le vrai paiement sera branché en dernier, avec votre accord. |
 | Les e-mails | Aucun ne part : ils se lisent sur `/demo`. |
 | Telegram | Aucun message ne part : ils se lisent aussi sur `/demo`. Les boutons du bot n'agissent pas ; ceux qui ouvrent une fiche fonctionnent. |
 | L'anti-robots | Il laisse tout passer et n'appelle aucun service extérieur. |

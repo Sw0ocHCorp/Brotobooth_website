@@ -1,6 +1,6 @@
 import { formatEuros } from "../../worker/html";
-import { depositCents } from "../../worker/bookings";
-import { REFILL_LABEL, normalTier, offer, planById, priceOf, telHref, tierById, type PricesBody } from "../../worker/offer";
+import { depositCents, hasBookingDeposit } from "../../worker/bookings";
+import { REFILL_LABEL, hasDeposit, normalTier, offer, planById, priceOf, telHref, tierById, type PricesBody } from "../../worker/offer";
 import { fetchPrices } from "./prices";
 
 /**
@@ -62,6 +62,7 @@ const HOLDING: Status[] = ["pending_review", "awaiting_deposit", "confirmed", "b
 const EVENT_LABEL: Record<string, string> = {
   received: "Demande reçue",
   validated: "Validée",
+  confirmed: "Confirmée",
   refused: "Refusée",
   paid: "Acompte payé",
   released: "Date libérée (délai dépassé)",
@@ -472,7 +473,7 @@ function proposePrice(form: HTMLFormElement): void {
   if (!planId) return;
   const cents = proposedPrice(planId);
   $<HTMLInputElement>("[name=price_cents]", form).value = euroInput(cents);
-  $<HTMLInputElement>("[name=deposit_cents]", form).value = euroInput(depositCents(cents, offer.depositPercent));
+  if (hasDeposit()) $<HTMLInputElement>("[name=deposit_cents]", form).value = euroInput(depositCents(cents, offer.depositPercent));
 }
 
 // ---------- confirmation ----------
@@ -484,12 +485,13 @@ const REFUSE: Confirmation = {
   text: "Le client est prévenu par e-mail et la date est libérée.",
   ok: "Refuser la demande",
 };
-const CANCEL: Confirmation = {
+/** Un remboursement n'est évoqué que pour une réservation qui a un acompte : sans acompte, rien n'a été encaissé en ligne. */
+const cancelConfirmation = (b: Booking): Confirmation => ({
   title: "Libérer cette date ?",
-  text: "La réservation est annulée et la date libérée. Le client est prévenu s'il a une adresse e-mail. Un remboursement éventuel se fait depuis Stripe.",
+  text: `La réservation est annulée et la date libérée. Le client est prévenu s'il a une adresse e-mail.${hasBookingDeposit(b) ? " Un remboursement éventuel se fait depuis Stripe." : ""}`,
   ok: "Annuler la réservation",
   keep: "Garder la réservation",
-};
+});
 const ERASE: Confirmation = {
   title: "Effacer définitivement ce message ?",
   text: "Cela ne se défait pas.",
@@ -533,12 +535,12 @@ function actionsFor(b: Booking): Act[] {
       return [
         { label: "Renvoyer le lien", tone: "primary", run: post(b, "resend-link", { notice: "Le lien de paiement a été renvoyé au client." }) },
         adjust,
-        { label: "Annuler la réservation", tone: "danger", run: post(b, "cancel", { confirm: CANCEL }) },
+        { label: "Annuler la réservation", tone: "danger", run: post(b, "cancel", { confirm: cancelConfirmation(b) }) },
       ];
     case "confirmed":
       return [
         ...(b.balance_paid_at ? [] : [{ label: "Solde réglé", tone: "primary" as const, run: post(b, "balance-paid") }]),
-        { label: "Annuler la réservation", tone: "danger", run: post(b, "cancel", { confirm: CANCEL }) },
+        { label: "Annuler la réservation", tone: "danger", run: post(b, "cancel", { confirm: cancelConfirmation(b) }) },
       ];
     case "blocked":
       return [{ label: "Retirer le blocage", tone: "danger", run: post(b, "cancel", { confirm: UNBLOCK }) }];
@@ -655,7 +657,12 @@ function renderSheet(b: Booking, history: HistoryEntry[]): void {
       left && h("p", { class: "notice" }, left.late ? "Délai dépassé : la date va être libérée." : `Il reste ${left.text} ${purpose}.`),
       definitions([["Formule", planName(b.plan)], ["Palier", tierName(b.price_tier)], [REFILL_LABEL, b.refill_cents === null ? null : euros(b.refill_cents)], ["Type d'événement", b.event_type], ["Lieu", b.venue], ["Horaires", b.event_hours]]),
       b.message && h("div", {}, h("h3", {}, "Message du client"), h("p", { class: "quote" }, b.message)),
-      b.price_cents !== null && definitions([["Prix", euros(b.price_cents)], ["Acompte", euros(b.deposit_cents)], ["Solde restant", euros(balance)]]),
+      b.price_cents !== null &&
+        definitions(
+          hasBookingDeposit(b)
+            ? [["Prix", euros(b.price_cents)], ["Acompte", euros(b.deposit_cents)], ["Solde restant", euros(balance)]]
+            : [["Prix", euros(b.price_cents)]],
+        ),
       b.deposit_paid_at && h("p", {}, `Acompte payé le ${formatMoment(b.deposit_paid_at)}.`),
       b.balance_paid_at && h("p", {}, `Solde réglé le ${formatMoment(b.balance_paid_at)}.`),
       b.status === "awaiting_deposit" && paymentLink(b),

@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
-import { cleanup, offer, reachDetails, seed } from "./seed";
+import { cleanup, hasDeposit, offer, reachDetails, seed, WITH_DEPOSIT, WITHOUT_DEPOSIT } from "./seed";
 
 /** Les pages légales, le référencement et les en-têtes de sécurité (spec, sections 7, 9 et 10). */
 
@@ -81,6 +81,7 @@ test.describe("pages légales", () => {
   });
 
   test("les CGV parlent d'acompte et portent leur version, datée en toutes lettres", async ({ page }) => {
+    test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
     await page.goto("/cgv");
     await expect(page.getByText(/acompte/i).first()).toBeVisible();
     const [year, month, day] = offer.termsVersion.split("-").map(Number);
@@ -99,6 +100,7 @@ test.describe("pages légales", () => {
   });
 
   test("l'acompte engage les deux parties, dit quand et comment se règle le solde et porte le pourcentage de l'offre", async ({ page }) => {
+    test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
     await page.goto("/cgv");
     const deposit = page.getByRole("region", { name: "L'acompte" });
     await expect(deposit).toContainText("la réservation vous engage, et nous aussi");
@@ -111,6 +113,7 @@ test.describe("pages légales", () => {
   });
 
   test("les CGV écartent la rétractation pour une prestation datée, et disent l'annulation et la médiation", async ({ page }) => {
+    test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
     await page.goto("/cgv");
     const withdrawal = page.getByRole("region", { name: "Droit de rétractation" });
     await expect(withdrawal).toContainText("L221-28, 12°");
@@ -125,6 +128,7 @@ test.describe("pages légales", () => {
   });
 
   test("la confidentialité dit ce que reçoit Telegram, et jamais l'adresse e-mail", async ({ page }) => {
+    test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
     await page.goto("/confidentialite");
     const recipients = page.getByRole("region", { name: "Qui reçoit vos données" });
     await expect(recipients.getByRole("listitem")).toHaveCount(5);
@@ -138,6 +142,65 @@ test.describe("pages légales", () => {
     await expect(telegram).toContainText("jamais votre adresse e-mail");
     await expect(telegram).toContainText("la messagerie que nous utilisons pour être prévenus");
     await expect(telegram).not.toContainText("canal d'alerte");
+  });
+
+  // ---------- sans acompte : le texte du propriétaire, au mot près (spec 2026-11-17, section 4) ----------
+
+  test.describe("sans acompte", () => {
+    test.beforeEach(() => test.skip(hasDeposit(offer), WITH_DEPOSIT));
+
+    test("aucune page ne parle d'acompte", async ({ page }) => {
+      for (const path of ["/reserver", "/confidentialite"]) {
+        await page.goto(path);
+        const text = await page.getByRole("main").innerText();
+        expect(text, path).not.toMatch(/acompte|stripe/i);
+      }
+      await page.goto("/cgv");
+      const text = await page.getByRole("main").innerText();
+      expect(text.match(/acompte/gi) ?? [], "/cgv").toHaveLength(1);
+      await expect(page.getByRole("region", { name: "Le paiement" })).toContainText("Aucun acompte ne vous est demandé.");
+      expect(text).not.toMatch(/stripe/i);
+    });
+
+    test("les CGV disent la réservation, le prix, le paiement et les deux annulations", async ({ page }) => {
+      await page.goto("/cgv");
+      await expect(page.getByRole("region", { name: "Votre réservation" })).toContainText(
+        "Si nous acceptons, vous recevez un e-mail qui confirme votre date et le prix de votre prestation. Votre réservation est alors conclue.",
+      );
+      const price = page.getByRole("region", { name: "Le prix" });
+      await expect(price).toContainText("Le prix de votre prestation est celui de la formule choisie, confirmé dans l'e-mail de confirmation.");
+      await expect(price).toContainText("Elles se règlent avec le prix de la prestation.");
+      await expect(page.getByRole("region", { name: "Le paiement" })).toContainText(
+        "Aucun acompte ne vous est demandé. Le prix se règle le jour de votre événement, à la fin de la prestation, avec les recharges éventuelles, en espèces, par virement ou par carte bancaire.",
+      );
+      await expect(page.getByRole("region", { name: "Annulation par vous" })).toContainText(
+        "Vous pouvez annuler votre réservation sans frais. Prévenez-nous dès que possible, pour que la date puisse être proposée à quelqu'un d'autre.",
+      );
+      const byUs = page.getByRole("region", { name: "Annulation par Brotobooth" });
+      await expect(byUs).toContainText("Si nous refusons votre demande, vous n'avez rien à faire.");
+      await expect(byUs).toContainText(
+        "Si, après avoir confirmé votre date, nous ne pouvons plus être présents à votre événement, nous vous prévenons dès que possible. Vous n'avez rien à régler.",
+      );
+      await expect(page.getByRole("region", { name: "Droit de rétractation" })).toContainText("L221-28, 12°");
+      await expect(page.locator("head meta[name=description]")).toHaveAttribute("content", /paiement/);
+    });
+
+    test("la confidentialité annonce quatre prestataires, sans Stripe, et dit la confirmation de la date", async ({ page }) => {
+      await page.goto("/confidentialite");
+      const recipients = page.getByRole("region", { name: "Qui reçoit vos données" });
+      await expect(recipients).toContainText("nous faisons appel à quatre prestataires");
+      await expect(recipients.getByRole("listitem")).toHaveCount(4);
+      for (const name of ["Cloudflare", "Resend", "Telegram", "Gmail"]) {
+        await expect(recipients.getByRole("listitem").filter({ hasText: name })).toHaveCount(1);
+      }
+      await expect(recipients.getByRole("listitem").filter({ hasText: "Resend" })).toContainText(
+        "le récapitulatif de votre demande, la confirmation de votre date et les rappels",
+      );
+      await expect(page.getByRole("region", { name: "Pourquoi nous les utilisons" })).toContainText(
+        "à votre demande, vous envoyer la confirmation de votre date et les rappels",
+      );
+      await expect(page.getByRole("region", { name: "Combien de temps nous les gardons" })).toContainText("faute de réponse");
+    });
   });
 
   test("la confidentialité donne la durée de conservation, les droits et Turnstile", async ({ page }) => {
@@ -331,6 +394,7 @@ test("la politique de sécurité laisse passer Turnstile : son script et son cad
 });
 
 test("la politique de sécurité laisse payer l'acompte : pages du Worker, formulaires et redirections", async ({ page, request }) => {
+  test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
   const problems = await watchPolicy(page);
   const booking = await seed(request, "awaiting");
   await page.goto(`/acompte/${booking.token}`);

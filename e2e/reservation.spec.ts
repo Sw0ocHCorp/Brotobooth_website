@@ -17,6 +17,7 @@ import {
   expectContact,
   fakeTurnstile,
   fillDetails,
+  hasDeposit,
   isBookable,
   isTurnstile,
   isoDate,
@@ -31,6 +32,8 @@ import {
   seed,
   servePage,
   showDay,
+  WITH_DEPOSIT,
+  WITHOUT_DEPOSIT,
   withSiteKey,
 } from "./seed";
 
@@ -77,6 +80,25 @@ async function expectKept(page: Page, who: ReturnType<typeof client>) {
 }
 
 test.afterEach(({ request }) => cleanup(request));
+
+/** La note sous le calendrier : ce que le client lit avant d'envoyer, selon que l'offre demande un acompte ou non. */
+const calendarNote = (page: Page) => page.locator("#step-1 .res-note").last();
+
+test("sans acompte, la note sous le calendrier dit qu'il n'y a rien à payer et que l'on règle le jour de l'événement", async ({ page }) => {
+  test.skip(hasDeposit(offer), WITH_DEPOSIT);
+  await page.goto("/reserver");
+  await expect(calendarNote(page)).toHaveText(
+    `Rien à payer maintenant. Une fois votre demande envoyée, nous gardons cette date pour vous et nous vous répondons sous ${offer.reviewHours} h. ` +
+      "Si nous pouvons être là, nous vous confirmons votre date par e-mail. Vous réglez le jour de votre événement.",
+  );
+  await expect(page.locator("main")).not.toContainText(/acompte|stripe/i);
+});
+
+test("avec acompte, la note sous le calendrier annonce le lien pour régler l'acompte", async ({ page }) => {
+  test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
+  await page.goto("/reserver");
+  await expect(calendarNote(page)).toContainText("vous recevez par e-mail un lien pour régler l'acompte");
+});
 
 test("le parcours complet", async ({ page, request }) => {
   await page.goto("/reserver");

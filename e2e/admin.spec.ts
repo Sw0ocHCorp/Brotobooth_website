@@ -2,7 +2,10 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
 import { currentTier, normalTier, priceOf, pricesBody, tierById, type PricesBody } from "../worker/offer";
-import { addDays, cleanup, depositFor, eraseContacts, euros, FIRST_PLAN, freeDate, launchBody, normalPrice, offer, ORIGIN, seed, type Kind } from "./seed";
+import {
+  addDays, cleanup, depositFor, eraseContacts, euros, FIRST_PLAN, freeDate, hasDeposit, launchBody, normalPrice, offer, ORIGIN, seed, WITH_DEPOSIT, WITHOUT_DEPOSIT,
+  type Kind,
+} from "./seed";
 
 test.afterEach(async ({ request }) => {
   await cleanup(request);
@@ -31,9 +34,13 @@ const settled = (page: Page) =>
     await Promise.all(document.getAnimations().map((animation) => animation.finished));
   });
 
+/** Une réservation qui tient sa date sans être confirmée : en attente d'acompte, ou, sans acompte, encore à valider. */
+const HOLDING_KIND: Kind = hasDeposit(offer) ? "awaiting" : "pending";
+
 const historyOf = (sheet: Locator) => sheet.getByRole("list", { name: "Historique" });
 
 test("traiter une demande depuis le téléphone", async ({ page, request, context, browserName }) => {
+  test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
   // Chromium sans fenêtre n'accorde pas le presse-papiers de lui-même ; il faut aussi pouvoir y relire le lien.
   if (browserName === "chromium") await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const booking = await seed(request, "pending");
@@ -98,6 +105,7 @@ test("refuser demande une confirmation", async ({ page, request }) => {
 });
 
 test("ajuster le prix recalcule l'acompte", async ({ page, request }) => {
+  test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
   const booking = await seed(request, "pending");
   // L'adresse du bouton « Ajuster le prix » du bot Telegram ouvre la fiche directement.
   await page.goto(`/admin#${booking.id}`);
@@ -135,7 +143,7 @@ test("ajuster le prix recalcule l'acompte", async ({ page, request }) => {
 test("le calendrier montre chaque état", async ({ page, request }) => {
   const states: [Kind, string][] = [
     ["pending", "À valider"],
-    ["awaiting", "Attente d'acompte"],
+    ...(hasDeposit(offer) ? [["awaiting", "Attente d'acompte"] as [Kind, string]] : []),
     ["confirmed", "Confirmée"],
     ["blocked", "Date bloquée"],
     ["refused", "Refusée"],
@@ -214,7 +222,7 @@ test("ajouter une réservation et bloquer une date", async ({ page, request }) =
   await expect(prix).toBeFocused();
   expect(await prix.evaluate((input: HTMLInputElement) => input.validationMessage)).toContain("Montant illisible");
   await prix.fill("1200");
-  await form.getByLabel("Acompte (€)").fill("300");
+  if (hasDeposit(offer)) await form.getByLabel("Acompte (€)").fill("300");
   await form.getByLabel("Notes").fill("Paiement du solde en espèces.");
   await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
 
@@ -222,7 +230,7 @@ test("ajouter une réservation et bloquer une date", async ({ page, request }) =
   const sheet = sheetOf(page, "Inès Lefèvre");
   await expect(sheet.getByText("Confirmée", { exact: true })).toBeVisible();
   await expect(sheet.getByText("1 200 €", { exact: true })).toBeVisible();
-  await expect(sheet.getByText("900 €", { exact: true })).toBeVisible();
+  if (hasDeposit(offer)) await expect(sheet.getByText("900 €", { exact: true })).toBeVisible();
   await expect(sheet.getByLabel("Notes")).toHaveValue("Paiement du solde en espèces.");
   await sheet.getByRole("button", { name: "Fermer" }).click();
   await showMonth(page, first);
@@ -263,6 +271,7 @@ test("marquer le solde comme réglé", async ({ page, request }) => {
 });
 
 test("l'historique nomme chaque modification en français", async ({ page, request }) => {
+  test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
   const booking = await seed(request, "awaiting");
   await page.goto(`/admin#${booking.id}`);
   const sheet = sheetOf(page, booking.name);
@@ -374,7 +383,7 @@ test("une fiche inconnue le dit", async ({ page }) => {
 
 test("les cibles tactiles font 44 px au moins", async ({ page, request }) => {
   const pending = await seed(request, "pending");
-  const awaiting = await seed(request, "awaiting");
+  const awaiting = await seed(request, HOLDING_KIND);
   const confirmed = await seed(request, "confirmed");
   await sendContact(request, "Lou Bernard");
   await page.goto("/admin");
@@ -401,7 +410,7 @@ test("aucun débordement horizontal à 375 px", async ({ page, request }) => {
 
   const long = "Camille-Anne-Sophie-de-la-Tour-d'Auvergne-Lefebvre-Montmorency-Beaumont-Delacroix";
   await sendContact(request, long);
-  const booking = await seed(request, "awaiting", { name: long, venue: "Domaine-de-la-Grande-Fontaine-des-Trois-Chênes-et-du-Moulin" });
+  const booking = await seed(request, HOLDING_KIND, { name: long, venue: "Domaine-de-la-Grande-Fontaine-des-Trois-Chênes-et-du-Moulin" });
   await page.goto("/admin");
   expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
@@ -417,7 +426,7 @@ test("aucun débordement horizontal à 375 px", async ({ page, request }) => {
 });
 
 test("aucune violation d'accessibilité détectée par axe", async ({ page, request }) => {
-  const awaiting = await seed(request, "awaiting");
+  const awaiting = await seed(request, HOLDING_KIND);
   await seed(request, "pending");
   await page.goto("/admin");
   await showMonth(page, awaiting.date);
@@ -512,7 +521,7 @@ test("le bandeau compte tout de suite la place prise par un ajout", async ({ pag
   await form.getByLabel("Date").fill(await freeDate(request));
   await form.getByLabel("Nom").fill("Inès Lefèvre");
   await form.getByLabel("Prix (€)").fill("1200");
-  await form.getByLabel("Acompte (€)").fill("300");
+  if (hasDeposit(offer)) await form.getByLabel("Acompte (€)").fill("300");
   await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
   await expect(sheetOf(page, "Inès Lefèvre")).toBeVisible();
   await sheetOf(page, "Inès Lefèvre").getByRole("button", { name: "Fermer" }).click();
@@ -545,6 +554,7 @@ test("le bandeau nomme le palier en cours", async ({ page, request }) => {
 });
 
 test("choisir une formule préremplit prix et acompte", async ({ page }) => {
+  test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
   await pricesAre(page, launchBody(5));
   await page.goto("/admin");
   const form = await addForm(page);
@@ -593,7 +603,7 @@ test("sans /api/prices, le formulaire préremplit au prix normal", async ({ page
   const form = await addForm(page);
   await form.getByLabel("Formule").selectOption(FIRST_PLAN.id);
   await expect(form.getByLabel("Prix (€)")).toHaveValue(typed(normalPrice(FIRST_PLAN)));
-  await expect(form.getByLabel("Acompte (€)")).toHaveValue(typed(depositFor(normalPrice(FIRST_PLAN))));
+  if (hasDeposit(offer)) await expect(form.getByLabel("Acompte (€)")).toHaveValue(typed(depositFor(normalPrice(FIRST_PLAN))));
 
   await form.getByLabel("Date").fill(await freeDate(request));
   await form.getByLabel("Nom").fill("Jules Bernard");
@@ -626,7 +636,7 @@ test("un palier rempli entre-temps est signalé", async ({ page }) => {
   await expect(form.getByRole("alert")).toHaveText("Le palier vient de changer : vérifiez le prix.");
   await expect(page.locator("#tier")).toHaveText(`Palier en cours : ${normalTier(offer).name}`);
   await expect(form.getByLabel("Prix (€)")).toHaveValue(typed(normalPrice(FIRST_PLAN)));
-  await expect(form.getByLabel("Acompte (€)")).toHaveValue(typed(depositFor(normalPrice(FIRST_PLAN))));
+  if (hasDeposit(offer)) await expect(form.getByLabel("Acompte (€)")).toHaveValue(typed(depositFor(normalPrice(FIRST_PLAN))));
 
   await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
   await expect.poll(() => bodies.length).toBe(2);
@@ -674,4 +684,65 @@ test("l'ajout porte le palier du prix proposé, pas celui que la page montre ens
   await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
   await expect.poll(() => bodies.length).toBe(1);
   expect(bodies[0].tier).toBe(offer.tiers[0].id);
+});
+
+// ---------- sans acompte ----------
+
+test.describe("sans acompte", () => {
+  test.beforeEach(() => test.skip(hasDeposit(offer), WITH_DEPOSIT));
+
+  test("accepter une demande la confirme, sans étape d'acompte", async ({ page, request }) => {
+    const booking = await seed(request, "pending");
+    await page.goto(`/admin#${booking.id}`);
+    const sheet = sheetOf(page, booking.name);
+    await sheet.getByRole("button", { name: "Valider" }).click();
+
+    await expect(sheet.getByText("Confirmée", { exact: true }).first()).toBeVisible();
+    await expect(sheet.getByText("Attente d'acompte")).toHaveCount(0);
+    await expect(sheet.getByLabel("Lien de paiement")).toHaveCount(0);
+    await expect(sheet.getByRole("button", { name: "Renvoyer le lien" })).toHaveCount(0);
+    await expect(sheet.getByText("Acompte", { exact: true })).toHaveCount(0);
+    // L'historique dit « Confirmée », jamais l'identifiant du Worker.
+    await expect(historyOf(sheet).getByRole("listitem")).toHaveText([/Demande reçue/, /Confirmée.*Vous/]);
+    await expect(historyOf(sheet)).not.toContainText("confirmed");
+    await expect(page.locator("#todo").getByText("Acompte attendu")).toHaveCount(0);
+  });
+
+  test("les formulaires n'ont pas de champ « Acompte (€) », et la fiche pas de ligne « Acompte »", async ({ page, request }) => {
+    const booking = await seed(request, "pending");
+    await page.goto(`/admin#${booking.id}`);
+    const sheet = sheetOf(page, booking.name);
+    await expect(page.locator("#todo").getByText("Acompte attendu")).toHaveCount(0);
+
+    await sheet.getByRole("button", { name: "Ajuster le prix" }).click();
+    const price = page.getByRole("dialog", { name: "Ajuster le prix" });
+    await expect(price.getByLabel("Prix (€)")).toBeVisible();
+    await expect(price.getByLabel("Acompte (€)")).toHaveCount(0);
+    await price.getByLabel("Prix (€)").fill("900");
+    await price.getByRole("button", { name: "Enregistrer le prix" }).click();
+    await expect(price).toBeHidden();
+    await expect(sheet.getByText("900 €", { exact: true })).toBeVisible();
+    await expect(sheet.getByText("Acompte", { exact: true })).toHaveCount(0);
+    await sheet.getByRole("button", { name: "Fermer" }).click();
+
+    const form = await addForm(page);
+    await expect(form.getByLabel("Acompte (€)")).toHaveCount(0);
+    await expect(form.getByLabel("Formule")).toHaveAccessibleDescription("Propose le prix du palier en cours ; vous pouvez le modifier.");
+    await form.getByLabel("Date").fill(await freeDate(request));
+    await form.getByLabel("Nom").fill("Inès Lefèvre");
+    await form.getByLabel("Prix (€)").fill("1200");
+    await form.getByRole("button", { name: "Enregistrer la réservation" }).click();
+    const added = sheetOf(page, "Inès Lefèvre");
+    await expect(added.getByText("Confirmée", { exact: true })).toBeVisible();
+    await expect(added.getByText("1 200 €", { exact: true })).toBeVisible();
+    await expect(added.getByText("Acompte", { exact: true })).toHaveCount(0);
+  });
+
+  test("choisir une formule préremplit le prix seul", async ({ page }) => {
+    await pricesAre(page, launchBody(5));
+    await page.goto("/admin");
+    const form = await addForm(page);
+    await form.getByLabel("Formule").selectOption(FIRST_PLAN.id);
+    await expect(form.getByLabel("Prix (€)")).toHaveValue(typed(priceOf(offer.tiers[0], FIRST_PLAN.id)));
+  });
 });

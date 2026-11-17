@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { cleanup, client, depositFor, euros, fillDetails, ORIGIN, reachDetails, showDay } from "./seed";
+import { cleanup, client, depositFor, euros, fillDetails, hasDeposit, offer, ORIGIN, reachDetails, showDay, WITH_DEPOSIT, WITHOUT_DEPOSIT } from "./seed";
 
 /** Une réservation de bout en bout, comme le ferait le propriétaire en essayant le site (docs/essai-local.md). */
 
@@ -9,6 +9,7 @@ test.afterEach(({ request }) => cleanup(request));
 const DEPOSIT = euros(depositFor(90_000));
 
 test("une réservation de bout en bout", async ({ page, browser, viewport }) => {
+  test.skip(!hasDeposit(offer), WITHOUT_DEPOSIT);
   const who = { ...client(), name: "Léa Bernard" };
 
   // 1. Le client demande sa date sur /reserver.
@@ -69,5 +70,47 @@ test("une réservation de bout en bout", async ({ page, browser, viewport }) => 
   await expect(day).toBeDisabled();
   await expect(day).toHaveCSS("text-decoration-line", "line-through");
   await expect(day).toHaveAccessibleName(/, déjà réservée$/);
+  await visitor.close();
+});
+
+test("une réservation de bout en bout, sans acompte", async ({ page, browser, viewport }) => {
+  test.skip(hasDeposit(offer), WITH_DEPOSIT);
+  const who = { ...client(), name: "Léa Bernard" };
+
+  // 1. Le client demande sa date sur /reserver.
+  const date = await reachDetails(page);
+  await fillDetails(page, who);
+  await page.getByRole("button", { name: "Envoyer ma demande" }).click();
+  await expect(page.getByRole("heading", { name: "Merci, votre demande est envoyée !" })).toBeVisible();
+
+  // 2. Le propriétaire valide la demande : elle est confirmée, sans étape d'acompte.
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: new RegExp(who.name) }).click();
+  const sheet = page.getByRole("dialog", { name: who.name });
+  await expect(sheet.getByText("À valider", { exact: true })).toBeVisible();
+  const id = new URL(page.url()).hash.slice(1);
+  await sheet.getByRole("button", { name: "Valider" }).click();
+  await expect(sheet.getByText("Confirmée", { exact: true }).first()).toBeVisible();
+  await expect(sheet.getByText("Attente d'acompte")).toHaveCount(0);
+  await expect(sheet.getByLabel("Lien de paiement")).toHaveCount(0);
+  await expect(sheet.getByRole("list", { name: "Historique" }).getByRole("listitem")).toHaveText([/Demande reçue/, /Confirmée/]);
+
+  // 3. Le message au client confirme sa date, sans lien de paiement ni acompte.
+  const message = page.locator("article.card").filter({ hasText: who.email }).filter({ hasText: "Votre date est confirmée." });
+  await expect(async () => {
+    await page.goto("/demo");
+    await expect(message).toBeVisible({ timeout: 1_000 });
+  }).toPass();
+  await expect(message).toContainText("Prix, à régler le jour de votre événement");
+  await expect(message).not.toContainText(/acompte/i);
+  await expect(message.getByRole("link", { name: new RegExp(`${ORIGIN}/acompte/`) })).toHaveCount(0);
+
+  // 4. La date est barrée sur /reserver pour le visiteur suivant.
+  await page.goto(`/admin/#${id}`);
+  const visitor = await browser.newContext({ viewport });
+  const other = await visitor.newPage();
+  await other.goto("/reserver");
+  const day = await showDay(other, date);
+  await expect(day).toBeDisabled();
   await visitor.close();
 });
