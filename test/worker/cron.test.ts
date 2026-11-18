@@ -528,6 +528,20 @@ describe("runCron", () => {
       expect((await current(refused)).anonymized_at !== null).toBe(anonymized);
     });
 
+    // La politique de confidentialité garde une réservation confirmée « pendant 5 ans après votre événement ».
+    it.each([
+      ["5 ans jour pour jour après l'événement", "2031-12-26T10:00:00.000Z", false],
+      ["le lendemain", "2031-12-27T10:00:00.000Z", true],
+    ])("une prestation confirmée, %s", async (_when, iso, anonymized) => {
+      const { confirmed } = await seed();
+      deps.setNow(iso);
+      await runCron(deps);
+      const after = await current(confirmed);
+      expect(after.anonymized_at).toBe(anonymized ? iso : null);
+      expect(after.client_name === null).toBe(anonymized);
+      expect(after.client_phone === null).toBe(anonymized);
+    });
+
     it("ne repasse qu'une fois par jour de Paris", async () => {
       await seed();
       deps.setNow("2027-11-09T10:00:00.000Z");

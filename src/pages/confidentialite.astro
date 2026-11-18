@@ -1,6 +1,7 @@
 ---
 import Fact from "../components/Fact.astro";
 import Legal from "../layouts/Legal.astro";
+import { EVENT_RETENTION_YEARS } from "../../worker/bookings";
 import { hasDeposit, offer } from "../../worker/offer";
 
 const { email } = offer.contact;
@@ -25,7 +26,7 @@ const providers = [
     : []),
   {
     name: "Resend",
-    text: `envoie nos e-mails : le récapitulatif de votre demande, ${withDeposit ? "le lien de paiement de l'acompte" : "la confirmation de votre date"} et les rappels. Il reçoit votre adresse e-mail et le contenu des messages, et les traite dans l'Union européenne. Il nous transmet aussi, par e-mail, les messages que vous nous écrivez par le formulaire de contact.`,
+    text: `envoie nos e-mails : le récapitulatif de votre demande, ${withDeposit ? "le lien de paiement de l'acompte" : "la confirmation de votre date"} et les rappels. Il reçoit votre adresse e-mail et le contenu des messages. Il nous transmet aussi, par e-mail, les messages que vous nous écrivez par le formulaire de contact.`,
   },
   {
     name: "Telegram",
@@ -95,7 +96,11 @@ const COUNT_WORD = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "se
         le lieu, les horaires et la version brouillée de votre adresse IP sont effacés automatiquement au bout de 12 mois. Il ne reste alors ni nom ni
         coordonnées, seulement la date, la formule et les montants.
       </li>
-      <li>Une réservation confirmée : <Fact />.</li>
+      <li>
+        Une réservation confirmée : nous gardons vos coordonnées et les détails de votre réservation pendant {EVENT_RETENTION_YEARS} ans après votre
+        événement, le délai pendant lequel vous ou nous pouvons faire valoir nos droits. Ils sont ensuite effacés automatiquement, comme
+        ci-dessus. La facture de votre prestation est conservée 10 ans, comme la loi l'exige pour les pièces comptables.
+      </li>
     </ul>
     <p>Pour un message envoyé par le formulaire de contact, voir <a href="#contact">la rubrique Contact</a> plus bas.</p>
   </section>
@@ -106,7 +111,12 @@ const COUNT_WORD = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "se
     <ul>
       {providers.map(({ name, text }) => <li><strong>{name}</strong> {text}</li>)}
     </ul>
-    <p>Certains de ces prestataires peuvent traiter des données hors de l'Union européenne. Les garanties qui encadrent ces transferts : <Fact />.</p>
+    <p>
+      Certains de ces prestataires peuvent traiter des données hors de l'Union européenne, notamment aux États-Unis. Ces transferts sont encadrés
+      par le cadre de protection des données entre l'Union européenne et les États-Unis (Data Privacy Framework), auquel adhèrent Cloudflare et
+      Google, et par les clauses contractuelles types de la Commission européenne, sur lesquelles s'appuient Resend et, au sein de son groupe,
+      Telegram, qui indique conserver aux Pays-Bas les données des comptes ouverts dans l'Union européenne.
+    </p>
   </section>
 
   <section aria-labelledby="photos">
@@ -141,8 +151,7 @@ const COUNT_WORD = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "se
       </li>
       <li>
         <strong>Qui les reçoit</strong>&nbsp;: Brotobooth seul. Cloudflare héberge le site et la base de données qui garde votre message,
-        dans l'Union européenne, et fournit la vérification anti-robots&nbsp;; Resend nous transmet votre message par e-mail, depuis
-        l'Union européenne&nbsp;; Gmail (Google) reçoit votre message dans la messagerie de Brotobooth. Telegram n'en reçoit rien.
+        dans l'Union européenne, et fournit la vérification anti-robots&nbsp;; Resend nous transmet votre message par e-mail&nbsp;; Gmail (Google) reçoit votre message dans la messagerie de Brotobooth. Telegram n'en reçoit rien.
       </li>
     </ul>
     <p>Pour lire votre message ou le faire effacer plus tôt, écrivez-nous&nbsp;: nous vous y donnons accès et nous l'effaçons sur demande. Vos autres droits, dont la rectification, sont détaillés plus bas.</p>

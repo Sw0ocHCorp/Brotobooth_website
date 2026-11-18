@@ -718,6 +718,10 @@ describe("état du système", () => {
 describe("anonymizeOld", () => {
   const THIRTEEN_MONTHS_AGO = "2025-10-07T10:00:00.000Z";
   const CUTOFF = "2025-11-07T10:00:00.000Z";
+  /** Une limite d'événement que nul n'atteint : seule la règle des 12 mois joue. */
+  const NO_EVENT = "1900-01-01";
+  const erase = (requestsBefore: string, nowIso: string, eventsBefore = NO_EVENT) =>
+    anonymizeOld(env.DB, { requestsBefore, eventsBefore }, nowIso);
   const seed = async (status: BookingStatus, day: string, createdAt = THIRTEEN_MONTHS_AGO, over: Partial<NewBooking> = {}) => {
     const nb = newBooking({ status, event_date: day, ...over });
     const r = await insertBooking(env.DB, nb, [], createdAt);
@@ -740,7 +744,7 @@ describe("anonymizeOld", () => {
     const expired = await seed("expired", "2026-12-02");
     const confirmed = await seed("confirmed", "2026-12-03");
 
-    expect(await anonymizeOld(env.DB, CUTOFF, T0)).toBe(2);
+    expect(await erase(CUTOFF, T0)).toBe(2);
 
     for (const before of [refused, expired]) {
       const after = (await getBooking(env.DB, before.id))!;
@@ -756,7 +760,7 @@ describe("anonymizeOld", () => {
     const unpaid = await seed("cancelled", "2026-12-02");
     const paid = await seed("cancelled", "2026-12-04", THIRTEEN_MONTHS_AGO, { deposit_paid_at: THIRTEEN_MONTHS_AGO });
 
-    expect(await anonymizeOld(env.DB, CUTOFF, T0)).toBe(1);
+    expect(await erase(CUTOFF, T0)).toBe(1);
 
     expect(await getBooking(env.DB, unpaid.id)).toEqual({ ...unpaid, ...PERSONAL, anonymized_at: T0 });
     expect(await getBooking(env.DB, paid.id)).toEqual(paid);
@@ -771,13 +775,13 @@ describe("anonymizeOld", () => {
     const cutoffOf = (today: string) => `${Number(today.slice(0, 4)) - 1}${today.slice(4)}T10:00:00.000Z`;
 
     // Le lendemain de l'annulation, jusqu'au dernier jour avant le douzième mois : seule la demande refusée part.
-    expect(await anonymizeOld(env.DB, cutoffOf("2027-12-02"), "2027-12-02T10:00:00.000Z")).toBe(1);
+    expect(await erase(cutoffOf("2027-12-02"), "2027-12-02T10:00:00.000Z")).toBe(1);
     expect(await getBooking(env.DB, booked.id)).toEqual({ ...booked, updated_at: cancelledAt });
     expect((await getBooking(env.DB, refused.id))!.anonymized_at).not.toBeNull();
-    expect(await anonymizeOld(env.DB, cutoffOf("2028-11-30"), "2028-11-30T10:00:00.000Z")).toBe(0);
+    expect(await erase(cutoffOf("2028-11-30"), "2028-11-30T10:00:00.000Z")).toBe(0);
     expect((await getBooking(env.DB, booked.id))!.anonymized_at).toBeNull();
 
-    expect(await anonymizeOld(env.DB, cutoffOf("2028-12-02"), "2028-12-02T10:00:00.000Z")).toBe(1);
+    expect(await erase(cutoffOf("2028-12-02"), "2028-12-02T10:00:00.000Z")).toBe(1);
     expect(await getBooking(env.DB, booked.id)).toMatchObject({ ...PERSONAL, anonymized_at: "2028-12-02T10:00:00.000Z" });
   });
 
@@ -788,7 +792,7 @@ describe("anonymizeOld", () => {
     const awaiting = await seed("awaiting_deposit", "2026-12-05");
     const edge = await seed("expired", "2026-12-04", CUTOFF);
 
-    expect(await anonymizeOld(env.DB, CUTOFF, T0)).toBe(0);
+    expect(await erase(CUTOFF, T0)).toBe(0);
 
     for (const before of [recent, recentCancelled, pending, awaiting, edge]) {
       expect(await getBooking(env.DB, before.id)).toEqual(before);
@@ -800,15 +804,38 @@ describe("anonymizeOld", () => {
     await patchBooking(env.DB, refused.id, { notes: "Rappelée." }, "owner", "noted", T0);
     expect((await getBooking(env.DB, refused.id))!.updated_at).toBe(T0);
 
-    expect(await anonymizeOld(env.DB, CUTOFF, T0)).toBe(1);
+    expect(await erase(CUTOFF, T0)).toBe(1);
 
     expect(await getBooking(env.DB, refused.id)).toMatchObject({ ...PERSONAL, anonymized_at: T0, updated_at: T0 });
   });
 
+  // La politique de confidentialité : « pendant 5 ans après votre événement », puis l'effacement automatique.
+  it("efface une prestation confirmée une fois passée la limite de son événement, pas le jour de la limite", async () => {
+    const old = await seed("confirmed", "2021-11-06", "2021-06-01T10:00:00.000Z");
+    const edge = await seed("confirmed", "2021-11-07", "2021-06-01T10:00:00.000Z");
+
+    // Aucune demande n'est assez ancienne pour la règle des 12 mois : seule la date de l'événement joue.
+    expect(await erase("1900-01-01T00:00:00.000Z", T0, "2021-11-07")).toBe(1);
+
+    expect(await getBooking(env.DB, old.id)).toEqual({ ...old, ...PERSONAL, anonymized_at: T0 });
+    expect(await getBooking(env.DB, edge.id)).toEqual(edge);
+  });
+
+  it("efface de même une annulation après acompte payé et les notes d'une date bloquée", async () => {
+    const paid = await seed("cancelled", "2021-11-05", "2021-06-01T10:00:00.000Z", { deposit_paid_at: "2021-06-02T10:00:00.000Z" });
+    const blocked = await seed("blocked", "2021-11-04", "2021-06-01T10:00:00.000Z", { notes: "Mariage de Léa." });
+
+    expect(await erase("1900-01-01T00:00:00.000Z", T0, "2021-11-07")).toBe(2);
+
+    for (const before of [paid, blocked]) {
+      expect(await getBooking(env.DB, before.id)).toEqual({ ...before, ...PERSONAL, anonymized_at: T0 });
+    }
+  });
+
   it("ne repasse pas sur une ligne déjà anonymisée", async () => {
     const refused = await seed("refused", "2026-12-01");
-    expect(await anonymizeOld(env.DB, CUTOFF, T0)).toBe(1);
-    expect(await anonymizeOld(env.DB, CUTOFF, "2026-11-08T10:00:00.000Z")).toBe(0);
+    expect(await erase(CUTOFF, T0)).toBe(1);
+    expect(await erase(CUTOFF, "2026-11-08T10:00:00.000Z")).toBe(0);
     expect((await getBooking(env.DB, refused.id))!.anonymized_at).toBe(T0);
   });
 });
@@ -857,7 +884,7 @@ describe("le palier d'une réservation", () => {
   it("anonymizeOld keeps the tier and the refill price", async () => {
     const nb = newBooking({ status: "refused", price_tier: "t1", refill_cents: 700 });
     await insertBooking(env.DB, nb, [], "2025-10-07T10:00:00.000Z");
-    expect(await anonymizeOld(env.DB, "2025-11-07T10:00:00.000Z", T0)).toBe(1);
+    expect(await anonymizeOld(env.DB, { requestsBefore: "2025-11-07T10:00:00.000Z", eventsBefore: "1900-01-01" }, T0)).toBe(1);
     expect(await getBooking(env.DB, nb.id)).toMatchObject({ price_tier: "t1", refill_cents: 700 });
     expect(await countTakenByTier(env.DB)).toEqual({ t1: 1 });
   });

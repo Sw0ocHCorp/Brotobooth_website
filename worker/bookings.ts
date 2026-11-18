@@ -19,6 +19,13 @@ export const ACTIVE_STATUSES: readonly BookingStatus[] = [
   "blocked",
 ];
 
+/**
+ * Les données personnelles d'une réservation sont effacées 5 ans après son événement, quel que soit son état : le délai
+ * pendant lequel un litige peut naître du contrat (article 2224 du Code civil). La tâche automatique l'applique
+ * (`worker/cron.ts`) et la politique de confidentialité l'annonce.
+ */
+export const EVENT_RETENTION_YEARS = 5;
+
 const TRANSITIONS: Record<BookingStatus, Partial<Record<BookingAction, BookingStatus>>> = {
   pending_review: { validate: "awaiting_deposit", refuse: "refused", expire: "expired" },
   awaiting_deposit: { pay: "confirmed", expire: "expired", cancel: "cancelled" },

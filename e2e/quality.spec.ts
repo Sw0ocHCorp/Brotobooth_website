@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
 import { cleanup, hasDeposit, offer, reachDetails, seed, WITH_DEPOSIT, WITHOUT_DEPOSIT } from "./seed";
 import { MEDIATOR } from "../src/legal";
+import { EVENT_RETENTION_YEARS } from "../worker/bookings";
 
 /** Les pages légales, le référencement et les en-têtes de sécurité (spec, sections 7, 9 et 10). */
 
@@ -213,13 +214,31 @@ test.describe("pages légales", () => {
 
   test("la confidentialité donne la durée de conservation, les droits et Turnstile", async ({ page }) => {
     await page.goto("/confidentialite");
-    await expect(page.getByRole("region", { name: "Combien de temps nous les gardons" })).toContainText("12 mois");
+    const retention = page.getByRole("region", { name: "Combien de temps nous les gardons" });
+    await expect(retention).toContainText("12 mois");
+    // La durée annoncée est celle qu'applique la tâche automatique (`EVENT_RETENTION_YEARS`).
+    await expect(retention).toContainText(
+      `Une réservation confirmée : nous gardons vos coordonnées et les détails de votre réservation pendant ${EVENT_RETENTION_YEARS} ans après votre événement, le délai pendant lequel vous ou nous pouvons faire valoir nos droits. Ils sont ensuite effacés automatiquement, comme ci-dessus. La facture de votre prestation est conservée 10 ans, comme la loi l'exige pour les pièces comptables.`,
+    );
     // L'adresse IP n'est gardée que brouillée, dit sans vocabulaire de développeur.
     await expect(page.getByRole("main")).toContainText("une version brouillée de votre adresse IP");
     await expect(page.getByRole("main")).not.toContainText(/empreinte|secret/);
     await expect(page.getByRole("region", { name: "Vos droits" })).toContainText(/CNIL/);
     await expect(page.getByRole("region", { name: "Vérification anti-robots" })).toContainText("Turnstile");
     await expect(page.getByRole("region", { name: "Cookies" })).toContainText("aucun cookie");
+  });
+
+  test("la confidentialité dit ce qui encadre les transferts hors de l'Union européenne, et ne situe plus Resend dans l'Union", async ({ page }) => {
+    await page.goto("/confidentialite");
+    const recipients = page.getByRole("region", { name: "Qui reçoit vos données" });
+    await expect(recipients).toContainText(
+      "Certains de ces prestataires peuvent traiter des données hors de l'Union européenne, notamment aux États-Unis. Ces transferts sont encadrés par le cadre de protection des données entre l'Union européenne et les États-Unis (Data Privacy Framework), auquel adhèrent Cloudflare et Google, et par les clauses contractuelles types de la Commission européenne, sur lesquelles s'appuient Resend et, au sein de son groupe, Telegram, qui indique conserver aux Pays-Bas les données des comptes ouverts dans l'Union européenne.",
+    );
+    // Resend envoie depuis l'Europe, mais garde les données de son compte aux États-Unis (son contrat et sa documentation).
+    await expect(recipients.getByRole("listitem").filter({ hasText: "Resend" })).not.toContainText("Union européenne");
+    await expect(page.getByRole("region", { name: "Le formulaire de contact" })).not.toContainText("depuis l'Union européenne");
+    // Plus aucun fait à compléter sur la page.
+    await expect(page.getByRole("main")).not.toContainText(TODO);
   });
 
   test("les mentions légales disent qui édite le site, et un fait manquant porte le marqueur", async ({ page }) => {

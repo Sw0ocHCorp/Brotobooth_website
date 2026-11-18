@@ -1,4 +1,4 @@
-import { addMonths, nextStatus, parisHour, parisToday, parisWeekday } from "./bookings";
+import { addMonths, EVENT_RETENTION_YEARS, nextStatus, parisHour, parisToday, parisWeekday } from "./bookings";
 import { DAY_MS } from "./contact";
 import type { Deps } from "./deps";
 import { processDue } from "./notifications";
@@ -88,15 +88,23 @@ export async function enqueueWeeklyDigest(deps: Deps): Promise<void> {
 /** L'instant `months` mois avant `nowIso`, à la même heure. */
 export const monthsBefore = (nowIso: string, months: number): string => `${addMonths(nowIso.slice(0, 10), -months)}${nowIso.slice(10)}`;
 
-/** Efface les données personnelles des demandes restées sans suite de plus de 12 mois, au plus une fois par jour de Paris. */
-async function anonymizeExpiredRequests(deps: Deps): Promise<void> {
+/**
+ * Efface, au plus une fois par jour de Paris, les données personnelles des demandes restées sans suite de plus de 12 mois
+ * et de toute réservation dont l'événement date de plus de 5 ans (`EVENT_RETENTION_YEARS`) : le jour anniversaire de
+ * l'événement, la réservation est encore entière.
+ */
+async function anonymizeOldBookings(deps: Deps): Promise<void> {
   const db = deps.env.DB;
   const now = deps.now();
   const today = parisToday(now);
   if ((await getState(db, LAST_ANONYMIZE_KEY)) === today) return;
 
   const nowIso = now.toISOString();
-  await anonymizeOld(db, monthsBefore(nowIso, RETENTION_MONTHS), nowIso);
+  await anonymizeOld(
+    db,
+    { requestsBefore: monthsBefore(nowIso, RETENTION_MONTHS), eventsBefore: addMonths(today, -12 * EVENT_RETENTION_YEARS) },
+    nowIso,
+  );
   await setState(db, LAST_ANONYMIZE_KEY, today);
 }
 
@@ -115,7 +123,7 @@ const STEPS: readonly (readonly [name: string, run: (deps: Deps) => Promise<unkn
   ["Libération des dates", releaseDueHolds],
   ["Point du lundi", enqueueWeeklyDigest],
   ["Envoi des messages", processDue],
-  ["Anonymisation", anonymizeExpiredRequests],
+  ["Anonymisation", anonymizeOldBookings],
   ["Effacement des messages de contact", purgeExpiredContactMessages],
 ];
 

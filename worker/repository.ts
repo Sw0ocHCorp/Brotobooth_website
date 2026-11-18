@@ -106,7 +106,7 @@ const PERSONAL_COLUMNS = [
 /** Demandes en cours : à valider ou en attente d'acompte. */
 const IN_PROGRESS_STATUSES: readonly BookingStatus[] = ["pending_review", "awaiting_deposit"];
 
-/** Refus et expirations, anonymisés avec le temps ; une annulation ne l'est que sans acompte payé, et compte ses 12 mois depuis l'annulation (`anonymizeOld`). */
+/** Refus et expirations, anonymisés 12 mois après leur création ; une annulation sans acompte payé l'est 12 mois après elle, et toute autre réservation 5 ans après son événement (`anonymizeOld`). */
 const ANONYMIZED_STATUSES: readonly BookingStatus[] = ["refused", "expired"];
 
 /** 24 h de reprises toutes les 5 minutes. */
@@ -407,22 +407,31 @@ export const getHistory = (db: D1Database, id: string): Promise<HistoryRow[]> =>
   rows<HistoryRow>(db.prepare("SELECT * FROM booking_history WHERE booking_id = ? ORDER BY id").bind(id));
 
 /**
- * Efface les données personnelles des demandes restées sans suite (refusées ou expirées, créées avant `beforeIso`) et
- * des annulations sans acompte payé (dernière modification avant `beforeIso`, soit l'annulation : une réservation prise
- * longtemps à l'avance n'est pas effacée au lendemain de son annulation), une seule fois par ligne, et date l'opération
- * à `nowIso`. Une annulation après paiement reste entière. Pour un refus ou une expiration, le délai court depuis la
- * création : modifier une demande ne prolonge pas la conservation. Renvoie le nombre de lignes anonymisées.
+ * Efface les données personnelles, une seule fois par ligne, et date l'opération à `nowIso` :
+ * - des demandes restées sans suite (refusées ou expirées) créées avant `requestsBefore` : le délai court depuis la
+ *   création, modifier une demande ne prolonge pas la conservation ;
+ * - des annulations sans acompte payé, modifiées pour la dernière fois avant `requestsBefore`, soit à l'annulation : une
+ *   réservation prise longtemps à l'avance n'est pas effacée au lendemain de son annulation ;
+ * - de toute réservation dont l'événement (`event_date`, `AAAA-MM-JJ`) est antérieur à `eventsBefore`, quel que soit son
+ *   état : une prestation confirmée, une annulation après paiement, les notes d'une date bloquée.
+ * Renvoie le nombre de lignes anonymisées.
  */
-export async function anonymizeOld(db: D1Database, beforeIso: string, nowIso: string): Promise<number> {
+export async function anonymizeOld(
+  db: D1Database,
+  { requestsBefore, eventsBefore }: { requestsBefore: string; eventsBefore: string },
+  nowIso: string,
+): Promise<number> {
   const erase = PERSONAL_COLUMNS.map((column) => `${column} = NULL`).join(", ");
   const statuses = inList(ANONYMIZED_STATUSES);
   const result = await db
     .prepare(
       `UPDATE bookings SET ${erase}, anonymized_at = ?
        WHERE anonymized_at IS NULL
-         AND ((status IN ${statuses.sql} AND created_at < ?) OR (status = ? AND deposit_paid_at IS NULL AND updated_at < ?))`,
+         AND ((status IN ${statuses.sql} AND created_at < ?)
+           OR (status = ? AND deposit_paid_at IS NULL AND updated_at < ?)
+           OR event_date < ?)`,
     )
-    .bind(nowIso, ...statuses.params, beforeIso, "cancelled" satisfies BookingStatus, beforeIso)
+    .bind(nowIso, ...statuses.params, requestsBefore, "cancelled" satisfies BookingStatus, requestsBefore, eventsBefore)
     .run();
   return result.meta.changes;
 }
