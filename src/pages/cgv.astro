@@ -1,7 +1,7 @@
 ---
 import Fact from "../components/Fact.astro";
 import Legal from "../layouts/Legal.astro";
-import { BUSINESS } from "../legal";
+import { BUSINESS, MEDIATOR } from "../legal";
 import { finalDepositPercent, hasDeposit, offer } from "../../worker/offer";
 
 /** Le pourcentage d'acompte n'est donné qu'une fois l'offre définitive (`draft` à `false`) : avant, le marqueur le remplace. */
@@ -172,7 +172,8 @@ const version = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long"
     <h2 id="mediation">Médiation</h2>
     <p>
       En cas de désaccord, écrivez-nous d'abord : nous cherchons une solution avec vous. Si elle ne vous convient pas, vous pouvez saisir
-      gratuitement le médiateur de la consommation dont nous relevons : <Fact />.
+      gratuitement le médiateur de la consommation dont nous relevons : le <Fact value={MEDIATOR.name} />, en ligne
+      sur <Fact value={new URL(MEDIATOR.website).hostname} href={MEDIATOR.website} /> ou par courrier au <Fact value={MEDIATOR.address} />.
     </p>
   </section>
 

@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { hasNoHorizontalOverflow, smallTargets } from "./layout";
 import { cleanup, hasDeposit, offer, reachDetails, seed, WITH_DEPOSIT, WITHOUT_DEPOSIT } from "./seed";
+import { MEDIATOR } from "../src/legal";
 
 /** Les pages légales, le référencement et les en-têtes de sécurité (spec, sections 7, 9 et 10). */
 
@@ -120,7 +121,12 @@ test.describe("pages légales", () => {
       await expect(page.getByRole("region", { name: "Annulation par vous" })).toContainText("l'acompte reste acquis à Brotobooth et ne vous est pas remboursé");
     }
     await expect(page.getByRole("region", { name: "Annulation par Brotobooth" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Médiation" })).toContainText("médiateur de la consommation");
+    // Le médiateur dont nous relevons, avec son adresse postale et celle de son site (art. R616-1 du Code de la consommation).
+    const mediation = page.getByRole("region", { name: "Médiation" });
+    const website = new URL(MEDIATOR.website).hostname;
+    await expect(mediation).toContainText(`médiateur de la consommation dont nous relevons : le ${MEDIATOR.name}, en ligne sur ${website} ou par courrier au ${MEDIATOR.address}.`);
+    await expect(mediation.getByRole("link", { name: website })).toHaveAttribute("href", MEDIATOR.website);
+    await expect(mediation).not.toContainText(TODO);
     // Les photos se récupèrent par QR code pendant l'événement ; Brotobooth n'en garde rien.
     await expect(page.getByRole("region", { name: "Les photos" })).toContainText("Brotobooth ne conserve ni les photos ni les messages vidéo");
     await page.goto("/confidentialite");
