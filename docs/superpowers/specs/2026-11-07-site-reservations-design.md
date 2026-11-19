@@ -67,7 +67,7 @@ La borne, son projet Supabase, son bot Telegram et sa page de monitoring sur Net
 | `GET /agenda/<jeton>.ics` | Flux d'agenda privé | Jeton long |
 | `/acompte/<jeton>/simulation` | Paiement factice | Uniquement en mode simulé |
 | `GET /demo` | Lecture des messages qui auraient été envoyés | Uniquement avec les fausses passerelles |
-| `/admin` et `/api/admin/*` | Administration | Cloudflare Access, vérifié aussi par le Worker via `ctx.access` et le public attendu |
+| `/admin` et `/api/admin/*` | Administration | Cloudflare Access, vérifié aussi par le Worker : jeton signé d'Access (`Cf-Access-Jwt-Assertion`) et public attendu, `ctx.access` n'étant pas transmis à un Worker servi avec des fichiers statiques (corrigé le 2026-11-20) |
 
 ### Organisation du code
 
@@ -322,7 +322,7 @@ Tous viennent de `/home/sw0och/Spot_pub_Brotobooth` et du dossier `brand/` :
 
 - **Secrets :** clés Stripe, Resend, jeton Telegram et jeton d'agenda en `wrangler secret`, jamais dans le dépôt.
 - **Entrées :** validation côté Worker de chaque champ, avec une longueur maximale. Échappement dans les e-mails, dans Telegram et dans le flux d'agenda.
-- **Authentification :** signature Stripe, en-tête secret et liste de chats pour Telegram, Cloudflare Access revérifié par le Worker (`ctx.access` et public attendu). Pas de mot de passe à gérer.
+- **Authentification :** signature Stripe, en-tête secret et liste de chats pour Telegram, Cloudflare Access revérifié par le Worker (jeton signé d'Access, ou `ctx.access` là où Cloudflare le transmet, et public attendu). Pas de mot de passe à gérer.
 - **En-têtes :** politique de sécurité du contenu sur les pages statiques et dynamiques.
 - **Journaux :** aucune donnée personnelle dans les journaux.
 - **Minimisation :** seules les données utiles à la prestation sont demandées. L'adresse IP n'est conservée que sous forme d'empreinte salée, et seulement pour les limites.

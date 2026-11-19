@@ -289,7 +289,7 @@ function refuseForeignWrite(req: Request, deps: Deps): Response | null {
 
 /** Le propriétaire d'abord : sans lui, rien ne dit même si la route existe. `path` est le chemin de la requête. */
 export async function adminApi(req: Request, deps: Deps, ctx: ExecutionContext, path: string): Promise<Response> {
-  if (!deps.isOwner(ctx)) return json({ error: "forbidden" }, 403);
+  if (!(await deps.isOwner(req, ctx))) return json({ error: "forbidden" }, 403);
   const found = findRoute(ROUTES, req.method, path);
   if (found instanceof Response) return found;
   if (req.method !== "GET") {

@@ -1,3 +1,4 @@
+import { ACCESS_JWT_HEADER, accessVerifier } from "./access";
 import { demoGateways, withDemoRecipients } from "./demo";
 import { resendGateway } from "./email";
 import type { Env } from "./env";
@@ -52,7 +53,8 @@ export type Deps = {
   email: EmailGateway;
   telegram: TelegramGateway;
   verifyTurnstile(token: string, ip: string | null): Promise<"pass" | "fail" | "unavailable">;
-  isOwner(ctx: ExecutionContext): boolean;
+  /** La requête vient du propriétaire, connecté par Cloudflare Access. Asynchrone : la signature de son jeton se vérifie. */
+  isOwner(req: Request, ctx: ExecutionContext): Promise<boolean>;
 };
 
 /** Une méthode de passerelle pas encore branchée : elle lève à l'appel, jamais à la création. */
@@ -112,6 +114,7 @@ export function makeDeps(realEnv: Env): Deps {
   const demo = realEnv.FAKE_GATEWAYS === "1";
   const env = demo ? withDemoRecipients(realEnv) : realEnv;
   const now = () => new Date();
+  const hasOwnerToken = accessVerifier(env, now);
   return {
     env,
     now,
@@ -127,8 +130,11 @@ export function makeDeps(realEnv: Env): Deps {
     ...(demo
       ? demoGateways(env, now)
       : { email: resendGateway(env), telegram: telegramGateway(env), verifyTurnstile: turnstileVerifier(env) }),
-    // Cloudflare Access a laissé passer la requête pour cette application : son public (`aud`) est celui attendu.
+    // Cloudflare Access a laissé passer la requête pour cette application : son public (`aud`) est celui attendu. Il
+    // l'annonce par `ctx.access` (en local, et là où Cloudflare le transmet) ou, pour un Worker servi avec des fichiers
+    // statiques comme celui-ci en ligne, par son jeton signé, que `worker/access.ts` vérifie.
     // Sans `ACCESS_AUD`, personne n'est le propriétaire : deux publics absents ne s'accorderaient pas.
-    isOwner: (ctx) => Boolean(env.ACCESS_AUD) && ctx.access?.aud === env.ACCESS_AUD,
+    isOwner: async (req, ctx) =>
+      Boolean(env.ACCESS_AUD) && (ctx.access?.aud === env.ACCESS_AUD || (await hasOwnerToken(req.headers.get(ACCESS_JWT_HEADER)))),
   };
 }

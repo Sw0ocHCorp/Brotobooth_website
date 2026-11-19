@@ -248,7 +248,7 @@ describe("makeDeps", () => {
       return Response.json({ success: true });
     });
     const d = makeDeps(env);
-    expect(d.isOwner({} as ExecutionContext)).toBe(false);
+    expect(await d.isOwner(new Request("https://brotobooth.fr/api/admin/overview"), {} as ExecutionContext)).toBe(false);
     expect(await d.verifyTurnstile("t", null)).toBe("pass");
     expect(fetched).toEqual(["https://challenges.cloudflare.com/turnstile/v0/siteverify"]);
   });
@@ -276,13 +276,13 @@ describe("fakeDeps", () => {
   it("utilise l'environnement réel, propriétaire et Turnstile passants par défaut", async () => {
     const d = fakeDeps();
     expect(d.env.DB).toBe(env.DB);
-    expect(d.isOwner({} as ExecutionContext)).toBe(true);
+    expect(await d.isOwner(new Request("https://brotobooth.fr/api/admin/overview"), {} as ExecutionContext)).toBe(true);
     expect(await d.verifyTurnstile("t", "203.0.113.5")).toBe("pass");
   });
 
   it("accepte des remplacements", async () => {
-    const d = fakeDeps({ isOwner: () => false, verifyTurnstile: async () => "fail" });
-    expect(d.isOwner({} as ExecutionContext)).toBe(false);
+    const d = fakeDeps({ isOwner: async () => false, verifyTurnstile: async () => "fail" });
+    expect(await d.isOwner(new Request("https://brotobooth.fr/api/admin/overview"), {} as ExecutionContext)).toBe(false);
     expect(await d.verifyTurnstile("t", null)).toBe("fail");
     expect(d.now().toISOString()).toBe(T0);
   });

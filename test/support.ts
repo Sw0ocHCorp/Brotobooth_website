@@ -274,7 +274,7 @@ export function fakeDeps({ env: given, ...over }: Partial<Deps> = {}): FakeDeps 
       },
     },
     verifyTurnstile: async () => "pass",
-    isOwner: () => true,
+    isOwner: async () => true,
     emails,
     telegrams,
     edits,

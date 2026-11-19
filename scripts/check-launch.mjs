@@ -3,13 +3,17 @@
 // Liste ce qui bloque, une phrase par point, et sort avec le code 1 ; sans blocage, sort avec le code 0.
 // `npm run deploy` le lance avant toute construction : il lit les fichiers sources, jamais `dist/`.
 
-// `worker/offer.ts` construit l'offre en s'important : une `config/offer.json` invalide y lève. L'erreur est gardée et relancée par
-// `readLaunchInput`, sous `main().catch` (« Contrôle impossible : … »), plutôt que de sortir en trace Node avant tout contrôle.
-let buildOffer, hasDeposit, offerError;
+// `worker/offer.ts` construit l'offre en s'important : une `config/offer.json` invalide y lève. L'erreur d'un de ces imports est
+// gardée et relancée par `readLaunchInput`, sous `main().catch` (« Contrôle impossible : … »), plutôt que de sortir en trace Node
+// avant tout contrôle.
+let buildOffer, hasDeposit, importError;
+/** La forme du domaine d'une équipe Access, celle que le Worker exige (`worker/env.ts`). */
+let TEAM_DOMAIN_FORMAT;
 try {
   ({ buildOffer, hasDeposit } = await import("../worker/offer.ts"));
+  ({ TEAM_DOMAIN_FORMAT } = await import("../worker/env.ts"));
 } catch (error) {
-  offerError = error;
+  importError = error;
 }
 
 const ZERO_DATABASE_ID = "00000000-0000-0000-0000-000000000000";
@@ -73,6 +77,9 @@ export function findLaunchBlockers({ offer, legalPages, databaseId, vars, siteKe
   for (const [name, consequence] of Object.entries(TRIAL_SETTINGS)) {
     if (name in vars) blockers.push(`Le réglage d'essai « ${name} » est encore dans wrangler.jsonc, et ${consequence} : retirez-le de « vars ».`);
   }
+  if (!TEAM_DOMAIN_FORMAT.test(vars.ACCESS_TEAM_DOMAIN ?? "")) {
+    blockers.push("Le domaine de votre équipe Cloudflare Access manque ou n'est pas de la forme « équipe.cloudflareaccess.com », et l'administration resterait fermée : écrivez ACCESS_TEAM_DOMAIN dans « vars » de wrangler.jsonc (étape 6 de docs/mise-en-ligne.md).");
+  }
   if (siteKey !== undefined && isBlank(siteKey)) {
     blockers.push(`La clé publique du widget anti-robots manque, et toutes les demandes seraient refusées comme venant d'un robot : écrivez ${SITE_KEY_NAME} dans .env.production (étape 7 de docs/mise-en-ligne.md).`);
   }
@@ -108,7 +115,7 @@ const MARKER_SOURCE = "src/components/Fact.astro";
 const REAL_PAYMENT_FILE = "worker/stripe.ts";
 
 async function readLaunchInput(root) {
-  if (offerError) throw offerError;
+  if (importError) throw importError;
   const { access, readFile, readdir } = await import("node:fs/promises");
   const { join } = await import("node:path");
   const read = (file) => readFile(join(root, file), "utf8");

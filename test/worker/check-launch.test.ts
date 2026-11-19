@@ -42,7 +42,7 @@ const complete = {
     "src/pages/confidentialite.astro": "Écrivez-nous.",
   },
   databaseId: REAL_DATABASE_ID,
-  vars: { BASE_URL: "https://brotobooth.fr" } as Record<string, string>,
+  vars: { BASE_URL: "https://brotobooth.fr", ACCESS_TEAM_DOMAIN: "equipe.cloudflareaccess.com" } as Record<string, string>,
   siteKey: "cle-publique-de-test",
   realPaymentWired: true,
 };
@@ -94,9 +94,9 @@ describe("findLaunchBlockers", () => {
   });
 
   it("refuse de publier avec le paiement simulé ou les fausses passerelles", () => {
-    expect(findLaunchBlockers({ ...complete, vars: { PAYMENT_MODE: "simulated" } })).toEqual([expect.stringContaining("PAYMENT_MODE")]);
-    expect(findLaunchBlockers({ ...complete, vars: { FAKE_GATEWAYS: "1" } })).toEqual([expect.stringContaining("FAKE_GATEWAYS")]);
-    expect(findLaunchBlockers({ ...complete, vars: { PAYMENT_MODE: "simulated", FAKE_GATEWAYS: "1" } })).toHaveLength(2);
+    expect(findLaunchBlockers({ ...complete, vars: { ...complete.vars, PAYMENT_MODE: "simulated" } })).toEqual([expect.stringContaining("PAYMENT_MODE")]);
+    expect(findLaunchBlockers({ ...complete, vars: { ...complete.vars, FAKE_GATEWAYS: "1" } })).toEqual([expect.stringContaining("FAKE_GATEWAYS")]);
+    expect(findLaunchBlockers({ ...complete, vars: { ...complete.vars, PAYMENT_MODE: "simulated", FAKE_GATEWAYS: "1" } })).toHaveLength(2);
   });
 
   it("accepte WhatsApp comme seul numéro de contact, et le dit quand il n'y en a aucun", () => {
@@ -117,6 +117,20 @@ describe("findLaunchBlockers", () => {
     for (const siteKey of ["", "  ", "\n"]) {
       expect(findLaunchBlockers({ ...complete, siteKey }), JSON.stringify(siteKey)).toEqual([expect.stringMatching(/anti-robots.*PUBLIC_TURNSTILE_SITE_KEY/)]);
     }
+  });
+
+  // Sans le domaine de l'équipe, le Worker ne peut pas vérifier le jeton du propriétaire : l'administration resterait fermée.
+  it.each([
+    ["manque", undefined],
+    ["est vide", ""],
+    ["n'est pas celui d'une équipe Access", "exemple.fr"],
+    ["porte un protocole", "https://equipe.cloudflareaccess.com"],
+  ])("bloque quand le domaine de l'équipe Access %s", (_what, domain) => {
+    const { ACCESS_TEAM_DOMAIN: _removed, ...others } = complete.vars;
+    const vars = domain === undefined ? others : { ...others, ACCESS_TEAM_DOMAIN: domain };
+    expect(findLaunchBlockers({ ...complete, vars })).toEqual([
+      "Le domaine de votre équipe Cloudflare Access manque ou n'est pas de la forme « équipe.cloudflareaccess.com », et l'administration resterait fermée : écrivez ACCESS_TEAM_DOMAIN dans « vars » de wrangler.jsonc (étape 6 de docs/mise-en-ligne.md).",
+    ]);
   });
 
   it("ne contrôle la clé et le paiement réel que lorsque l'appelant les fournit", () => {

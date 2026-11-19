@@ -1,6 +1,7 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { ACCESS_JWT_HEADER } from "../../worker/access";
 import { createContact } from "../../worker/contact";
 import { makeDeps, type Deps } from "../../worker/deps";
 import { processDue } from "../../worker/notifications";
@@ -20,6 +21,7 @@ import {
   type Booking,
 } from "../../worker/repository";
 import { handle } from "../../worker/router";
+import { AUD, TEAM, newSigner, tokenFrom, type Signer } from "../access-tokens";
 import {
   SECOND_PLAN,
   T0,
@@ -128,8 +130,26 @@ async function validatedWithSession(): Promise<Booking> {
 }
 
 describe("accès", () => {
+  /**
+   * La clé de l'équipe Access de ces tests, et une autre clé qui se présente sous le même nom. Les vraies dépendances
+   * gardent les clés lues en mémoire d'un test à l'autre, comme d'une requête à l'autre en ligne : une seule clé publiée
+   * pour tout le groupe, et aucun test ne dépend de celui qui l'a lue le premier.
+   */
+  let signer: Signer;
+  let forger: Signer;
+  beforeAll(async () => {
+    signer = await newSigner("cle-admin");
+    forger = await newSigner("cle-admin");
+  });
+  /** Les vraies dépendances, configurées pour Access, dont les clés d'équipe sont lues par un `fetch` de remplacement. */
+  const realDeps = () => {
+    vi.stubGlobal("fetch", async () => Response.json({ keys: [signer.jwk] }));
+    return makeDeps({ ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM });
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
   it("répond 403 sans authentification Access", async () => {
-    const d = fakeDeps({ isOwner: () => false });
+    const d = fakeDeps({ isOwner: async () => false });
     const r = await api("GET", "/api/admin/overview", undefined, d);
     expect(r.status).toBe(403);
     expect(await reply(r)).toEqual({ error: "forbidden" });
@@ -137,7 +157,7 @@ describe("accès", () => {
 
   it("répond 403 avant toute autre réponse : ni route inconnue, ni écriture, ni lecture", async () => {
     const b = await request();
-    const d = fakeDeps({ isOwner: () => false });
+    const d = fakeDeps({ isOwner: async () => false });
     const calls = [
       api("GET", "/api/admin/overview", undefined, d),
       api("GET", "/api/admin/inconnue", undefined, d),
@@ -157,19 +177,53 @@ describe("accès", () => {
     expect(r.status).toBe(403);
   });
 
-  it("isOwner exige le bon public", () => {
-    const d = makeDeps({ ...env, ACCESS_AUD: "aud" });
-    expect(d.isOwner({ access: { aud: "aud" } } as any)).toBe(true);
-    expect(d.isOwner({ access: { aud: "autre" } } as any)).toBe(false);
-    expect(d.isOwner({} as any)).toBe(false);
+  // De bout en bout, avec les vraies dépendances : en ligne, seul le jeton signé d'Access ouvre l'API.
+  it("l'API s'ouvre au jeton signé d'Access, et reste fermée à un jeton forgé ou absent", async () => {
+    const d = realDeps();
+    const at = Date.now() / 1000;
+    const overview = (token?: string) =>
+      handle(new Request(`${BASE}/api/admin/overview`, { headers: token ? { [ACCESS_JWT_HEADER]: token } : {} }), d, createExecutionContext());
+
+    expect((await overview(await tokenFrom(signer, {}, {}, at))).status).toBe(200);
+    expect((await overview(await tokenFrom(forger, {}, {}, at))).status).toBe(403);
+    expect((await overview(await tokenFrom(signer, { aud: ["b".repeat(64)] }, {}, at))).status).toBe(403);
+    expect((await overview("aaaa.bbbb.cccc")).status).toBe(403);
+    expect((await overview()).status).toBe(403);
   });
 
-  it("isOwner refuse tout le monde tant que le public attendu n'est pas configuré", () => {
+  /** Une requête à l'API du propriétaire, avec ou sans le jeton d'Access. */
+  const asked = (token?: string) => new Request(`${BASE}/api/admin/overview`, { headers: token ? { [ACCESS_JWT_HEADER]: token } : {} });
+
+  it("isOwner reconnaît le public que le contexte d'Access annonce", async () => {
+    const d = makeDeps({ ...env, ACCESS_AUD: "aud" });
+    expect(await d.isOwner(asked(), { access: { aud: "aud" } } as any)).toBe(true);
+    expect(await d.isOwner(asked(), { access: { aud: "autre" } } as any)).toBe(false);
+    expect(await d.isOwner(asked(), {} as any)).toBe(false);
+  });
+
+  // En ligne, le Worker est servi avec des fichiers statiques et ne reçoit pas `ctx.access` : seul le jeton signé fait foi.
+  it("isOwner reconnaît le jeton signé d'Access quand le contexte manque", async () => {
+    const d = realDeps();
+    const at = Date.now() / 1000;
+
+    expect(await d.isOwner(asked(await tokenFrom(signer, {}, {}, at)), {} as any)).toBe(true);
+    expect(await d.isOwner(asked(await tokenFrom(forger, {}, {}, at)), {} as any)).toBe(false);
+    expect(await d.isOwner(asked(await tokenFrom(signer, { aud: ["autre"] }, {}, at)), {} as any)).toBe(false);
+    expect(await d.isOwner(asked(await tokenFrom(signer, { exp: at - 1 }, {}, at)), {} as any)).toBe(false);
+    expect(await d.isOwner(asked(), {} as any)).toBe(false);
+    // Un contexte qui annonce un autre public ne ferme pas la porte à un jeton valide, et ne l'ouvre pas à un faux.
+    expect(await d.isOwner(asked(await tokenFrom(signer, {}, {}, at)), { access: { aud: "autre" } } as any)).toBe(true);
+    expect(await d.isOwner(asked(await tokenFrom(forger, {}, {}, at)), { access: { aud: "autre" } } as any)).toBe(false);
+  });
+
+  it("isOwner refuse tout le monde tant que le public attendu n'est pas configuré", async () => {
+    vi.stubGlobal("fetch", async () => Response.json({ keys: [signer.jwk] }));
     for (const aud of ["", undefined]) {
-      const d = makeDeps({ ...env, ACCESS_AUD: aud as string });
-      expect(d.isOwner({ access: { aud: "" } } as any)).toBe(false);
-      expect(d.isOwner({ access: { aud: undefined } } as any)).toBe(false);
-      expect(d.isOwner({} as any)).toBe(false);
+      const d = makeDeps({ ...env, ACCESS_AUD: aud as string, ACCESS_TEAM_DOMAIN: TEAM });
+      expect(await d.isOwner(asked(), { access: { aud: "" } } as any)).toBe(false);
+      expect(await d.isOwner(asked(), { access: { aud: undefined } } as any)).toBe(false);
+      expect(await d.isOwner(asked(await tokenFrom(signer, { aud: [""] }, {}, Date.now() / 1000)), {} as any)).toBe(false);
+      expect(await d.isOwner(asked(), {} as any)).toBe(false);
     }
   });
 
@@ -1086,7 +1140,7 @@ describe("messages de contact", () => {
 
   it("refuse les deux routes sans authentification Access", async () => {
     const id = await received();
-    const d = fakeDeps({ isOwner: () => false });
+    const d = fakeDeps({ isOwner: async () => false });
     expect((await api("GET", CONTACT, undefined, d)).status).toBe(403);
     expect((await api("DELETE", `${CONTACT}/${id}`, {}, d)).status).toBe(403);
     expect(await getContactMessage(env.DB, id)).not.toBeNull();

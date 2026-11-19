@@ -79,7 +79,11 @@ Ajoutez le domaine chez Resend (région européenne), puis recréez chez Cloudfl
 
 ## 6. Cloudflare Access
 
-Dans Cloudflare Zero Trust, créez une application Access auto-hébergée sur `brotobooth.fr` qui couvre ces trois chemins : `/admin`, `/admin/*` et `/api/admin/*`. Sa politique n'autorise que votre adresse e-mail (connexion par code). Reportez le public de l'application (« AUD ») dans `ACCESS_AUD`.
+Dans Cloudflare Zero Trust, créez une application Access auto-hébergée sur `brotobooth.fr` qui couvre ces trois chemins : `/admin`, `/admin/*` et `/api/admin/*`. Sa politique n'autorise que votre adresse e-mail (connexion par code). Reportez le public de l'application (« AUD », onglet « Additional settings ») dans `ACCESS_AUD`, et le domaine de votre équipe (`<équipe>.cloudflareaccess.com`, le nom d'équipe se lit dans Zero Trust, Réglages) dans `ACCESS_TEAM_DOMAIN`, parmi les `vars` de `wrangler.jsonc` : ce n'est pas un secret.
+
+Le Worker revérifie chaque requête de l'administration : il contrôle le jeton signé qu'Access joint à la requête (signature par les clés de votre équipe, application, validité). Il ne peut pas s'appuyer sur `ctx.access`, que Cloudflare ne transmet pas à un Worker servi avec des fichiers statiques. Sans `ACCESS_TEAM_DOMAIN`, l'administration resterait fermée : le contrôle d'avant publication le refuse.
+
+`wrangler.jsonc` ferme l'adresse de secours `workers.dev` et les adresses d'aperçu (`workers_dev` et `preview_urls` à `false`) : Access ne protège que `brotobooth.fr`, le site ne doit répondre que là.
 
 Vérification, dans une fenêtre de navigation privée : `/admin/` demande un code, `/api/admin/overview` ne répond rien sans connexion, et une fois connecté `/admin/` affiche vos réservations (et non « Connexion requise »).
 
