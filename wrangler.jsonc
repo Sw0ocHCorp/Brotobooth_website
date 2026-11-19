@@ -22,6 +22,8 @@
   // Cloudflare Access ne protège pas (l'application Access porte sur brotobooth.fr).
   "workers_dev": false,
   "preview_urls": false,
+  // Le domaine du site : la publication le rattache au Worker, et Cloudflare crée son entrée DNS.
+  "routes": [{ "pattern": "brotobooth.fr", "custom_domain": true }],
   // ACCESS_TEAM_DOMAIN : le domaine de l'équipe Cloudflare Access, dont les clés signent le jeton du propriétaire.
   "vars": { "BASE_URL": "https://brotobooth.fr", "ACCESS_TEAM_DOMAIN": "dawn-brook-8805.cloudflareaccess.com" },
   "access": {
