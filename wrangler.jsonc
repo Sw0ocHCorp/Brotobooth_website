@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "brotobooth",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "99ac8bbe-6724-4fcf-b327-a2afa4896f5d",
       "migrations_dir": "migrations"
     }
   ],
