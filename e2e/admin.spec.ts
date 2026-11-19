@@ -545,19 +545,24 @@ test("le bandeau nomme le palier en cours", async ({ page, request }) => {
   await expect(banner).toHaveText(`Palier en cours : ${tierName(real.tier)}${places}`);
 
   await page.unroute("**/api/prices");
-  await pricesAre(page, launchBody(1));
+  await pricesAre(page, pricesBody(offer, currentTier(offer, Object.fromEntries(offer.tiers.map((t) => [t.id, t.places ?? 0])))));
   await page.reload();
+  await expect(banner).toHaveText(`Palier en cours : ${normalTier(offer).name}`);
+});
+
+test("le bandeau compte les places d'un palier limité, au singulier comme au pluriel", async ({ page }) => {
+  // Pendant les essais d'avant ouverture, l'offre ne garde que le prix normal (docs/mise-en-ligne.md, étape 12).
+  test.skip(offer.tiers[0].places === undefined, "aucun palier limité dans l'offre");
+  const banner = page.locator("#tier");
+
+  await pricesAre(page, launchBody(1));
+  await page.goto("/admin");
   await expect(banner).toHaveText(`Palier en cours : ${offer.tiers[0].name} · 1 place restante`);
 
   await page.unroute("**/api/prices");
   await pricesAre(page, launchBody(4));
   await page.reload();
   await expect(banner).toHaveText(`Palier en cours : ${offer.tiers[0].name} · 4 places restantes`);
-
-  await page.unroute("**/api/prices");
-  await pricesAre(page, pricesBody(offer, currentTier(offer, Object.fromEntries(offer.tiers.map((t) => [t.id, t.places ?? 0])))));
-  await page.reload();
-  await expect(banner).toHaveText(`Palier en cours : ${normalTier(offer).name}`);
 });
 
 test("choisir une formule préremplit prix et acompte", async ({ page }) => {

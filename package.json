@@ -19,7 +19,7 @@
     "demo": "node scripts/demo.mjs",
     "zone": "node scripts/build-zone.mjs",
     "demo:reset": "rm -rf .wrangler/demo",
-    "deploy": "node scripts/check-launch.mjs && npm test && npx playwright test --project=chromium-telephone --project=chromium-ordinateur && astro build && wrangler deploy"
+    "deploy": "node scripts/check-launch.mjs && npm test && npx playwright test --project=chromium-telephone --project=chromium-ordinateur && astro build && wrangler deploy --domain brotobooth.fr"
   },
   "dependencies": {
     "stripe": "^23.1.0"

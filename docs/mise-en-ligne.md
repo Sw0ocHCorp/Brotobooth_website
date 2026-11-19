@@ -155,7 +155,7 @@ npm run deploy
 
 Elle commence par le contrôle d'avant publication (elle s'arrête là, en listant ce qui manque), puis lance les tests, les parcours de bout en bout sur Chromium, la construction du site et enfin `wrangler deploy`. Elle s'arrête au premier échec.
 
-Il reste à rattacher le domaine au Worker : dans Cloudflare, Workers puis `brotobooth`, Réglages, Domaines et routes, **Domaine personnalisé** `brotobooth.fr`. Si Cloudflare signale une entrée existante pour `brotobooth.fr` (l'ancien site), retirez seulement celle-là, jamais l'entrée de messagerie.
+La commande rattache aussi le domaine au Worker (`wrangler deploy --domain brotobooth.fr`) : Cloudflare crée l'entrée DNS de `brotobooth.fr`. Elle échoue si une autre entrée existe déjà pour ce nom (la page d'attente de l'ancien hébergeur) : supprimez seulement celle-là dans DNS, Records, jamais l'entrée de messagerie. Le domaine ne se déclare pas par une ligne `routes` dans `wrangler.jsonc` : le serveur local répondrait sous ce nom et refuserait les essais.
 
 N'activez jamais, dans Cloudflare, **Rocket Loader** ni l'insertion automatique de **Web Analytics** : la politique de sécurité du site refuse tout script écrit dans les pages, ils casseraient l'affichage ou seraient bloqués.
 
