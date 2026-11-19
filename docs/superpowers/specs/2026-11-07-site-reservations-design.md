@@ -67,7 +67,7 @@ La borne, son projet Supabase, son bot Telegram et sa page de monitoring sur Net
 | `GET /agenda/<jeton>.ics` | Flux d'agenda privé | Jeton long |
 | `/acompte/<jeton>/simulation` | Paiement factice | Uniquement en mode simulé |
 | `GET /demo` | Lecture des messages qui auraient été envoyés | Uniquement avec les fausses passerelles |
-| `/admin` et `/api/admin/*` | Administration | Cloudflare Access, vérifié aussi par le Worker : jeton signé d'Access (`Cf-Access-Jwt-Assertion`) et public attendu, `ctx.access` n'étant pas transmis à un Worker servi avec des fichiers statiques (corrigé le 2026-11-20) |
+| `/admin` et `/api/admin/*` | Administration | Cloudflare Access, vérifié aussi par le Worker : jeton signé d'Access (`Cf-Access-Jwt-Assertion`) et public attendu, `ctx.access` n'étant pas transmis à un Worker servi avec des fichiers statiques (corrigé le 2026-11-19) |
 
 ### Organisation du code
 

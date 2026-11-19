@@ -6,11 +6,10 @@ import "../styles/legal.css";
 import Base from "./Base.astro";
 
 /**
- * Le gabarit des trois pages légales : la barre et le pied de page du site, puis un texte à lire. Ces pages sont des
- * brouillons à faire valider par un professionnel : ce statut ne vit que dans un commentaire HTML, en tête de chaque page,
- * et jamais dans le texte, qui s'adresse au client. Astro retire les commentaires d'un gabarit, d'où `set:html`.
- * À retirer, avec les faits restés sans valeur (`Fact.astro`), une fois les textes validés : `scripts/check-launch.mjs`
- * refuse de publier tant que l'un ou l'autre est là.
+ * Le gabarit des trois pages légales : la barre et le pied de page du site, puis un texte à lire, qui s'adresse au client.
+ * Le propriétaire a choisi de publier ces pages sans les faire relire par un professionnel (2026-11-19) : le commentaire
+ * de brouillon qu'elles portaient en tête est retiré. `scripts/check-launch.mjs` refuse toujours de publier une page
+ * légale qui porterait un tel commentaire, ou un fait resté sans valeur (`Fact.astro`).
  */
 interface Props {
   title: string;
@@ -18,14 +17,12 @@ interface Props {
 }
 
 const { title, description } = Astro.props;
-const DRAFT = "<!-- Brouillon à faire valider par un professionnel avant la mise en ligne. Un fait de l'entreprise encore inconnu porte le marqueur de Fact.astro : ne rien inventer, le renseigner. -->";
 ---
 
 <Base title={`${title} – Brotobooth`} description={description}>
   <TopBar variant="home" />
   <main class="legal">
     <article>
-      <Fragment set:html={DRAFT} />
       <slot />
     </article>
   </main>

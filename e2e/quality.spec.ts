@@ -57,9 +57,10 @@ test.describe("pages légales", () => {
     }
   });
 
-  test("le statut de brouillon n'est que dans un commentaire HTML, et le texte n'emploie aucun mot interne", async ({ page, request }) => {
+  // Le propriétaire publie ces pages telles quelles (son choix du 2026-11-19) : plus de commentaire de brouillon.
+  test("les pages légales ne portent plus de commentaire de brouillon, et le texte n'emploie aucun mot interne", async ({ page, request }) => {
     for (const { path } of LEGAL) {
-      expect(await (await request.get(path)).text(), path).toMatch(/<article>\s*<!-- Brouillon à faire valider par un professionnel/);
+      expect(await (await request.get(path)).text(), path).not.toMatch(/<!--\s*Brouillon/i);
       await page.goto(path);
       await expect(page.getByRole("main"), path).not.toContainText(/brouillon|valider|statut|bloquer/i);
     }
