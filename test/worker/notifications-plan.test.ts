@@ -292,15 +292,15 @@ describe("fakeDeps", () => {
     const mail = { to: "a@example.test", subject: "s", text: "t", html: "<p>t</p>" };
     const buttons = [[{ text: "Valider", data: "v:1" }]];
     await d.email.send(mail);
-    await d.telegram.send("10", "<b>Nouvelle demande</b>", buttons);
-    await d.telegram.send("11", "sans bouton");
+    expect(await d.telegram.send("10", "<b>Nouvelle demande</b>", buttons)).toBe(1);
+    expect(await d.telegram.send("11", "sans bouton")).toBe(2);
     await d.telegram.edit("10", 7, "<b>Validée</b>", buttons);
     await d.telegram.answer("cb1", "C'est fait");
     await d.telegram.answer("cb2");
     expect(d.emails).toEqual([mail]);
     expect(d.telegrams).toEqual([
-      { chatId: "10", html: "<b>Nouvelle demande</b>", buttons },
-      { chatId: "11", html: "sans bouton", buttons: undefined },
+      { chatId: "10", html: "<b>Nouvelle demande</b>", buttons, messageId: 1 },
+      { chatId: "11", html: "sans bouton", buttons: undefined, messageId: 2 },
     ]);
     expect(d.edits).toEqual([{ chatId: "10", messageId: 7, html: "<b>Validée</b>", buttons }]);
     expect(d.answers).toEqual(["cb1", "cb2"]);

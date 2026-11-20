@@ -180,10 +180,21 @@ export async function callService(service: string, fetchFn: typeof fetch, url: s
   }
 }
 
-/** Comme `callService`, et lève aussi sur une réponse qui n'est pas 2xx, sans reprendre son contenu. */
+/** Un service extérieur a répondu autre chose que 2xx. Le message nomme le service et le code, jamais le contenu de la réponse. */
+export class ServiceRefusal extends Error {
+  constructor(
+    service: string,
+    readonly status: number,
+  ) {
+    super(`${service} a répondu ${status}`);
+    this.name = "ServiceRefusal";
+  }
+}
+
+/** Comme `callService`, et lève aussi (`ServiceRefusal`) sur une réponse qui n'est pas 2xx, sans reprendre son contenu. */
 export async function callServiceOk(service: string, fetchFn: typeof fetch, url: string, init: RequestInit): Promise<Response> {
   const res = await callService(service, fetchFn, url, init);
-  if (!res.ok) throw new Error(`${service} a répondu ${res.status}`);
+  if (!res.ok) throw new ServiceRefusal(service, res.status);
   return res;
 }
 

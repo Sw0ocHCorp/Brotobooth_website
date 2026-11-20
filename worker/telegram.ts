@@ -1,11 +1,10 @@
-import { hasBookingDeposit, type BookingStatus } from "./bookings";
+import { asked, CONFIRMED, OUTCOME, settled, type Edit } from "./alerts";
 import type { Button, Deps, TelegramGateway } from "./deps";
 import { chatIds, type Env } from "./env";
 import { callServiceOk, json, jsonPost, readJson, secretMatches } from "./http";
 import { sendSoon } from "./notifications";
 import { refuseBooking, validateBooking } from "./operations";
-import { getBooking, type Booking } from "./repository";
-import { renderTelegram } from "./templates";
+import { dropAlert, getBooking, keepAlert, type Booking } from "./repository";
 
 /** Le clavier de Telegram : un bouton à lien ouvre son adresse, les autres renvoient leur donnée au bot. */
 const keyboard = (buttons: Button[][]) =>
@@ -16,28 +15,34 @@ const keyboard = (buttons: Button[][]) =>
  * échappées par les modèles. Toute réponse qui n'est pas 2xx lève, sans citer l'adresse appelée (elle porte le jeton).
  */
 export function telegramGateway(env: Env, fetchFn: typeof fetch = fetch): TelegramGateway {
-  const call = (method: string, body: Record<string, unknown>) =>
-    callServiceOk("Telegram", fetchFn, `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, jsonPost(body)).then(
-      () => undefined,
-    );
+  const call = (method: string, body: Record<string, unknown>): Promise<Response> =>
+    callServiceOk("Telegram", fetchFn, `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, jsonPost(body));
   return {
-    send: (chatId, html, buttons) =>
-      call("sendMessage", {
+    send: async (chatId, html, buttons) => {
+      const response = await call("sendMessage", {
         chat_id: chatId,
         text: html,
         parse_mode: "HTML",
         ...(buttons && { reply_markup: { inline_keyboard: keyboard(buttons) } }),
-      }),
+      });
+      // Le message est parti : une réponse illisible ne doit pas le faire renvoyer, seulement renoncer à son numéro.
+      const sent = await response.json<{ result?: { message_id?: unknown } } | null>().catch(() => null);
+      const messageId = sent?.result?.message_id;
+      return typeof messageId === "number" ? messageId : null;
+    },
     // Sans bouton, le clavier du message est retiré : une demande traitée n'offre plus rien à presser.
-    edit: (chatId, messageId, html, buttons) =>
-      call("editMessageText", {
+    edit: async (chatId, messageId, html, buttons) => {
+      await call("editMessageText", {
         chat_id: chatId,
         message_id: messageId,
         text: html,
         parse_mode: "HTML",
         reply_markup: { inline_keyboard: keyboard(buttons ?? []) },
-      }),
-    answer: (callbackId, text) => call("answerCallbackQuery", { callback_query_id: callbackId, text }),
+      });
+    },
+    answer: async (callbackId, text) => {
+      await call("answerCallbackQuery", { callback_query_id: callbackId, text });
+    },
   };
 }
 
@@ -69,27 +74,7 @@ function parseTap(update: unknown): Tap | null {
 }
 
 /** `toast` : la phrase que le propriétaire lit un instant. `edit` : le nouveau contenu du message, sans bouton s'il n'en a pas. */
-type Reply = { toast?: string; edit?: { html: string; buttons?: Button[][] } };
-
-/** Où en est une demande qui n'attend plus de réponse. */
-const OUTCOME: Partial<Record<BookingStatus, (b: Booking) => string>> = {
-  awaiting_deposit: () => "Validée, acompte attendu",
-  confirmed: (b) => (hasBookingDeposit(b) ? "Validée, acompte reçu" : CONFIRMED),
-  refused: () => "Refusée",
-  expired: () => "Expirée, la date est libérée",
-  cancelled: () => "Annulée",
-};
-
-/** Une demande acceptée sans acompte : la date est confirmée, le client n'a rien à payer en ligne. */
-const CONFIRMED = "Confirmée";
-
-/** La demande telle que le propriétaire l'a reçue, avec ses boutons. */
-const asked = (deps: Deps, b: Booking) => renderTelegram("owner_new_request", b, { baseUrl: deps.env.BASE_URL });
-
-/** La demande, suivie d'une ligne d'état et sans bouton. L'échéance de réponse en est retirée : elle ne vaut plus rien. */
-const settled = (deps: Deps, b: Booking, line: string): Reply["edit"] => ({
-  html: `${asked(deps, { ...b, hold_until: null }).html}\n\n<b>${line}</b>`,
-});
+type Reply = { toast?: string; edit?: Edit };
 
 /**
  * Le bouton touché ne s'applique plus : on le dit en une phrase, et le message montre l'état actuel, sans
@@ -102,6 +87,23 @@ function stale(deps: Deps, b: Booking | null): Reply {
     toast: b.status === "expired" ? "Cette demande n'est plus disponible : elle a expiré." : "Cette demande est déjà traitée.",
     edit: settled(deps, b, line),
   };
+}
+
+/**
+ * Modifie le message touché. Quand il n'offrira plus rien à presser, il cesse d'abord d'être retenu comme alerte : la
+ * mise à jour générale des alertes (`settleAlerts`), qui tourne au même moment, ne le modifie pas une seconde fois. Si
+ * Telegram ne répond pas, il est retenu de nouveau, et sera repris au passage suivant.
+ */
+async function applyEdit(deps: Deps, tap: Tap, bookingId: string, edit: Edit): Promise<void> {
+  const db = deps.env.DB;
+  const closing = !edit.buttons;
+  if (closing) await dropAlert(db, tap.chatId, tap.messageId);
+  try {
+    await deps.telegram.edit(tap.chatId, tap.messageId, edit.html, edit.buttons);
+  } catch (error) {
+    if (closing) await keepAlert(db, { chat_id: tap.chatId, message_id: tap.messageId, booking_id: bookingId }).catch(() => undefined);
+    throw error;
+  }
 }
 
 type Action = (deps: Deps, ctx: ExecutionContext, id: string) => Promise<Reply>;
@@ -119,7 +121,7 @@ const decide =
 
 /** Une réponse qui ne change rien à la réservation, tant qu'elle attend encore la réponse du propriétaire. */
 const whilePending =
-  (reply: (deps: Deps, b: Booking) => NonNullable<Reply["edit"]>): Action =>
+  (reply: (deps: Deps, b: Booking) => Edit): Action =>
   async (deps, _ctx, id) => {
     const b = await getBooking(deps.env.DB, id);
     return b?.status === "pending_review" ? { edit: reply(deps, b) } : stale(deps, b);
@@ -165,7 +167,7 @@ async function handleTap(deps: Deps, ctx: ExecutionContext, tap: Tap): Promise<v
   const { edit } = reply;
   await Promise.all([
     tolerate("réponse", () => deps.telegram.answer(tap.id, reply.toast)),
-    edit && tolerate("modification", () => deps.telegram.edit(tap.chatId, tap.messageId, edit.html, edit.buttons)),
+    edit && tolerate("modification", () => applyEdit(deps, tap, id, edit)),
   ]);
 }
 

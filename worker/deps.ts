@@ -17,7 +17,8 @@ export type EmailGateway = { send(m: EmailMessage): Promise<void> };
 export type Button = { text: string; data?: string; url?: string };
 
 export type TelegramGateway = {
-  send(chatId: string, html: string, buttons?: Button[][]): Promise<void>;
+  /** Envoie le message et rend le numéro que Telegram lui donne dans ce chat, `null` s'il ne se lit pas dans sa réponse. */
+  send(chatId: string, html: string, buttons?: Button[][]): Promise<number | null>;
   edit(chatId: string, messageId: number, html: string, buttons?: Button[][]): Promise<void>;
   answer(callbackId: string, text?: string): Promise<void>;
 };

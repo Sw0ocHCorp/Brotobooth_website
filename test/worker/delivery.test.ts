@@ -433,7 +433,8 @@ describe("processDue : reprises et alertes", () => {
     const d = fakeDeps({ env: { ...env, OWNER_EMAIL, TELEGRAM_CHAT_IDS: "1,2" } });
     d.telegram.send = async (chatId, html, buttons) => {
       if (chatId === "2") throw new Error("bot bloqué par ce chat");
-      d.telegrams.push({ chatId, html, buttons });
+      d.telegrams.push({ chatId, html, buttons, messageId: 1 });
+      return 1;
     };
     const b = await seeded({ status: "confirmed", hold_until: null });
     await enqueue(env.DB, [telegram("owner_d7", b.id)]);
@@ -811,6 +812,14 @@ describe("passerelle Telegram", () => {
         ],
       },
     });
+  });
+
+  it("send rend le numéro que Telegram donne au message, ou null s'il ne se lit pas", async () => {
+    const answering = (body: string) => telegramGateway(TG_ENV, recorder(() => new Response(body)).fetchFn).send("42", "texte");
+    expect(await answering('{"ok":true,"result":{"message_id":731,"chat":{"id":42}}}')).toBe(731);
+    expect(await answering('{"ok":true,"result":{}}')).toBeNull();
+    expect(await answering('{"ok":true,"result":{"message_id":"731"}}')).toBeNull();
+    expect(await answering("pas du json")).toBeNull();
   });
 
   it("send n'ajoute pas de clavier sans bouton", async () => {

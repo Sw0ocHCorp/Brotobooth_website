@@ -153,11 +153,15 @@ export const notificationRows = async (): Promise<NotificationRow[]> =>
 /** Vide toutes les tables, les tables filles d'abord à cause des clés étrangères. */
 export async function resetDb(db: D1Database): Promise<void> {
   await db.batch(
-    ["notifications", "contact_messages", "booking_history", "bookings", "system_state"].map((table) =>
+    ["telegram_alerts", "notifications", "contact_messages", "booking_history", "bookings", "system_state"].map((table) =>
       db.prepare(`DELETE FROM ${table}`),
     ),
   );
 }
+
+/** Les alertes Telegram que le bot retient, dans l'ordre où il les a retenues. */
+export const alertRows = async (): Promise<{ chat_id: string; message_id: number; booking_id: string }[]> =>
+  (await env.DB.prepare("SELECT chat_id, message_id, booking_id FROM telegram_alerts ORDER BY rowid").all<{ chat_id: string; message_id: number; booking_id: string }>()).results;
 
 export type FakeStripe = StripeGateway & {
   sessions: Map<string, StripeSession>;
@@ -170,7 +174,8 @@ export type FakeStripe = StripeGateway & {
 export type FakeDeps = Deps & {
   stripe: FakeStripe;
   emails: EmailMessage[];
-  telegrams: { chatId: string; html: string; buttons: Button[][] | undefined }[];
+  /** `messageId` : le numéro que Telegram aurait donné au message, 1 pour le premier envoi de ces dépendances. */
+  telegrams: { chatId: string; html: string; buttons: Button[][] | undefined; messageId: number }[];
   edits: { chatId: string; messageId: number; html: string; buttons: Button[][] | undefined }[];
   /** Identifiants des rappels de bouton auxquels le bot a répondu. */
   answers: string[];
@@ -245,6 +250,7 @@ export function fakeDeps({ env: given, ...over }: Partial<Deps> = {}): FakeDeps 
   let current = new Date(T0);
   const emails: EmailMessage[] = [];
   const telegrams: FakeDeps["telegrams"] = [];
+  let sentCount = 0;
   const edits: FakeDeps["edits"] = [];
   const answers: string[] = [];
   const answerTexts: (string | undefined)[] = [];
@@ -263,7 +269,9 @@ export function fakeDeps({ env: given, ...over }: Partial<Deps> = {}): FakeDeps 
     },
     telegram: {
       send: async (chatId, html, buttons) => {
-        telegrams.push({ chatId, html, buttons });
+        const messageId = ++sentCount;
+        telegrams.push({ chatId, html, buttons, messageId });
+        return messageId;
       },
       edit: async (chatId, messageId, html, buttons) => {
         edits.push({ chatId, messageId, html, buttons });

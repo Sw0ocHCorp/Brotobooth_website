@@ -436,6 +436,34 @@ export async function anonymizeOld(
   return result.meta.changes;
 }
 
+// ---------- les alertes Telegram ----------
+
+/** Le message à boutons qui annonce la demande `booking_id` dans un chat du propriétaire (`migrations/0005`). */
+export type TelegramAlert = { chat_id: string; message_id: number; booking_id: string };
+
+/** Retient l'alerte d'une demande dans un chat. La retenir deux fois ne fait rien. */
+export const keepAlert = async (db: D1Database, alert: TelegramAlert): Promise<void> => {
+  await db
+    .prepare("INSERT OR IGNORE INTO telegram_alerts (chat_id, message_id, booking_id) VALUES (?, ?, ?)")
+    .bind(alert.chat_id, alert.message_id, alert.booking_id)
+    .run();
+};
+
+/** Les alertes dont la demande n'attend plus de réponse, les plus anciennes d'abord. */
+export const listSettledAlerts = (db: D1Database, limit: number): Promise<TelegramAlert[]> =>
+  rows<TelegramAlert>(
+    db
+      .prepare(
+        `SELECT a.chat_id, a.message_id, a.booking_id FROM telegram_alerts a JOIN bookings b ON b.id = a.booking_id
+         WHERE b.status <> ? ORDER BY a.rowid LIMIT ?`,
+      )
+      .bind("pending_review" satisfies BookingStatus, limit),
+  );
+
+export const dropAlert = async (db: D1Database, chatId: string, messageId: number): Promise<void> => {
+  await db.prepare("DELETE FROM telegram_alerts WHERE chat_id = ? AND message_id = ?").bind(chatId, messageId).run();
+};
+
 export async function enqueue(db: D1Database, specs: NotificationSpec[]): Promise<void> {
   if (specs.length > 0) await db.batch(specs.map((spec) => notificationStmt(db, spec)));
 }

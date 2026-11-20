@@ -46,8 +46,9 @@ async function send(body: string, headers: Record<string, string> = { [HEADER]: 
   return response;
 }
 
+/** L'appui vient du message que le bot a envoyé pour `b` : c'est lui que le bot retient et met à jour. */
 const update = (data: unknown, chat: number | string = 111) =>
-  JSON.stringify({ update_id: 1, callback_query: { id: "cb", data, message: { message_id: 9, chat: { id: chat } } } });
+  JSON.stringify({ update_id: 1, callback_query: { id: "cb", data, message: { message_id: ownerMessage.messageId, chat: { id: chat } } } });
 
 /** Le propriétaire touche un bouton : `data` est la donnée du bouton, `chat` le chat où il le touche. */
 const tap = (data: string, chat: number | string = 111, secret: string = SECRET) =>
@@ -82,7 +83,7 @@ describe("telegramWebhook : valider", () => {
     expect(deps.answers).toEqual(["cb"]);
     expect(toast()).toMatch(/Validée/);
     expect(deps.edits).toHaveLength(1);
-    expect(lastEdit()).toMatchObject({ chatId: CHAT_ID, messageId: 9 });
+    expect(lastEdit()).toMatchObject({ chatId: CHAT_ID, messageId: ownerMessage.messageId });
     expect(lastEdit().html).toContain("Validée");
     expect(lastEdit().buttons).toBeUndefined();
   });

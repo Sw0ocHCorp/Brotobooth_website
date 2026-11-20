@@ -59,8 +59,11 @@ export function demoGateways(env: Env, now: () => Date): Pick<Deps, "email" | "t
   return {
     email: { send: (m) => keep({ channel: "email", to: m.to, subject: m.subject, text: m.text }) },
     telegram: {
-      send: (chatId, markup, buttons) =>
-        keep({ channel: "telegram", to: chatId, subject: "", text: telegramText(markup), buttons }),
+      // Un message de démonstration n'a pas de numéro : rien n'est retenu pour le mettre à jour.
+      send: async (chatId, markup, buttons) => {
+        await keep({ channel: "telegram", to: chatId, subject: "", text: telegramText(markup), buttons });
+        return null;
+      },
       edit: (chatId, _messageId, markup, buttons) =>
         keep({ channel: "telegram", to: chatId, subject: "Message modifié", text: telegramText(markup), buttons }),
       answer: (_callbackId, text) => keep({ channel: "telegram", to: "", subject: "Réponse au bouton", text: text ?? "" }),

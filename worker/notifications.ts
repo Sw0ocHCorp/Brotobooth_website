@@ -1,4 +1,5 @@
 import { hasBookingDeposit, parisToday, reminderAt, type BookingStatus } from "./bookings";
+import { REQUEST_ALERT, settleAlerts } from "./alerts";
 import type { Deps } from "./deps";
 import { chatIds } from "./env";
 import { sha256Hex } from "./http";
@@ -9,6 +10,7 @@ import {
   enqueue,
   getBooking,
   getContactMessage,
+  keepAlert,
   listDueNotifications,
   listUpcoming,
   markFailed,
@@ -212,7 +214,9 @@ async function sendEmail(deps: Deps, n: NotificationRow, booking: Booking | null
 
 /**
  * Le message part à chaque chat configuré, l'un après l'autre. Un chat qui répond a livré le message : le renvoyer
- * aux autres au passage suivant le doublerait, d'où l'échec seulement quand aucun chat ne répond.
+ * aux autres au passage suivant le doublerait, d'où l'échec seulement quand aucun chat ne répond. L'alerte d'une demande
+ * est retenue dans chaque chat qui l'a reçue, pour être mise à jour quand la demande aura sa réponse (`worker/alerts.ts`) ;
+ * ne pas réussir à la retenir ne fait pas échouer l'envoi, qui est fait.
  */
 async function sendTelegram(deps: Deps, n: NotificationRow, booking: Booking | null, context: MessageContext): Promise<void> {
   const { html, buttons } = renderTelegram(n.template, booking, context);
@@ -220,7 +224,10 @@ async function sendTelegram(deps: Deps, n: NotificationRow, booking: Booking | n
   const failures: unknown[] = [];
   for (const chat of chats) {
     try {
-      await deps.telegram.send(chat, html, buttons);
+      const messageId = await deps.telegram.send(chat, html, buttons);
+      if (n.template === REQUEST_ALERT && n.booking_id !== null && messageId !== null) {
+        await keepAlert(deps.env.DB, { chat_id: chat, message_id: messageId, booking_id: n.booking_id }).catch((error) => report(n, error));
+      }
     } catch (error) {
       failures.push(error);
     }
@@ -317,7 +324,8 @@ async function deliver(deps: Deps, n: NotificationRow): Promise<Outcome> {
  * Envoie les notifications échues, les plus anciennes d'abord (`limit` au plus par tour). Chacune a son propre
  * filet : une panne n'arrête pas les suivantes, et reste en file pour le passage suivant. Les suites d'un échec
  * (message de secours, alerte) sont envoyées dans le même appel. Des passages simultanés, celui de la tâche
- * automatique et ceux qui suivent une demande, n'envoient jamais le même message deux fois.
+ * automatique et ceux qui suivent une demande, n'envoient jamais le même message deux fois. Pour finir, les alertes
+ * Telegram des demandes qui ont reçu leur réponse sont mises à jour.
  */
 export async function processDue(deps: Deps, limit = DEFAULT_LIMIT): Promise<{ sent: number; failed: number }> {
   const result = { sent: 0, failed: 0 };
@@ -333,6 +341,7 @@ export async function processDue(deps: Deps, limit = DEFAULT_LIMIT): Promise<{ s
     }
     if (!followUps) break;
   }
+  await settleAlerts(deps);
   return result;
 }
 
