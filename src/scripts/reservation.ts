@@ -1,4 +1,4 @@
-import { bookingWindow } from "../../worker/bookings";
+import { bookingWindow, hoursText, venueText } from "../../worker/bookings";
 import { formatEuros } from "../../worker/html";
 import { normalTier, offer, priceOf, type PricesBody } from "../../worker/offer";
 import { dayState, lastDayOf, monthCells, monthOf, shiftMonth, type Availability, type DayState } from "./calendar-grid";
@@ -18,8 +18,12 @@ type Step = 1 | 2 | 3 | 4;
 /** Le corps des réponses de `POST /api/requests`. */
 type Answer = { status: string; error: string; reason: string; fields: string[]; price_cents: number };
 
-/** Les champs de la troisième étape, sous le nom que leur donne l'API. */
-const FIELDS = ["event_type", "event_hours", "venue", "name", "phone", "email", "terms"];
+/** Les champs de la troisième étape, dans l'ordre de la page. */
+const FIELDS = ["event_type", "hours_start", "hours_end", "address", "postal_code", "city", "name", "phone", "email", "terms"];
+/** Ceux que l'API reçoit tels quels, sous le même nom. */
+const SENT_AS_TYPED = ["event_type", "name", "phone", "email"];
+/** Ce que l'API nomme d'un mot et que la page demande en plusieurs champs : un refus de l'API se signale sur chacun. */
+const PARTS: Record<string, string[]> = { event_hours: ["hours_start", "hours_end"], venue: ["address", "postal_code", "city"] };
 
 const DAY_FORMAT = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 const MONTH_FORMAT = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" });
@@ -256,7 +260,8 @@ const { control, flag, unflag } = fieldProblems(form);
  * étape ; sinon, le focus va au premier champ à reprendre. Aucun champ que la page connaisse : l'envoi a échoué.
  */
 function showProblems(fields: string[]): void {
-  const flagged = fields.filter((name) => (name === "date" || name === "plan" || FIELDS.includes(name)) && flag(name) !== null);
+  const named = fields.flatMap((name) => PARTS[name] ?? [name]);
+  const flagged = named.filter((name) => (name === "date" || name === "plan" || FIELDS.includes(name)) && flag(name) !== null);
   if (flagged.length === 0) return sendProblem("failed");
   if (flagged.includes("date")) return backToCalendar($("problem-date"), false);
   if (flagged.includes("plan")) {
@@ -293,8 +298,11 @@ function answer({ status, data }: Reply<Answer>, sent: { plan: string; price_cen
 
 /** Le corps de `POST /api/requests`, sous les noms de l'API, avec le prix que le client a vu pour `plan`. */
 function request(plan: string) {
+  const typed = (name: string): string => control(name)!.value;
   return {
-    ...Object.fromEntries(FIELDS.map((name) => [name, control(name)!.value])),
+    ...Object.fromEntries(SENT_AS_TYPED.map((name) => [name, typed(name)])),
+    event_hours: hoursText(typed("hours_start"), typed("hours_end")),
+    venue: venueText(typed("address"), typed("postal_code"), typed("city")),
     date: chosenDate,
     plan,
     price_cents: seenPrice(plan),
@@ -371,6 +379,14 @@ function start(now: () => Date): void {
   history.replaceState({ step: 1 }, "");
   addEventListener("popstate", (event) => show(reachable((event.state as { step?: Step } | null)?.step ?? 1)));
   form.addEventListener("input", (event) => unflag((event.target as HTMLInputElement).name));
+  // Un événement ne finit pas à l'heure où il commence : la fin est à reprendre, et son message s'efface dès qu'elle diffère.
+  const [hoursStart, hoursEnd] = [control("hours_start") as HTMLSelectElement, control("hours_end") as HTMLSelectElement];
+  const checkHours = (): void => {
+    hoursEnd.setCustomValidity(hoursStart.value !== "" && hoursStart.value === hoursEnd.value ? "identiques" : "");
+    if (hoursEnd.validity.valid) unflag("hours_end");
+  };
+  hoursStart.addEventListener("change", checkHours);
+  hoursEnd.addEventListener("change", checkHours);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     void submit();

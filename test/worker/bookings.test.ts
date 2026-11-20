@@ -13,6 +13,11 @@ import {
   parisWeekday,
   type BookingAction,
   type BookingStatus,
+  ADDRESS_MAX,
+  CITY_MAX,
+  HALF_HOURS,
+  hoursText,
+  venueText,
 } from "../../worker/bookings";
 import { useDeposit } from "../support";
 import { buildOffer, currentTier, isBookable, normalTier, offer, planById, plansOf, priceOf, pricesBody, socialLabel, socialName, telHref, type OfferConfig, type Tier } from "../../worker/offer";
@@ -304,5 +309,33 @@ describe("social links", () => {
   it("socialName also names the network of an Instagram account", () => {
     expect(socialName("https://www.instagram.com/brotobooth/")).toBe("@brotobooth sur Instagram");
     expect(socialName("https://exemple.fr/page")).toBe("exemple.fr");
+  });
+});
+
+describe("ce que le formulaire de réservation assemble", () => {
+  it("propose les demi-heures d'une journée, de 8 h à 7 h 30, telles qu'on les lit", () => {
+    expect(HALF_HOURS).toHaveLength(48);
+    expect(new Set(HALF_HOURS).size).toBe(48);
+    expect(HALF_HOURS.slice(0, 3)).toEqual(["8\u00a0h", "8\u00a0h\u00a030", "9\u00a0h"]);
+    expect(HALF_HOURS).toContain("19\u00a0h");
+    expect(HALF_HOURS).toContain("0\u00a0h\u00a030");
+    expect(HALF_HOURS.at(-1)).toBe("7\u00a0h\u00a030");
+  });
+
+  it("écrit les horaires d'après les deux heures choisies, minuit passé compris", () => {
+    expect(hoursText("19\u00a0h", "1\u00a0h")).toBe("De 19\u00a0h à 1\u00a0h");
+    expect(hoursText("14\u00a0h\u00a030", "18\u00a0h")).toBe("De 14\u00a0h\u00a030 à 18\u00a0h");
+  });
+
+  it("écrit le lieu sur une ligne : l'adresse, puis le code postal et la ville", () => {
+    expect(venueText("12 rue des Lilas", "83330", "Le Castellet")).toBe("12 rue des Lilas, 83330 Le Castellet");
+    expect(venueText("  Domaine des Pins  ", " 13260 ", " Cassis ")).toBe("Domaine des Pins, 13260 Cassis");
+  });
+
+  // Le serveur accepte 60 caractères d'horaires et 300 de lieu : ce que le formulaire assemble doit toujours y tenir.
+  it("tient dans ce que le serveur accepte, avec les plus longues saisies que le formulaire permet", () => {
+    const longest = HALF_HOURS.reduce((a, b) => (b.length > a.length ? b : a));
+    expect(hoursText(longest, longest).length).toBeLessThanOrEqual(60);
+    expect(venueText("a".repeat(ADDRESS_MAX), "83330", "b".repeat(CITY_MAX)).length).toBeLessThanOrEqual(300);
   });
 });

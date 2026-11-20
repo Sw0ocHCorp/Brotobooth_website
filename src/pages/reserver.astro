@@ -1,4 +1,5 @@
 ---
+import { ADDRESS_MAX, CITY_MAX, HALF_HOURS } from "../../worker/bookings";
 import { formatEuros } from "../../worker/html";
 import { REFILL_LABEL, finalDepositPercent, hasContact, hasDeposit, isBookable, normalTier, offer, priceOf } from "../../worker/offer";
 import ContactLine from "../components/ContactLine.astro";
@@ -12,7 +13,8 @@ import "../styles/reserver.css";
  * posée sur la vidéo de la borne : la date, la formule, les coordonnées, puis la confirmation. Tous les textes sont ici ;
  * `src/scripts/reservation.ts` construit le calendrier, passe d'une étape à l'autre et montre le message qui convient.
  * Chaque message d'erreur (`problem-<champ>`) se place à côté de ce qu'il concerne ; le nom de chaque champ est celui
- * du corps JSON de `POST /api/requests`, que le script lit sans autre correspondance. Sans JavaScript, la carte donne le
+ * du corps JSON de `POST /api/requests`, sauf les horaires (deux listes) et le lieu (trois champs), que le script assemble
+ * en `event_hours` et `venue`. Sans JavaScript, la carte donne le
  * téléphone et l'e-mail à la place du calendrier. Une phrase qui invite à nous contacter n'est écrite que si l'offre dit
  * comment (`ContactLine`, `hasContact`) ; les délais, le pourcentage et les limites viennent de `config/offer.json`.
  * `PUBLIC_TURNSTILE_SITE_KEY` : la clé du widget anti-robots. Vide (essais), le widget n'est pas chargé.
@@ -25,22 +27,35 @@ type Field = {
   autocomplete?: string;
   placeholder?: string;
   maxlength?: number;
-  options?: string[];
+  inputmode?: "numeric";
+  pattern?: string;
+  options?: readonly string[];
 };
 
 const rows: Field[][] = [
   [
     // Aucun type choisi d'avance : la première option, vide, laisse le champ à remplir (`required`).
     { name: "event_type", label: "Type d'événement", options: offer.eventTypes, problem: "Choisissez le type d'événement." },
+  ],
+  // Les horaires se choisissent par demi-heure, sans rien taper : le script en fait « De 19 h à 1 h » (`hoursText`).
+  [
+    { name: "hours_start", label: "Heure de début", options: HALF_HOURS, problem: "Choisissez l'heure de début." },
+    { name: "hours_end", label: "Heure de fin", options: HALF_HOURS, problem: "Choisissez l'heure de fin, différente de celle du début." },
+  ],
+  // Le lieu en trois champs, que le script assemble sur une ligne (`venueText`).
+  [
     {
-      name: "event_hours",
-      label: "Horaires de l'événement",
-      placeholder: "De 19\u00a0h à 1\u00a0h",
-      maxlength: 60,
-      problem: "Indiquez les horaires, par exemple de 19\u00a0h à 1\u00a0h.",
+      name: "address",
+      label: "Adresse de l'événement",
+      placeholder: "Numéro et rue, ou nom du lieu",
+      maxlength: ADDRESS_MAX,
+      problem: "Indiquez l'adresse de l'événement.",
     },
   ],
-  [{ name: "venue", label: "Lieu", placeholder: "Adresse de l'événement", maxlength: 300, problem: "Indiquez l'adresse de l'événement." }],
+  [
+    { name: "postal_code", label: "Code postal", inputmode: "numeric", pattern: "[0-9]{5}", maxlength: 5, problem: "Indiquez le code postal, en 5 chiffres." },
+    { name: "city", label: "Ville", maxlength: CITY_MAX, problem: "Indiquez la ville." },
+  ],
   [
     { name: "name", label: "Nom", autocomplete: "name", maxlength: 120, problem: "Indiquez votre nom." },
     { name: "phone", label: "Téléphone", type: "tel", autocomplete: "tel", maxlength: 20, problem: "Vérifiez votre numéro de téléphone." },
@@ -197,6 +212,8 @@ const turnstileKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
                         autocomplete={field.autocomplete}
                         placeholder={field.placeholder}
                         maxlength={field.maxlength}
+                        inputmode={field.inputmode}
+                        pattern={field.pattern}
                         required
                       />
                     )}

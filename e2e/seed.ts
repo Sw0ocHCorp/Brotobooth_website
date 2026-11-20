@@ -142,8 +142,15 @@ let clients = 0;
 /** Un client, avec un e-mail propre à chaque appel : la limite de demandes par e-mail ne gêne aucun test. */
 export const client = () => ({
   name: "Camille Durand",
-  hours: "19 h - 1 h",
-  venue: "Domaine des Pins, Lyon",
+  start: "19\u00a0h",
+  end: "1\u00a0h",
+  /** Les horaires tels que le formulaire les assemble et que la réservation les garde. */
+  hours: "De 19\u00a0h à 1\u00a0h",
+  address: "Domaine des Pins, 12 chemin des Vignes",
+  postalCode: "83330",
+  city: "Le Castellet",
+  /** Le lieu tel que le formulaire l'assemble et que la réservation le garde. */
+  venue: "Domaine des Pins, 12 chemin des Vignes, 83330 Le Castellet",
   phone: "06 12 34 56 78",
   email: `camille.durand.${Date.now()}.${++clients}@example.test`,
 });
@@ -151,8 +158,11 @@ export const client = () => ({
 /** La troisième étape remplie comme un client le ferait, conditions de vente acceptées. */
 export async function fillDetails(page: Page, who = client()) {
   await page.getByLabel("Type d'événement").selectOption("Anniversaire");
-  await page.getByLabel("Horaires de l'événement").fill(who.hours);
-  await page.getByLabel("Lieu").fill(who.venue);
+  await page.getByLabel("Heure de début").selectOption(who.start);
+  await page.getByLabel("Heure de fin").selectOption(who.end);
+  await page.getByLabel("Adresse de l'événement").fill(who.address);
+  await page.getByLabel("Code postal").fill(who.postalCode);
+  await page.getByLabel("Ville").fill(who.city);
   await page.getByLabel("Nom", { exact: true }).fill(who.name);
   await page.getByLabel("Téléphone").fill(who.phone);
   await page.getByLabel("E-mail").fill(who.email);

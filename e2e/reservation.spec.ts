@@ -71,8 +71,11 @@ const reachUs = offer.contact.phone ? "appelez-nous" : "écrivez-nous";
 /** Ce que le client a saisi est toujours là. */
 async function expectKept(page: Page, who: ReturnType<typeof client>) {
   await expect(page.getByLabel("Type d'événement")).toHaveValue("Anniversaire");
-  await expect(page.getByLabel("Horaires de l'événement")).toHaveValue(who.hours);
-  await expect(page.getByLabel("Lieu")).toHaveValue(who.venue);
+  await expect(page.getByLabel("Heure de début")).toHaveValue(who.start);
+  await expect(page.getByLabel("Heure de fin")).toHaveValue(who.end);
+  await expect(page.getByLabel("Adresse de l'événement")).toHaveValue(who.address);
+  await expect(page.getByLabel("Code postal")).toHaveValue(who.postalCode);
+  await expect(page.getByLabel("Ville")).toHaveValue(who.city);
   await expect(page.getByLabel("Nom", { exact: true })).toHaveValue(who.name);
   await expect(page.getByLabel("Téléphone")).toHaveValue(who.phone);
   await expect(page.getByLabel("E-mail")).toHaveValue(who.email);
@@ -648,6 +651,79 @@ test("une erreur de champ se voit à côté du champ", async ({ page }) => {
   await phone.fill("06 98 76 54 32");
   await expect(message).toBeHidden();
   await expect(phone).not.toHaveAttribute("aria-invalid", "true");
+});
+
+test("les horaires se choisissent dans deux listes, par demi-heure", async ({ page }) => {
+  await reachDetails(page);
+  for (const label of ["Heure de début", "Heure de fin"]) {
+    const list = page.getByLabel(label);
+    await expect(list).toHaveValue("");
+    await expect(list.locator("option")).toHaveCount(49);
+    await expect(list.locator("option").first()).toHaveText("Choisir…");
+    await expect(list.locator("option").nth(1)).toHaveText("8\u00a0h");
+    await expect(list.locator("option", { hasText: /^19\sh\s30$/ })).toHaveCount(1);
+  }
+  // Plus de champ libre pour les horaires ni pour le lieu.
+  await expect(page.getByLabel("Horaires de l'événement")).toHaveCount(0);
+  await expect(page.getByLabel("Lieu", { exact: true })).toHaveCount(0);
+});
+
+test("le lieu se donne en trois champs, et le code postal attend cinq chiffres", async ({ page }) => {
+  await reachDetails(page);
+  const postal = page.getByLabel("Code postal");
+  await expect(postal).toHaveAttribute("inputmode", "numeric");
+  await expect(postal).toHaveAttribute("maxlength", "5");
+  await fillDetails(page);
+  await postal.fill("8333");
+  let posts = 0;
+  await page.route(REQUESTS, (route) => {
+    posts++;
+    return route.fulfill({ status: 201, json: { status: "created" } });
+  });
+  await send(page).click();
+  await expect(page.getByText("Indiquez le code postal, en 5 chiffres.")).toBeVisible();
+  await expect(postal).toBeFocused();
+  await expect(postal).toHaveAttribute("aria-invalid", "true");
+  expect(posts).toBe(0);
+
+  await postal.fill("83330");
+  await send(page).click();
+  await expect(confirmed(page)).toBeVisible();
+  expect(posts).toBe(1);
+});
+
+test("une heure de fin identique à celle du début est signalée, sans rien envoyer", async ({ page }) => {
+  await reachDetails(page);
+  const who = await fillDetails(page);
+  const end = page.getByLabel("Heure de fin");
+  await end.selectOption(who.start);
+  let posts = 0;
+  await page.route(REQUESTS, (route) => {
+    posts++;
+    return route.fulfill({ status: 201, json: { status: "created" } });
+  });
+  await send(page).click();
+  await expect(page.getByText("Choisissez l'heure de fin, différente de celle du début.")).toBeVisible();
+  await expect(end).toBeFocused();
+  expect(posts).toBe(0);
+
+  await end.selectOption(who.end);
+  await expect(page.getByText("Choisissez l'heure de fin, différente de celle du début.")).toBeHidden();
+  await send(page).click();
+  await expect(confirmed(page)).toBeVisible();
+});
+
+test("un refus du serveur sur les horaires ou le lieu se voit à côté de leurs champs", async ({ page }) => {
+  await reachDetails(page);
+  await fillDetails(page);
+  await page.route(REQUESTS, (route) => route.fulfill({ status: 422, json: { error: "invalid", fields: ["event_hours", "venue"] } }));
+  await send(page).click();
+  // L'API nomme d'un mot ce que la page demande en plusieurs champs : chacun est signalé, le premier reçoit le focus.
+  for (const label of ["Heure de début", "Heure de fin", "Adresse de l'événement", "Code postal", "Ville"]) {
+    await expect(page.getByLabel(label), label).toHaveAttribute("aria-invalid", "true");
+  }
+  await expect(page.getByLabel("Heure de début")).toBeFocused();
+  await expect(page.getByLabel("Nom", { exact: true })).not.toHaveAttribute("aria-invalid", "true");
 });
 
 test("un champ oublié est signalé avant l'envoi, sans rien envoyer", async ({ page }) => {

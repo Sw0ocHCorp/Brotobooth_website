@@ -126,3 +126,23 @@ export const depositCents = (priceCents: number, percent: number): number =>
 
 /** `true` si cette réservation a un acompte : c'est elle, et non le réglage du jour, qui décide de ce que disent ses messages. */
 export const hasBookingDeposit = (b: { deposit_cents: number | null }): boolean => (b.deposit_cents ?? 0) > 0;
+
+// ---------- ce que le formulaire de réservation assemble ----------
+
+/** Les horaires se choisissent par demi-heure, de 8 h à 7 h 30 le lendemain, écrites comme on les lit : « 19 h », « 19 h 30 ». */
+const FIRST_HOUR = 8;
+export const HALF_HOURS: readonly string[] = Array.from({ length: 48 }, (_, slot) => {
+  const hour = (FIRST_HOUR + Math.floor(slot / 2)) % 24;
+  return `${hour}\u00a0h${slot % 2 === 1 ? "\u00a030" : ""}`;
+});
+
+/** « De 19 h à 1 h » : les horaires d'un événement, d'après l'heure de début et l'heure de fin choisies. */
+export const hoursText = (start: string, end: string): string => `De ${start} à ${end}`;
+
+/** Les plus longues saisies du formulaire : le lieu assemblé tient dans les 300 caractères que le serveur accepte. */
+export const ADDRESS_MAX = 200;
+export const CITY_MAX = 80;
+
+/** « 12 rue des Lilas, 83330 Le Castellet » : le lieu d'un événement sur une ligne, d'après ses trois champs. */
+export const venueText = (address: string, postalCode: string, city: string): string =>
+  `${address.trim()}, ${postalCode.trim()} ${city.trim()}`;
