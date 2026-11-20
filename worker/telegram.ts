@@ -97,7 +97,12 @@ function stale(deps: Deps, b: Booking | null): Reply {
 async function applyEdit(deps: Deps, tap: Tap, bookingId: string, edit: Edit): Promise<void> {
   const db = deps.env.DB;
   const closing = !edit.buttons;
-  if (closing) await dropAlert(db, tap.chatId, tap.messageId);
+  // Une base en panne ne prive pas le propriétaire de la mise à jour du message qu'il vient de toucher.
+  if (closing) {
+    await dropAlert(db, tap.chatId, tap.messageId).catch((error) =>
+      console.error(`Bouton Telegram, alerte : ${error instanceof Error ? error.name : "erreur inconnue"}`),
+    );
+  }
   try {
     await deps.telegram.edit(tap.chatId, tap.messageId, edit.html, edit.buttons);
   } catch (error) {

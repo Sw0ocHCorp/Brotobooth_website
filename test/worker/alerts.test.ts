@@ -35,6 +35,16 @@ afterEach(() => logged.mockRestore());
 /** Les alertes de la demande telles que le bot les a envoyées, une par chat. */
 const sentAlerts = () => deps.telegrams.filter((m) => m.buttons?.flat().some((button) => button.data === `v:${b.id}`));
 
+/** La base, sauf pour les requêtes qui correspondent à `pattern` : elles lèvent, comme une panne de D1. */
+const brokenFor = (pattern: RegExp): D1Database =>
+  ({
+    prepare: (sql: string) => {
+      if (pattern.test(sql)) throw new Error("D1 indisponible");
+      return env.DB.prepare(sql);
+    },
+    batch: (statements: D1PreparedStatement[]) => env.DB.batch(statements),
+  }) as unknown as D1Database;
+
 describe("retenir l'alerte d'une demande", () => {
   it("retient le message de chaque chat qui l'a reçu", async () => {
     const sent = sentAlerts();
@@ -47,6 +57,17 @@ describe("retenir l'alerte d'une demande", () => {
     await processDue(deps);
     expect(deps.telegrams.length).toBeGreaterThan(2);
     expect(await alertRows()).toHaveLength(2);
+  });
+
+  it("ne pas réussir à retenir l'alerte ne fait ni échouer ni renvoyer le message, qui est parti", async () => {
+    await resetDb(env.DB);
+    const d = fakeDeps({ env: { ...env, TELEGRAM_CHAT_IDS: CHATS, DB: brokenFor(/INTO telegram_alerts/) } });
+    b = await request();
+    expect(await processDue(d)).toMatchObject({ failed: 0 });
+    expect(d.telegrams.filter((m) => m.buttons)).toHaveLength(2);
+    await processDue(d);
+    expect(d.telegrams.filter((m) => m.buttons)).toHaveLength(2);
+    expect(await alertRows()).toEqual([]);
   });
 
   it("ne retient pas le message d'un chat qui n'a pas répondu, ni un envoi sans numéro de message", async () => {
@@ -108,29 +129,57 @@ describe("mettre l'alerte à jour", () => {
   });
 
   it.each([
-    ["500 : l'alerte est gardée pour le passage suivant", new ServiceRefusal("Telegram", 500), 2],
-    ["429 (trop de requêtes) : l'alerte est gardée", new ServiceRefusal("Telegram", 429), 2],
-    ["400 (message supprimé, ou déjà à jour) : il n'y a plus rien à tenter", new ServiceRefusal("Telegram", 400), 0],
-    ["403 (bot bloqué) : il n'y a plus rien à tenter", new ServiceRefusal("Telegram", 403), 0],
-  ])("Telegram répond %s", async (_what, error, kept) => {
+    ["500 : l'alerte est gardée pour le passage suivant", 500, 2],
+    ["429 (trop de requêtes) : l'alerte est gardée", 429, 2],
+    // Un jeton faux ou changé ne doit pas faire oublier les alertes : elles attendent qu'il soit corrigé.
+    ["401 (jeton refusé) : l'alerte est gardée", 401, 2],
+    ["404 (bot introuvable) : l'alerte est gardée", 404, 2],
+    ["400 (message supprimé, ou déjà à jour) : il n'y a plus rien à tenter", 400, 0],
+    ["403 (bot bloqué) : il n'y a plus rien à tenter", 403, 0],
+  ])("Telegram répond %s", async (_what, status, kept) => {
+    const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
     await validateBooking(deps, b.id, "owner");
     deps.telegram.edit = async () => {
-      throw error;
+      throw new ServiceRefusal("Telegram", status);
     };
     await processDue(deps);
     expect(await alertRows()).toHaveLength(kept);
+    // Une alerte abandonnée se lit dans les journaux, avec le code de Telegram ; une alerte gardée, comme une panne.
+    const abandoned = warned.mock.calls.flat().join("\n");
+    expect(abandoned.includes(`Telegram a répondu ${status}`)).toBe(kept === 0);
+    expect(logged.mock.calls.flat().join("\n").includes(`Telegram a répondu ${status}`)).toBe(kept === 2);
+    warned.mockRestore();
   });
 
-  it("ne consigne ni le nom ni le téléphone du client", async () => {
+  it("une panne dans un chat n'empêche pas de mettre l'autre à jour", async () => {
+    await validateBooking(deps, b.id, "owner");
+    const edit = deps.telegram.edit;
+    deps.telegram.edit = async (chatId, ...rest) => {
+      if (chatId === "111") throw new ServiceRefusal("Telegram", 500);
+      return edit(chatId, ...rest);
+    };
+    await processDue(deps);
+    expect(deps.edits.map((e) => e.chatId)).toEqual(["222"]);
+    expect((await alertRows()).map((row) => row.chat_id)).toEqual(["111"]);
+  });
+
+  it("ne consigne ni le nom ni le téléphone du client, même si la panne les cite", async () => {
     await validateBooking(deps, b.id, "owner");
     deps.telegram.edit = async () => {
-      throw new ServiceRefusal("Telegram", 500);
+      throw new Error(`échec pour ${b.client_name} (${b.client_phone})`);
     };
     await processDue(deps);
     const logs = logged.mock.calls.flat().join("\n");
     expect(logs).toContain("Alerte Telegram");
     expect(logs).not.toContain(b.client_name!);
     expect(logs).not.toContain(b.client_phone!);
+  });
+
+  it("une base en panne sur les alertes ne fait échouer ni l'envoi des messages ni la tâche", async () => {
+    await validateBooking(deps, b.id, "owner");
+    deps.env = { ...deps.env, DB: brokenFor(/FROM telegram_alerts/) };
+    await expect(processDue(deps)).resolves.toMatchObject({ failed: 0 });
+    expect(logged.mock.calls.flat().join("\n")).toContain("Alerte Telegram");
   });
 });
 
@@ -188,6 +237,14 @@ describe("répondre par un bouton du bot", () => {
     await processDue(deps);
     expect(deps.edits.filter((edit) => edit.html.endsWith("<b>Confirmée</b>"))).toHaveLength(2);
     expect(await alertRows()).toEqual([]);
+  });
+
+  it("une base en panne sur les alertes n'empêche pas de mettre à jour le message touché", async () => {
+    const [mine] = sentAlerts();
+    deps.env = { ...deps.env, DB: brokenFor(/telegram_alerts/) };
+    await tap(`v:${b.id}`, mine);
+    expect(deps.edits.map((edit) => [edit.chatId, edit.messageId])).toEqual([[mine.chatId, mine.messageId]]);
+    expect(deps.edits[0].html.endsWith("<b>Confirmée, le client en est informé</b>")).toBe(true);
   });
 
   it("si Telegram ne modifie pas le message touché, il reste retenu et sera repris", async () => {

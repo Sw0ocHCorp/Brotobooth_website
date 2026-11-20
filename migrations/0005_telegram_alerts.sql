@@ -8,5 +8,3 @@ CREATE TABLE telegram_alerts (
   booking_id TEXT NOT NULL REFERENCES bookings(id),
   PRIMARY KEY (chat_id, message_id)
 );
-
-CREATE INDEX telegram_alerts_booking ON telegram_alerts(booking_id);

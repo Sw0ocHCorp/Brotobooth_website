@@ -30,7 +30,7 @@ Reportez l'identifiant affiché (`database_id`) dans `wrangler.jsonc`, à la pla
 npx wrangler d1 migrations apply DB --remote
 ```
 
-Vérification : `npx wrangler d1 execute DB --remote --command "SELECT name FROM sqlite_master WHERE type='table'"` liste `bookings`, `booking_history`, `notifications`, `system_state` et `contact_messages`.
+Vérification : `npx wrangler d1 execute DB --remote --command "SELECT name FROM sqlite_master WHERE type='table'"` liste `bookings`, `booking_history`, `notifications`, `system_state`, `contact_messages` et `telegram_alerts`. **À chaque nouvelle migration** (un fichier de plus dans `migrations/`), relancez `npx wrangler d1 migrations apply DB --remote` avant `npm run deploy` : la publication n'applique pas les migrations elle-même.
 
 **À contrôler une fois sur la vraie base** : que l'erreur « date déjà prise » de D1 est bien reconnue (les essais locaux n'utilisent pas la vraie base). Après le déploiement, dans `/admin/`, bloquez une date lointaine, puis bloquez-la une seconde fois : la page doit répondre « Cette date est déjà prise. », et non « L'opération a échoué ». Retirez ensuite le blocage.
 

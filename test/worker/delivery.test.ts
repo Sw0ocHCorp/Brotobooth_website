@@ -20,6 +20,7 @@ import {
   type NotificationSpec,
 } from "../../worker/repository";
 import { handle } from "../../worker/router";
+import { ServiceRefusal } from "../../worker/http";
 import { telegramGateway } from "../../worker/telegram";
 import wrangler from "../../wrangler.jsonc?raw";
 import { CHAT_ID, OWNER_EMAIL, T0, fakeDeps, insert, newBooking, notificationRows, requestBody, resetDb, useDeposit, type FakeDeps } from "../support";
@@ -316,8 +317,10 @@ describe("processDue : passages simultanés", () => {
     });
 
     it("ne met pas le texte du message dans la clé", async () => {
-      const { keys } = await retry();
-      expect(keys.join()).not.toMatch(/Camille|acompte|450/);
+      const { keys, id } = await retry();
+      // L'identifiant et l'empreinte sont tirés au sort : ils peuvent contenir « 450 » par hasard, pas le texte du message.
+      const readable = keys.map((key) => (key ?? "").replace(id, "").replace(/[0-9a-f]{16}$/, ""));
+      expect(readable.join()).not.toMatch(/Camille|acompte|450/);
     });
   });
 });
@@ -854,6 +857,9 @@ describe("passerelle Telegram", () => {
     for (const call of [() => gateway.send("42", "x"), () => gateway.edit("42", 1, "x"), () => gateway.answer("cb")]) {
       const error = (await call().catch((e: Error) => e)) as Error;
       expect(error.message).toBe(`Telegram a répondu ${status}`);
+      // Le code de la réponse se lit sur l'erreur : la mise à jour des alertes distingue un refus définitif d'une panne.
+      expect(error).toBeInstanceOf(ServiceRefusal);
+      expect((error as ServiceRefusal).status).toBe(status);
     }
   });
 

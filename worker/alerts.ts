@@ -38,11 +38,11 @@ export const settled = (deps: Deps, b: Booking, line: string): Edit => ({
 const PER_PASS = 20;
 
 /**
- * Telegram refuse pour de bon de modifier le message : il a été supprimé, il porte déjà ce texte, le bot est bloqué. Il
- * n'y a plus rien à tenter. Une panne (réseau, 5xx, 429) se retente au passage suivant.
+ * Telegram refuse pour de bon de modifier le message : il a été supprimé ou porte déjà ce texte (400), ou le bot est
+ * bloqué dans ce chat (403). Il n'y a plus rien à tenter. Tout le reste se retente au passage suivant : une panne (réseau,
+ * 5xx, 429), mais aussi un jeton refusé (401, 404), qui ne doit pas faire oublier les alertes avant d'être corrigé.
  */
-const isFinal = (error: unknown): boolean =>
-  error instanceof ServiceRefusal && error.status >= 400 && error.status < 500 && error.status !== 429;
+const isFinal = (error: unknown): error is ServiceRefusal => error instanceof ServiceRefusal && (error.status === 400 || error.status === 403);
 
 /** Une panne se consigne par ce qu'elle est, jamais par un message qui pourrait citer un client. */
 const failure = (error: unknown): string =>
@@ -66,6 +66,8 @@ export async function settleAlerts(deps: Deps): Promise<void> {
           console.error(`Alerte Telegram, mise à jour : ${failure(error)}`);
           continue;
         }
+        // Rien de grave (souvent un message déjà à jour), mais l'abandon se lit dans les journaux.
+        console.warn(`Alerte Telegram abandonnée : ${error.message}`);
       }
       await dropAlert(db, alert.chat_id, alert.message_id);
     }
