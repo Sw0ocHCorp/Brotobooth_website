@@ -107,7 +107,13 @@ Dans Stripe, créez un point d'arrivée (webhook) sur `https://brotobooth.fr/api
 
 ## 9. Telegram
 
-Avec les mêmes valeurs que les secrets du Worker, saisies sans écho :
+Le plus simple, dans un terminal (pas par un bouton qui lance la commande sans clavier) :
+
+```bash
+bash scripts/relier-telegram.sh
+```
+
+Le script demande le jeton du bot sans l'afficher, crée un nouveau secret de liaison, l'enregistre (`TELEGRAM_WEBHOOK_SECRET`) et déclare l'adresse du site à Telegram. À la main, avec les mêmes valeurs que les secrets du Worker, saisies sans écho :
 
 ```bash
 read -rs TELEGRAM_BOT_TOKEN && export TELEGRAM_BOT_TOKEN
