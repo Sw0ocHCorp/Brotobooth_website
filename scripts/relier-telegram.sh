@@ -10,14 +10,17 @@ cd "$(dirname "$0")/.."
 
 BASE_URL="${BASE_URL:-https://brotobooth.fr}"
 
-# Le jeton se saisit au clavier : sans terminal (bouton « Run », tâche automatique), rien n'est modifié.
-if [ ! -t 0 ]; then
-  echo "À lancer dans un terminal : le jeton du bot se saisit au clavier. Rien n'a été modifié." >&2
-  exit 1
+# Le jeton vient de TELEGRAM_BOT_TOKEN quand un autre script l'a déjà demandé (`scripts/groupe-telegram.sh`) ; sinon il se
+# saisit au clavier, et sans terminal (bouton « Run », tâche automatique), rien n'est modifié.
+token="${TELEGRAM_BOT_TOKEN:-}"
+if [ -z "$token" ]; then
+  if [ ! -t 0 ]; then
+    echo "À lancer dans un terminal : le jeton du bot se saisit au clavier. Rien n'a été modifié." >&2
+    exit 1
+  fi
+  read -rs -p "Jeton du bot (rien ne s'affiche quand vous collez), puis Entrée : " token
+  echo
 fi
-
-read -rs -p "Jeton du bot (rien ne s'affiche quand vous collez), puis Entrée : " token
-echo
 if [ -z "$token" ]; then
   echo "Aucun jeton saisi : rien n'a été modifié." >&2
   exit 1

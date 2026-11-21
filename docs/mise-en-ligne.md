@@ -16,7 +16,7 @@ La procédure suit l'ordre ci-dessous. Chaque étape se termine par une vérific
 - **Stripe**, avec les informations de l'entreprise, seulement si vous remettez l'acompte ;
 - **Resend**, avec la région européenne pour l'envoi des e-mails (Resend garde les données du compte aux États-Unis, ce que dit la politique de confidentialité) ;
 - **le bot Telegram**, créé auprès de @BotFather ;
-- les **identifiants des chats Telegram** qui recevront les alertes. Écrivez au bot depuis chaque chat, puis lisez `chat.id` dans la réponse de `read -rs TELEGRAM_BOT_TOKEN; curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates"` (le jeton est saisi sans écho et ne va dans aucun fichier).
+- les **identifiants des chats Telegram** qui recevront les alertes. Écrivez au bot depuis chaque chat, puis lisez `chat.id` dans la réponse de `read -rs TELEGRAM_BOT_TOKEN; curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates"` (le jeton est saisi sans écho et ne va dans aucun fichier). Une fois le bot branché sur le site (étape 9), cette commande ne répond plus : pour un groupe Telegram où plusieurs personnes suivent les réservations, ajoutez-y le bot, puis lancez `bash scripts/groupe-telegram.sh` dans un terminal ; il débranche le bot une minute, donne l'identifiant du groupe (un nombre négatif) et rebranche le bot. Tout membre du groupe peut alors appuyer sur « Valider » ou « Refuser ».
 
 ## 2. La base de données
 
