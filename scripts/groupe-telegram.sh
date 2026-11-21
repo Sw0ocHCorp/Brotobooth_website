@@ -25,9 +25,5 @@ node scripts/telegram-groups.mjs pause
 # À partir d'ici, le bot est rebranché à la sortie du script, même s'il s'arrête en route.
 trap 'echo; echo "Rebranchement du bot sur le site…"; bash scripts/relier-telegram.sh' EXIT
 
-echo
-echo "Dans le groupe, mentionnez le bot : tapez @, choisissez-le dans la liste, ajoutez un mot, puis envoyez."
-read -r -p "Une fois le message envoyé, appuyez ici sur Entrée : " _
+read -r -p "Une fois le message envoyé dans le groupe, appuyez ici sur Entrée (sans rien taper) : " _
 node scripts/telegram-groups.mjs list
-echo
-echo "Copiez l'identifiant du groupe (le nombre négatif) et envoyez-le à Claude : ce n'est pas un secret."
