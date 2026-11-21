@@ -44,8 +44,8 @@ describe("groupsIn", () => {
 /** Une fausse API du bot : elle note chaque appel, et répond `answers[méthode]`. */
 function fakeBot(answers: Record<string, unknown> = {}) {
   const calls: { method: string; body: Record<string, unknown> }[] = [];
-  const call = async (method: string, body: Record<string, unknown>) => {
-    calls.push({ method, body });
+  const call = async (method: string, body: object): Promise<unknown> => {
+    calls.push({ method, body: body as Record<string, unknown> });
     return answers[method] ?? true;
   };
   return { calls, call };
