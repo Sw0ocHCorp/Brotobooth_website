@@ -117,9 +117,10 @@ describe("processDue : envoi des messages dus", () => {
     const b = await seeded({ status: "awaiting_deposit" });
     await enqueue(env.DB, [mail("client_deposit_reminder", b.id)]);
     expect((await cancelBooking(deps, b.id, "owner")).ok).toBe(true);
-    expect(await processDue(deps)).toEqual({ sent: 1, failed: 0 });
-    // Seul l'avis d'annulation part : le rappel du délai d'acompte a été annulé avec la réservation.
+    expect(await processDue(deps)).toEqual({ sent: 2, failed: 0 });
+    // Seuls l'avis d'annulation et son annonce aux chats partent : le rappel du délai d'acompte a été annulé avec la réservation.
     expect(deps.emails.map((m) => m.subject)).toEqual(["Votre réservation du samedi 19 décembre 2026 est annulée"]);
+    expect(deps.telegrams.map((m) => m.html.split("\n")[0])).toEqual(["<b>Réservation annulée : samedi 19 décembre 2026</b>"]);
   });
 
   it("rend le message d'après la réservation à jour, juste avant l'envoi", async () => {

@@ -438,6 +438,29 @@ describe("messages au propriétaire", () => {
     expect(html).toContain("<b>Lieu</b> : Domaine des Pins, Lyon\n<b>Horaires</b> : 18h-02h\n");
   });
 
+  // Les décisions sur une prestation sont annoncées à chaque chat : tous ceux qui suivent les réservations le savent.
+  it.each([
+    ["owner_confirmed", "Prestation confirmée : samedi 19 décembre 2026"],
+    ["owner_accepted", "Demande acceptée, acompte attendu : samedi 19 décembre 2026"],
+    ["owner_refused", "Demande refusée : samedi 19 décembre 2026"],
+    ["owner_cancelled", "Réservation annulée : samedi 19 décembre 2026"],
+    ["owner_added", "Réservation ajoutée : samedi 19 décembre 2026"],
+  ])("%s annonce la décision, la date et le client, sans bouton", (template, title) => {
+    const { html, buttons } = renderTelegram(template, booking({ event_date: "2026-12-19" }), ctx);
+    expect(html.startsWith(`<b>${title}</b>\n`)).toBe(true);
+    expect(html).toContain("<b>Client</b> : Camille Martin");
+    expect(html).toContain(`<b>Formule</b> : ${escapeHtml(SECOND_PLAN.name)}`);
+    expect(buttons).toBeUndefined();
+    // Ni l'e-mail ni le téléphone du client : ces messages ne servent qu'à savoir où en est la date.
+    expect(html).not.toContain("camille@example.test");
+    expect(html).not.toContain("0601020304");
+  });
+
+  it.each(["owner_confirmed", "owner_cancelled", "owner_added"])("%s donne aussi le lieu et les horaires", (template) => {
+    const { html } = renderTelegram(template, booking(), ctx);
+    expect(html).toContain("<b>Lieu</b> : Domaine des Pins, Lyon\n<b>Horaires</b> : 18h-02h");
+  });
+
   it("la relance d'une demande sans réponse donne aussi les horaires", () => {
     expect(renderTelegram("owner_review_reminder", booking(), ctx).html).toContain("<b>Horaires</b> : 18h-02h");
   });

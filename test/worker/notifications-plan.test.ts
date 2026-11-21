@@ -26,13 +26,14 @@ const EVENTS = Object.keys({
 } satisfies Record<PlanEvent, 0>) as PlanEvent[];
 
 describe("liste des modèles", () => {
-  it("nomme les vingt modèles des specs : réservations, et les deux de la rubrique de contact", () => {
+  it("nomme les vingt-cinq modèles des specs : réservations, décisions annoncées aux chats, et les deux de la rubrique de contact", () => {
     expect([...ALL_TEMPLATES].sort()).toEqual([
       "client_cancelled", "client_confirmed", "client_d7", "client_deposit_link", "client_deposit_reminder",
       "client_received", "client_refused", "client_released", "client_unanswered",
+      "owner_accepted", "owner_added", "owner_cancelled", "owner_confirmed",
       "owner_contact", "owner_contact_failed",
       "owner_d1", "owner_d7", "owner_deposit_paid", "owner_digest", "owner_email_failed", "owner_late_payment",
-      "owner_new_request", "owner_released", "owner_review_reminder",
+      "owner_new_request", "owner_refused", "owner_released", "owner_review_reminder",
     ]);
   });
 });
@@ -45,16 +46,16 @@ describe("plan", () => {
     ].sort());
   });
 
-  it("validation : lien de paiement tout de suite, rappel 24 h avant l'échéance", () => {
+  it("validation : lien de paiement tout de suite, rappel 24 h avant l'échéance, et les chats prévenus", () => {
     const v = { ...b, status: "awaiting_deposit" as const, hold_until: "2026-11-10T10:00:00.000Z" };
     expect(keys(plan("validated", v, new Date(T0)))).toEqual(
-      [`client_deposit_link|email|${T0}`, "client_deposit_reminder|email|2026-11-09T10:00:00.000Z"].sort(),
+      [`client_deposit_link|email|${T0}`, "client_deposit_reminder|email|2026-11-09T10:00:00.000Z", `owner_accepted|telegram|${T0}`].sort(),
     );
   });
 
   it("validation : pas de rappel dont l'heure est déjà passée", () => {
     const v = { ...b, status: "awaiting_deposit" as const, hold_until: "2026-11-08T09:00:00.000Z" };
-    expect(templates(plan("validated", v, new Date(T0)))).toEqual(["client_deposit_link"]);
+    expect(templates(plan("validated", v, new Date(T0)))).toEqual(["client_deposit_link", "owner_accepted"]);
   });
 
   it("paiement : alerte, confirmation, puis J-7 et J-1 à 9 h de Paris", () => {
@@ -83,10 +84,11 @@ describe("plan", () => {
     expect(p.map((n) => n.template)).toContain("owner_d1");
   });
 
-  it("un accord sans acompte : confirmation au client, puis les rappels, rien d'autre", () => {
+  it("un accord sans acompte : confirmation au client, annonce aux chats, puis les rappels, rien d'autre", () => {
     const p = plan("confirmed", { ...b, event_date: "2026-12-19", status: "confirmed", deposit_cents: 0, hold_until: null }, new Date(T0));
     expect(keys(p)).toEqual([
       `client_confirmed|email|${T0}`,
+      `owner_confirmed|telegram|${T0}`,
       "owner_d7|telegram|2026-12-12T08:00:00.000Z", "owner_d7|email|2026-12-12T08:00:00.000Z",
       "owner_d1|telegram|2026-12-18T08:00:00.000Z", "owner_d1|email|2026-12-18T08:00:00.000Z",
       "client_d7|email|2026-12-12T08:00:00.000Z",
@@ -96,12 +98,13 @@ describe("plan", () => {
 
   it("un accord sans acompte et sans e-mail client ne prévient que le propriétaire", () => {
     const p = plan("confirmed", { ...noEmail, event_date: "2026-12-19", status: "confirmed", deposit_cents: 0 }, new Date(T0));
-    expect(templates(p)).toEqual(["owner_d1", "owner_d1", "owner_d7", "owner_d7"]);
+    expect(templates(p)).toEqual(["owner_confirmed", "owner_d1", "owner_d1", "owner_d7", "owner_d7"]);
   });
 
-  it("une confirmation à la main prévient comme un paiement, sans les messages de paiement", () => {
+  it("une réservation ajoutée à la main est annoncée aux chats, puis prévient comme un paiement, sans les messages de paiement", () => {
     const p = plan("manual_confirmed", { ...b, event_date: "2026-12-19", status: "confirmed" }, new Date(T0));
     expect(keys(p)).toEqual([
+      `owner_added|telegram|${T0}`,
       "owner_d7|telegram|2026-12-12T08:00:00.000Z", "owner_d7|email|2026-12-12T08:00:00.000Z",
       "owner_d1|telegram|2026-12-18T08:00:00.000Z", "owner_d1|email|2026-12-18T08:00:00.000Z",
       "client_d7|email|2026-12-12T08:00:00.000Z",
@@ -121,16 +124,22 @@ describe("plan", () => {
     expect(templates(p)).toEqual(["owner_new_request", "owner_new_request", "owner_review_reminder", "owner_review_reminder"]);
   });
 
-  it.each(["validated", "refused", "cancelled"] as const)("%s sans e-mail client ne planifie rien", (event) => {
-    expect(plan(event, { ...noEmail, status: "awaiting_deposit", hold_until: "2026-11-10T10:00:00.000Z" }, new Date(T0))).toEqual([]);
+  it.each([
+    ["validated", "owner_accepted"],
+    ["refused", "owner_refused"],
+    ["cancelled", "owner_cancelled"],
+  ] as const)("%s sans e-mail client ne prévient que les chats", (event, template) => {
+    expect(keys(plan(event, { ...noEmail, status: "awaiting_deposit", hold_until: "2026-11-10T10:00:00.000Z" }, new Date(T0)))).toEqual([
+      `${template}|telegram|${T0}`,
+    ]);
   });
 
-  it("le refus ne prévient que le client", () => {
-    expect(keys(plan("refused", { ...b, status: "refused" }, new Date(T0)))).toEqual([`client_refused|email|${T0}`]);
+  it("le refus prévient le client, et l'annonce aux chats", () => {
+    expect(keys(plan("refused", { ...b, status: "refused" }, new Date(T0)))).toEqual([`client_refused|email|${T0}`, `owner_refused|telegram|${T0}`]);
   });
 
-  it("l'annulation ne prévient que le client", () => {
-    expect(keys(plan("cancelled", { ...b, status: "confirmed" }, new Date(T0)))).toEqual([`client_cancelled|email|${T0}`]);
+  it("l'annulation prévient le client, et l'annonce aux chats", () => {
+    expect(keys(plan("cancelled", { ...b, status: "confirmed" }, new Date(T0)))).toEqual([`client_cancelled|email|${T0}`, `owner_cancelled|telegram|${T0}`]);
   });
 
   // Le message dépend de l'état que la date quitte : `b` est la réservation d'avant la libération.

@@ -224,6 +224,7 @@ Toutes les notifications passent par la table `notifications`. Elles partent aus
 |---|---|---|---|
 | Nouvelle demande | Oui, avec Valider, Refuser, Ajuster le prix | Oui | Apparaît comme « À valider » |
 | Sans réponse à 24 h, puis 48 h | Oui | | |
+| Demande acceptée (confirmée, ou acompte attendu), refusée ; réservation annulée ou ajoutée à la main : un message à chaque chat, où que la décision ait été prise (ajout du 2026-11-21) | Oui | | |
 | Acompte payé | Oui | Oui | Devient une prestation confirmée |
 | Date libérée automatiquement | Oui | Oui | Disparaît |
 | J-7, avec le solde restant dû | Oui | Oui | |

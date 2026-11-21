@@ -37,6 +37,11 @@ export const ALL_TEMPLATES = [
   "client_d7",
   "owner_new_request",
   "owner_review_reminder",
+  "owner_accepted",
+  "owner_confirmed",
+  "owner_refused",
+  "owner_cancelled",
+  "owner_added",
   "owner_deposit_paid",
   "owner_released",
   "owner_d7",
@@ -106,9 +111,10 @@ function drafts(event: PlanEvent, b: Booking, now: Date): Draft[] {
         ...(b.hold_until
           ? [draft("client_deposit_reminder", EMAIL, hoursFrom(b.hold_until, -DEPOSIT_REMINDER_LEAD_HOURS))]
           : []),
+        draft("owner_accepted", TELEGRAM, now),
       ];
     case "refused":
-      return [draft("client_refused", EMAIL, now)];
+      return [draft("client_refused", EMAIL, now), draft("owner_refused", TELEGRAM, now)];
     case "paid":
       return [
         draft("client_confirmed", EMAIL, now),
@@ -116,19 +122,22 @@ function drafts(event: PlanEvent, b: Booking, now: Date): Draft[] {
         ...eventReminders(b),
       ];
     case "confirmed":
-      return [draft("client_confirmed", EMAIL, now), ...eventReminders(b)];
+      return [draft("client_confirmed", EMAIL, now), draft("owner_confirmed", TELEGRAM, now), ...eventReminders(b)];
     case "manual_confirmed":
-      return eventReminders(b);
+      return [draft("owner_added", TELEGRAM, now), ...eventReminders(b)];
     case "released":
       // `b` est la réservation d'avant la libération : le client n'a pas à s'entendre dire que le délai est passé quand c'est nous qui n'avons pas répondu.
       return [draft(b.status === "pending_review" ? "client_unanswered" : "client_released", EMAIL, now), draft("owner_released", BOTH, now)];
     case "cancelled":
-      return [draft("client_cancelled", EMAIL, now)];
+      return [draft("client_cancelled", EMAIL, now), draft("owner_cancelled", TELEGRAM, now)];
   }
 }
 
 /**
- * Les notifications à mettre en file pour un événement, clés `b<id>:<modèle>[:<repère>]:<canal>`.
+ * Les notifications à mettre en file pour un événement, clés `b<id>:<modèle>[:<repère>]:<canal>`. Chaque décision sur une
+ * prestation (acceptée, refusée, annulée, ajoutée à la main) est annoncée par un message à chaque chat du propriétaire :
+ * tous ceux qui suivent les réservations le savent, même quand la décision a été prise ailleurs. Seulement sur Telegram :
+ * l'e-mail va au propriétaire, qui l'a prise.
  * Pour `cancelled`, `b` est la réservation avant l'annulation : une date bloquée ne prévient personne. Pour `released`,
  * c'est la réservation avant la libération : le message au client diffère selon qu'il n'a pas payé ou que nous n'avons pas répondu.
  * Rien pour le client sans e-mail ni pour un rappel dont l'heure est déjà passée.

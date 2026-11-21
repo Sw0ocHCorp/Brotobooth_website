@@ -136,6 +136,27 @@ const remindedWeekBefore = (b: Booking): boolean => {
   return confirmedAt !== null && reminderAt(b.event_date, 7).getTime() >= Date.parse(confirmedAt);
 };
 
+/**
+ * Une décision sur une prestation, telle que chaque chat du propriétaire la lit : le client et la formule, et, quand la date
+ * est (ou était) tenue, le type, le lieu et les horaires.
+ */
+const decision = (subject: string, b: Booking, { place = false } = {}): Message => ({
+  subject,
+  blocks: [
+    facts([
+      ["Client", b.client_name],
+      ...(place ? ([["Type", b.event_type]] satisfies Row[]) : []),
+      ["Formule", planName(b)],
+      ...(place
+        ? ([
+            ["Lieu", b.venue],
+            ["Horaires", b.event_hours],
+          ] satisfies Row[])
+        : []),
+    ]),
+  ],
+});
+
 /** Sans réponse, la date est libérée à l'échéance. */
 const expiry = (b: Booking): Block[] =>
   b.hold_until ? [para(`Sans réponse avant le ${formatMoment(b.hold_until)}, la date sera libérée.`)] : [];
@@ -304,6 +325,14 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       ],
     };
   },
+
+  // Les décisions sur une prestation, annoncées à chaque chat (`plan`). Sans e-mail ni téléphone du client : ces messages
+  // ne servent qu'à savoir où en est la date.
+  owner_confirmed: (b) => decision(`Prestation confirmée : ${day(b)}`, b, { place: true }),
+  owner_accepted: (b) => decision(`Demande acceptée, acompte attendu : ${day(b)}`, b),
+  owner_refused: (b) => decision(`Demande refusée : ${day(b)}`, b),
+  owner_cancelled: (b) => decision(`Réservation annulée : ${day(b)}`, b, { place: true }),
+  owner_added: (b) => decision(`Réservation ajoutée : ${day(b)}`, b, { place: true }),
 
   owner_review_reminder: (b, ctx) => ({
     subject: `Demande en attente pour le ${day(b)}`,

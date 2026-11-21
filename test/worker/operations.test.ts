@@ -136,6 +136,7 @@ describe("validateBooking", () => {
     expect(await stillDue(p.id)).toEqual([
       "client_deposit_link|email|2026-11-08T12:00:00.000Z",
       "client_deposit_reminder|email|2026-11-10T12:00:00.000Z",
+      "owner_accepted|telegram|2026-11-08T12:00:00.000Z",
     ]);
   });
 
@@ -179,10 +180,10 @@ describe("refuseBooking", () => {
     expect(await decemberDates()).toEqual([]);
   });
 
-  it("refuser prévient le client et n'envoie plus rien d'autre", async () => {
+  it("refuser prévient le client et les chats, et n'envoie plus rien d'autre", async () => {
     const p = await request();
     await refuseBooking(deps, p.id, "owner");
-    expect(await stillDue(p.id)).toEqual([`client_refused|email|${T0}`]);
+    expect(await stillDue(p.id)).toEqual([`client_refused|email|${T0}`, `owner_refused|telegram|${T0}`]);
   });
 
   it("refuser une réservation déjà validée ne change rien", async () => {
@@ -200,7 +201,7 @@ describe("cancelBooking", () => {
     expect(r.ok && r.booking.status).toBe("cancelled");
     expect(r.ok && r.booking.hold_until).toBeNull();
     expect(await cancelledAt(c.id, "owner_d7")).toEqual([T0, T0]);
-    expect(await stillDue(c.id)).toEqual([`client_cancelled|email|${T0}`]);
+    expect(await stillDue(c.id)).toEqual([`client_cancelled|email|${T0}`, `owner_cancelled|telegram|${T0}`]);
     expect(await decemberDates()).toEqual([]);
   });
 
@@ -209,7 +210,7 @@ describe("cancelBooking", () => {
     const r = await cancelBooking(deps, v.id, "owner");
     expect(r.ok && r.booking.status).toBe("cancelled");
     expect(await cancelledAt(v.id, "client_deposit_reminder")).toEqual([T0]);
-    expect(await stillDue(v.id)).toEqual([`client_cancelled|email|${T0}`]);
+    expect(await stillDue(v.id)).toEqual([`client_cancelled|email|${T0}`, `owner_cancelled|telegram|${T0}`]);
     expect(await decemberDates()).toEqual([]);
   });
 
@@ -558,6 +559,7 @@ describe("createManual", () => {
     });
     expect(await stillDue(b.id)).toEqual(
       [
+        `owner_added|telegram|${T0}`,
         "client_d7|email|2026-12-12T08:00:00.000Z",
         "owner_d7|email|2026-12-12T08:00:00.000Z",
         "owner_d7|telegram|2026-12-12T08:00:00.000Z",
@@ -806,6 +808,7 @@ describe("sans acompte", () => {
     expect(await stillDue(p.id)).toEqual(
       [
         `client_confirmed|email|${T0}`,
+        `owner_confirmed|telegram|${T0}`,
         "client_d7|email|2026-12-12T08:00:00.000Z",
         "owner_d7|email|2026-12-12T08:00:00.000Z",
         "owner_d7|telegram|2026-12-12T08:00:00.000Z",
