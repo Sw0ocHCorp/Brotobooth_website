@@ -429,11 +429,17 @@ describe("messages au propriétaire", () => {
     }
   });
 
-  it("l'alerte de demande donne la date, le type, la formule, le lieu, le client et le téléphone", () => {
+  it("l'alerte de demande donne la date, le type, la formule, le lieu, les horaires, le client et le téléphone", () => {
     const { html } = renderTelegram("owner_new_request", booking({ event_date: "2026-12-19" }), ctx);
     for (const part of ["samedi 19 décembre 2026", "Mariage", escapeHtml(SECOND_PLAN.name), "Domaine des Pins, Lyon", "Camille Martin", "0601020304"]) {
       expect(html).toContain(part);
     }
+    // Les horaires sous leur libellé, juste après le lieu : le propriétaire sait s'il est libre avant de répondre.
+    expect(html).toContain("<b>Lieu</b> : Domaine des Pins, Lyon\n<b>Horaires</b> : 18h-02h\n");
+  });
+
+  it("la relance d'une demande sans réponse donne aussi les horaires", () => {
+    expect(renderTelegram("owner_review_reminder", booking(), ctx).html).toContain("<b>Horaires</b> : 18h-02h");
   });
 
   it("Telegram ne reçoit ni l'adresse e-mail ni le message du client, l'e-mail oui", () => {
