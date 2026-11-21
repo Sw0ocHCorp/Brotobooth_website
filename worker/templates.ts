@@ -219,8 +219,7 @@ const BOOKING_MESSAGES: Record<BookingTemplate, Build> = {
       b,
       `Désolés, nous ne pouvons pas être là le ${day(b)}`,
       para(
-        `Merci d'avoir pensé à nous pour votre événement. Malheureusement, nous ne pouvons pas être présents le ${day(b)}, et nous en sommes désolés. ` +
-          "Vous n'avez rien à payer.",
+        `Merci d'avoir pensé à nous pour votre événement. Malheureusement, nous ne pouvons pas être présents le ${day(b)}, et nous en sommes désolés.`,
       ),
       para("Si une autre date vous convient, nous serons ravis d'étudier une nouvelle demande\u00a0:"),
       action("Choisir une autre date", absolute(ctx, "/reserver")),

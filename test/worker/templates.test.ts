@@ -261,11 +261,12 @@ describe("messages au client", () => {
     expect(text).toMatch(/Reste à régler : 0 €/);
   });
 
-  it("le refus remercie, s'excuse, dit qu'il n'y a rien à payer et propose de choisir une autre date", () => {
+  // « Vous n'avez rien à payer » sonnait mal dans un refus, et n'apprenait rien au client (demande du propriétaire, 2026-11-21).
+  it("le refus remercie, s'excuse et propose de choisir une autre date, sans parler de paiement", () => {
     const { text } = renderEmail("client_refused", booking({ event_date: "2026-12-19" }), ctx);
     expect(text).toContain("Merci d'avoir pensé à nous pour votre événement.");
-    expect(text).toContain("nous ne pouvons pas être présents le samedi 19 décembre 2026, et nous en sommes désolés");
-    expect(text).toContain("Vous n'avez rien à payer.");
+    expect(text).toContain("nous ne pouvons pas être présents le samedi 19 décembre 2026, et nous en sommes désolés.");
+    expect(text).not.toMatch(/payer|payé|acompte|régler/i);
     expect(text).toContain("https://brotobooth.fr/reserver");
   });
 
